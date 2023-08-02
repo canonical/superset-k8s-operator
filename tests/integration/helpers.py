@@ -27,7 +27,7 @@ async def perform_superset_integrations(ops_test: OpsTest):
 
 
 async def get_unit_url(
-    ops_test: OpsTest, application, unit, port, protocol="https"
+    ops_test: OpsTest, application, unit, port, protocol="http"
 ):
     """Return unit URL from the model.
 

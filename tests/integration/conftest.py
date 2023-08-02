@@ -51,7 +51,7 @@ async def deploy(ops_test: OpsTest):
         await perform_superset_integrations(ops_test)
 
         await ops_test.model.wait_for_idle(
-            apps=[APP_NAME],
+            apps=[NGINX_NAME, APP_NAME],
             status="active",
             raise_on_blocked=False,
             timeout=300,
