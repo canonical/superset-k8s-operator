@@ -27,7 +27,7 @@ class TestDeployment:
         )
         logger.info("curling app address: %s", url)
 
-        response = requests.get(url, timeout=300, verify=False)  #nosec
+        response = requests.get(url, timeout=300, verify=False)  # nosec
         assert response.status_code == 200
 
     async def test_restart_action(self, ops_test: OpsTest):

@@ -12,11 +12,11 @@ import string
 logger = logging.getLogger(__name__)
 
 
-def charm_path(directory):
+def charm_path(file_path):
     """Get path for Charm.
 
     Args:
-        directory: charm directory
+        file_path: charm file_path
 
     Returns:
         path: full charm path
@@ -24,7 +24,7 @@ def charm_path(directory):
     charm_dir = os.path.abspath(
         os.path.join(os.path.dirname(__file__), os.pardir)
     )
-    path = os.path.join(charm_dir, directory)
+    path = os.path.join(charm_dir, file_path)
     return path
 
 
@@ -39,4 +39,35 @@ def generate_password() -> str:
             secrets.choice(string.ascii_letters + string.digits)
             for _ in range(32)
         ]
+    )
+
+
+def read_file(file_path):
+    """Read content of a file by path.
+
+    Args:
+        file_path: the path of the file
+
+    Returns:
+        file_contents: the content of the file as a string
+    """
+    with open(file_path, "r") as file:
+        file_contents = file.read()
+
+    return file_contents
+
+
+def push_files(container, file_path, destination, permissions):
+    """Push files to container destination path.
+
+    Args:
+        container: the application container
+        file_path: the path of the file
+        destination: the destination path in the application
+        permissions: the permissions of the file
+    """
+    abs_path = charm_path(file_path)
+    file_content = read_file(abs_path)
+    container.push(
+        destination, file_content, make_dirs=True, permissions=permissions
     )
