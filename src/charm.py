@@ -22,7 +22,15 @@ from ops.model import (
     WaitingStatus,
 )
 from charms.redis_k8s.v0.redis import RedisRelationCharmEvents, RedisRequires
-from literals import APP_NAME, APPLICATION_PORT, CONFIG_FILE, CONFIG_PATH, INIT_FILES, INIT_PATH
+
+from literals import (
+    APP_NAME,
+    APPLICATION_PORT,
+    CONFIG_FILE,
+    CONFIG_PATH,
+    INIT_FILES,
+    INIT_PATH,
+)
 from log import log_event_handler
 from state import State
 from utils import generate_password, push_files
@@ -157,12 +165,17 @@ class SupersetK8SCharm(CharmBase):
         event.set_results({"result": f"{APP_NAME} successfully restarted"})
 
     def _load_files(self, container):
+        """Load files necessary for Superset application to start.
+
+        Args:
+            container: the application container
+        """
         for file in INIT_FILES:
             if file == CONFIG_FILE:
-                PATH = CONFIG_PATH
+                path = CONFIG_PATH
             else:
-                PATH = INIT_PATH
-            push_files(container, f"templates/{file}", f"{PATH}/{file}", 0o744)
+                path = INIT_PATH
+            push_files(container, f"templates/{file}", f"{path}/{file}", 0o744)
 
     def _validate_config_params(self, container):
         """Validate that configuration is valid.
