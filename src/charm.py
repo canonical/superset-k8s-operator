@@ -236,7 +236,7 @@ class SupersetK8SCharm(CharmBase):
         logger.info(f"configuring {APP_NAME}")
         env = self._create_env()
         self._load_files(container)
-    
+
         logger.info(f"planning {APP_NAME} execution")
         pebble_layer = {
             "summary": f"{APP_NAME} layer",
