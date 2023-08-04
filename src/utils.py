@@ -40,3 +40,28 @@ def generate_password() -> str:
             for _ in range(32)
         ]
     )
+
+def read_file(file_path):
+    """Read content of a file by path.
+
+    Args:
+        file_path: the path of the file
+    """
+    with open(file_path, 'r') as file:
+        file_contents = file.read()
+
+    return file_contents
+
+
+def push_files(container, file_path, destination, permissions):
+    """Push files to container destination path.
+
+    Args:
+        container: the application container
+        file_path: the path of the file
+        destination: the destination path in the application
+        permissions: the permissions of the file
+    """
+    abs_path = charm_path(file_path)
+    file_content = read_file(abs_path)
+    container.push(destination, file_content, make_dirs=True, permissions=permissions)
