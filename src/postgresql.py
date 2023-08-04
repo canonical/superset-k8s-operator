@@ -1,7 +1,7 @@
 # Copyright 2023 Canonical Ltd.
 # See LICENSE file for licensing details.
 
-"""Define the Superset server Postgresql/Redis relation."""
+"""Define the Superset server Postgresql relation."""
 
 import logging
 
