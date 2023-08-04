@@ -12,11 +12,11 @@ import string
 logger = logging.getLogger(__name__)
 
 
-def charm_path(directory):
+def charm_path(file_path):
     """Get path for Charm.
 
     Args:
-        directory: charm directory
+        file_path: charm file_path
 
     Returns:
         path: full charm path
@@ -24,7 +24,7 @@ def charm_path(directory):
     charm_dir = os.path.abspath(
         os.path.join(os.path.dirname(__file__), os.pardir)
     )
-    path = os.path.join(charm_dir, directory)
+    path = os.path.join(charm_dir, file_path)
     return path
 
 

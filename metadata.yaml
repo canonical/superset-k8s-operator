@@ -32,6 +32,9 @@ resources:
 requires:
   nginx-route:
     interface: nginx-route
+  redis:
+    interface: redis
+    limit: 1
 
 peers:
   peer:

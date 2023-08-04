@@ -21,11 +21,13 @@ from ops.model import (
     MaintenanceStatus,
     WaitingStatus,
 )
-
-from literals import APP_NAME, APPLICATION_PORT
+from charms.redis_k8s.v0.redis import RedisRelationCharmEvents, RedisRequires
+from literals import APP_NAME, APPLICATION_PORT, CONFIG_FILE, CONFIG_PATH, INIT_FILES, INIT_PATH
 from log import log_event_handler
 from state import State
-from utils import charm_path, generate_password
+from utils import generate_password, push_files
+from ops.framework import StoredState
+from redis import Redis
 
 # Log messages can be retrieved using juju debug-log
 logger = logging.getLogger(__name__)
@@ -38,6 +40,8 @@ class SupersetK8SCharm(CharmBase):
         _state: used to store data that is persisted across invocations.
         external_hostname: DNS listing used for external connections.
     """
+    on = RedisRelationCharmEvents()
+    _stored = StoredState()
 
     @property
     def external_hostname(self):
@@ -53,6 +57,11 @@ class SupersetK8SCharm(CharmBase):
         super().__init__(*args)
         self.name = APP_NAME
         self._state = State(self.app, lambda: self.model.get_relation("peer"))
+
+        # Handle relations
+        self._stored.set_default(redis_relation={})
+        self.redis = RedisRequires(self, self._stored)
+        self.redis_relation = Redis(self)
 
         # Handle basic charm lifecycle
         self.framework.observe(self.on.install, self._on_install)
@@ -124,6 +133,10 @@ class SupersetK8SCharm(CharmBase):
             self.unit.status = WaitingStatus("Waiting for peer relation.")
             return False
 
+        if not self._state.redis_relation == "enabled":
+            self.unit.status = BlockedStatus("Needs a Redis relation")
+            return False
+
         return True
 
     @log_event_handler(logger)
@@ -142,6 +155,14 @@ class SupersetK8SCharm(CharmBase):
         self._restart_application(container)
 
         event.set_results({"result": f"{APP_NAME} successfully restarted"})
+
+    def _load_files(self, container):
+        for file in INIT_FILES:
+            if file == CONFIG_FILE:
+                PATH = CONFIG_PATH
+            else:
+                PATH = INIT_PATH
+            push_files(container, f"templates/{file}", f"{PATH}/{file}", 0o744)
 
     def _validate_config_params(self, container):
         """Validate that configuration is valid.
@@ -173,6 +194,8 @@ class SupersetK8SCharm(CharmBase):
             "SUPERSET_SECRET_KEY": self._state.superset_secret,
             "ADMIN_PASSWORD": self._state.admin_password,
             "CHARM_FUNCTION": self.config["charm-function"],
+            "REDIS_HOST": self._state.redis_host,
+            "REDIS_PORT": self._state.redis_port,
         }
         return env
 
@@ -198,13 +221,9 @@ class SupersetK8SCharm(CharmBase):
             return
 
         logger.info(f"configuring {APP_NAME}")
-
         env = self._create_env()
-
-        # push bootstrap, init, requirement and config files to app.
-        template_path = charm_path("templates")
-        container.push_path(f"{template_path}/*", "/app/k8s")
-
+        self._load_files(container)
+    
         logger.info(f"planning {APP_NAME} execution")
         pebble_layer = {
             "summary": f"{APP_NAME} layer",
