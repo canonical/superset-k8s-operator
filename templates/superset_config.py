@@ -1,9 +1,7 @@
 import os
 
 
-secret = os.getenv("SUPERSET_SECRET_KEY")
-if secret:
-    SECRET_KEY = secret
+SECRET_KEY = os.getenv("SUPERSET_SECRET_KEY")
 
 LOG_LEVEL = "DEBUG"
 TIME_ROTATE_LOG_LEVEL = "DEBUG"
