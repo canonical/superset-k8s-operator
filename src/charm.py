@@ -22,17 +22,10 @@ from ops.model import (
     WaitingStatus,
 )
 
-from literals import (
-    APP_NAME,
-    APPLICATION_PORT,
-    CONFIG_FILE,
-    CONFIG_PATH,
-    INIT_FILES,
-    INIT_PATH,
-)
+from literals import APP_NAME, APPLICATION_PORT
 from log import log_event_handler
 from state import State
-from utils import generate_password, push_files
+from utils import generate_password, load_superset_files
 
 # Log messages can be retrieved using juju debug-log
 logger = logging.getLogger(__name__)
@@ -150,24 +143,8 @@ class SupersetK8SCharm(CharmBase):
 
         event.set_results({"result": f"{APP_NAME} successfully restarted"})
 
-    def _load_files(self, container):
-        """Load files necessary for Superset application to start.
-
-        Args:
-            container: the application container
-        """
-        for file in INIT_FILES:
-            if file == CONFIG_FILE:
-                path = CONFIG_PATH
-            else:
-                path = INIT_PATH
-            push_files(container, f"templates/{file}", f"{path}/{file}", 0o744)
-
-    def _validate_config_params(self, container):
+    def _validate_config_params(self):
         """Validate that configuration is valid.
-
-        Args:
-            container: Application container
 
         Raises:
             ValueError: in case when invalid charm-funcion is entered
@@ -212,14 +189,14 @@ class SupersetK8SCharm(CharmBase):
             return
 
         try:
-            self._validate_config_params(container)
+            self._validate_config_params()
         except (RuntimeError, ValueError) as err:
             self.unit.status = BlockedStatus(str(err))
             return
 
         logger.info(f"configuring {APP_NAME}")
         env = self._create_env()
-        self._load_files(container)
+        load_superset_files(container)
 
         logger.info(f"planning {APP_NAME} execution")
         pebble_layer = {

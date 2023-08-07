@@ -9,6 +9,8 @@ import os
 import secrets
 import string
 
+from literals import CONFIG_FILE, CONFIG_PATH, INIT_FILES, INIT_PATH
+
 logger = logging.getLogger(__name__)
 
 
@@ -71,3 +73,17 @@ def push_files(container, file_path, destination, permissions):
     container.push(
         destination, file_content, make_dirs=True, permissions=permissions
     )
+
+
+def load_superset_files(container):
+    """Load files necessary for Superset application to start.
+
+    Args:
+        container: the application container
+    """
+    for file in INIT_FILES:
+        if file == CONFIG_FILE:
+            path = CONFIG_PATH
+        else:
+            path = INIT_PATH
+        push_files(container, f"templates/{file}", f"{path}/{file}", 0o744)
