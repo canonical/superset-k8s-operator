@@ -12,6 +12,7 @@ https://discourse.charmhub.io/t/4208
 
 import logging
 
+from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
 from charms.nginx_ingress_integrator.v0.nginx_route import require_nginx_route
 from ops.charm import CharmBase, ConfigChangedEvent, PebbleReadyEvent
 from ops.main import main
@@ -24,6 +25,7 @@ from ops.model import (
 
 from literals import APP_NAME, APPLICATION_PORT
 from log import log_event_handler
+from postgresql import Database
 from state import State
 from utils import generate_password, load_superset_files
 
@@ -53,6 +55,12 @@ class SupersetK8SCharm(CharmBase):
         super().__init__(*args)
         self.name = APP_NAME
         self._state = State(self.app, lambda: self.model.get_relation("peer"))
+
+        # Handle relations
+        self.postgresql_db = DatabaseRequires(
+            self, relation_name="postgresql_db", database_name="superset"
+        )
+        self.database = Database(self)
 
         # Handle basic charm lifecycle
         self.framework.observe(self.on.install, self._on_install)
@@ -124,6 +132,10 @@ class SupersetK8SCharm(CharmBase):
             self.unit.status = WaitingStatus("Waiting for peer relation.")
             return False
 
+        if not self._state.postgresql_relation == "enabled":
+            self.unit.status = BlockedStatus("Needs a PostgreSQL relation")
+            return False
+
         return True
 
     @log_event_handler(logger)
@@ -170,6 +182,7 @@ class SupersetK8SCharm(CharmBase):
             "SUPERSET_SECRET_KEY": self._state.superset_secret,
             "ADMIN_PASSWORD": self._state.admin_password,
             "CHARM_FUNCTION": self.config["charm-function"],
+            "SQL_ALCHEMY_URI": self._state.sql_alchemy_uri,
         }
         return env
 

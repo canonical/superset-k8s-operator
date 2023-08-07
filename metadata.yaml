@@ -31,6 +31,9 @@ resources:
 requires:
   nginx-route:
     interface: nginx-route
+  postgresql_db:
+    interface: postgresql_client
+    limit: 1
 
 peers:
   peer:
