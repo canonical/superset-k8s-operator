@@ -187,7 +187,6 @@ class SupersetK8SCharm(CharmBase):
             "CHARM_FUNCTION": self.config["charm-function"],
             "SQL_ALCHEMY_URI": self._state.sql_alchemy_uri,
         }
-        logging.info(env)
         return env
 
     def _update(self, event):
