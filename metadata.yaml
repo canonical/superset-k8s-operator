@@ -1,0 +1,40 @@
+# Copyright 2023 Canonical Ltd.
+# See LICENSE file for licensing details.
+# This file populates the Overview on Charmhub.
+# See https://juju.is/docs/sdk/metadata-reference for a checklist and guidance.
+
+name: superset-k8s
+
+display-name: Superset Operator
+
+summary: Superset operator
+
+description: |
+  Apache Superset is an open-source software application for data exploration and data visualization.
+maintainers:
+  - Commercial Systems <jaas-crew@lists.canonical.com>
+
+source: https://github.com/canonical/superset-k8s-operator
+docs: https://github.com/canonical/superset-k8s-operator
+issues: https://github.com/canonical/superset-k8s-operator/issues
+
+containers:
+  superset:
+    resource: superset-image
+
+resources:
+  superset-image:
+    type: oci-image
+    description: OCI image for superset
+    upstream-source: apache/superset:2.1.0
+
+requires:
+  nginx-route:
+    interface: nginx-route
+  postgresql_db:
+    interface: postgresql_client
+    limit: 1
+
+peers:
+  peer:
+    interface: superset

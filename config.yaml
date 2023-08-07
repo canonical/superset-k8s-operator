@@ -1,0 +1,37 @@
+# Copyright 2023 Canonical Ltd.
+# See LICENSE file for licensing details.
+
+# This file defines charm config options, and populates the Configure tab on Charmhub.
+# If your charm does not require configuration options, delete this file entirely.
+#
+# See https://juju.is/docs/config for guidance.
+
+options:
+  external-hostname:
+    description: |
+        The DNS listing used for external connections. 
+        Will default to the name of the deployed application.
+    type: string
+    default: superset-k8s
+  tls-secret-name:
+    description: |
+        Name of the k8s secret which contains the TLS certificate to be used by ingress.
+    default: superset-tls
+    type: string
+  superset-secret-key:
+    description: |
+        Your App secret key will be used for securely signing the session cookie
+        and encrypting sensitive information on the database. If not defined a secret
+        will be automatically generated.
+    type: string
+  admin-password:
+    description: |
+        The secret for the admin account created on app initialisation. Default is 'admin'.
+    default: admin
+    type: string
+  charm-function:
+    description: |
+        The type of superset function you want the charm to fulfill.
+        Allowed options are: 'app-gunicorn', 'app', 'worker', 'beat'
+    default: app-gunicorn
+    type: string
