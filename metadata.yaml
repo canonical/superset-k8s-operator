@@ -10,8 +10,7 @@ display-name: Superset Operator
 summary: Superset operator
 
 description: |
-  Superset is fast, lightweight, intuitive, and loaded with options that make it easy for users of all skill sets to explore and visualize their data.
-
+  Apache Superset is an open-source software application for data exploration and data visualization.
 maintainers:
   - Commercial Systems <jaas-crew@lists.canonical.com>
 
@@ -32,6 +31,9 @@ resources:
 requires:
   nginx-route:
     interface: nginx-route
+  postgresql_db:
+    interface: postgresql_client
+    limit: 1
   redis:
     interface: redis
     limit: 1

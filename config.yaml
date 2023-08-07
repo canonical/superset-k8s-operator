@@ -21,7 +21,8 @@ options:
   superset-secret-key:
     description: |
         Your App secret key will be used for securely signing the session cookie
-        and encrypting sensitive information on the database.
+        and encrypting sensitive information on the database. If not defined a secret
+        will be automatically generated.
     type: string
   admin-password:
     description: |

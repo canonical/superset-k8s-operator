@@ -12,6 +12,7 @@ https://discourse.charmhub.io/t/4208
 
 import logging
 
+from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
 from charms.nginx_ingress_integrator.v0.nginx_route import require_nginx_route
 from ops.charm import CharmBase, ConfigChangedEvent, PebbleReadyEvent
 from ops.main import main
@@ -23,17 +24,11 @@ from ops.model import (
 )
 from charms.redis_k8s.v0.redis import RedisRelationCharmEvents, RedisRequires
 
-from literals import (
-    APP_NAME,
-    APPLICATION_PORT,
-    CONFIG_FILE,
-    CONFIG_PATH,
-    INIT_FILES,
-    INIT_PATH,
-)
+from literals import APP_NAME, APPLICATION_PORT
 from log import log_event_handler
+from postgresql import Database
 from state import State
-from utils import generate_password, push_files
+from utils import generate_password,  load_superset_files
 from ops.framework import StoredState
 from redis import Redis
 
@@ -66,7 +61,13 @@ class SupersetK8SCharm(CharmBase):
         self.name = APP_NAME
         self._state = State(self.app, lambda: self.model.get_relation("peer"))
 
-        # Handle relations
+        # Handle postgresql relation
+        self.postgresql_db = DatabaseRequires(
+            self, relation_name="postgresql_db", database_name="superset"
+        )
+        self.database = Database(self)
+
+        # Handle redis relation
         self._stored.set_default(redis_relation={})
         self.redis = RedisRequires(self, self._stored)
         self.redis_relation = Redis(self)
@@ -141,10 +142,13 @@ class SupersetK8SCharm(CharmBase):
             self.unit.status = WaitingStatus("Waiting for peer relation.")
             return False
 
+        if not self._state.postgresql_relation == "enabled":
+            self.unit.status = BlockedStatus("Needs a PostgreSQL relation")
+            return False
+
         if not self._state.redis_relation == "enabled":
             self.unit.status = BlockedStatus("Needs a Redis relation")
             return False
-
         return True
 
     @log_event_handler(logger)
@@ -164,24 +168,8 @@ class SupersetK8SCharm(CharmBase):
 
         event.set_results({"result": f"{APP_NAME} successfully restarted"})
 
-    def _load_files(self, container):
-        """Load files necessary for Superset application to start.
-
-        Args:
-            container: the application container
-        """
-        for file in INIT_FILES:
-            if file == CONFIG_FILE:
-                path = CONFIG_PATH
-            else:
-                path = INIT_PATH
-            push_files(container, f"templates/{file}", f"{path}/{file}", 0o744)
-
-    def _validate_config_params(self, container):
+    def _validate_config_params(self):
         """Validate that configuration is valid.
-
-        Args:
-            container: Application container
 
         Raises:
             ValueError: in case when invalid charm-funcion is entered
@@ -207,6 +195,7 @@ class SupersetK8SCharm(CharmBase):
             "SUPERSET_SECRET_KEY": self._state.superset_secret,
             "ADMIN_PASSWORD": self._state.admin_password,
             "CHARM_FUNCTION": self.config["charm-function"],
+            "SQL_ALCHEMY_URI": self._state.sql_alchemy_uri,
             "REDIS_HOST": self._state.redis_host,
             "REDIS_PORT": self._state.redis_port,
         }
@@ -228,14 +217,14 @@ class SupersetK8SCharm(CharmBase):
             return
 
         try:
-            self._validate_config_params(container)
+            self._validate_config_params()
         except (RuntimeError, ValueError) as err:
             self.unit.status = BlockedStatus(str(err))
             return
 
         logger.info(f"configuring {APP_NAME}")
         env = self._create_env()
-        self._load_files(container)
+        load_superset_files(container)
 
         logger.info(f"planning {APP_NAME} execution")
         pebble_layer = {
