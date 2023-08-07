@@ -34,7 +34,6 @@ async def deploy(ops_test: OpsTest):
         charm,
         resources=resources,
         application_name=APP_NAME,
-        # config=superset_config,
         num_units=1,
     )
 

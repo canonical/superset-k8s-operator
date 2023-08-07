@@ -70,7 +70,7 @@ charmcraft pack
 # Deploy the charm:
 juju deploy ./superset-k8s_ubuntu-22.04-amd64.charm --resource superset-image=apache/superset:2.1.0
 # Check deployment was successful:
-kubectl get pods -n superset-k8s
+juju status
 ```
 ## Cleanup
 # Remove the application before retrying
