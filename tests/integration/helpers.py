@@ -16,6 +16,7 @@ METADATA = yaml.safe_load(Path("./metadata.yaml").read_text())
 APP_NAME = METADATA["name"]
 NGINX_NAME = "nginx-ingress-integrator"
 POSTGRES_NAME = "postgresql-k8s"
+REDIS_NAME = "redis-k8s"
 
 
 async def perform_superset_integrations(ops_test: OpsTest):
@@ -25,6 +26,12 @@ async def perform_superset_integrations(ops_test: OpsTest):
         ops_test: PyTest object.
     """
     await ops_test.model.integrate(APP_NAME, POSTGRES_NAME)
+
+    await ops_test.model.wait_for_idle(
+        apps=[APP_NAME], status="blocked", raise_on_blocked=False, timeout=180
+    )
+
+    await ops_test.model.integrate(APP_NAME, REDIS_NAME)
 
     await ops_test.model.wait_for_idle(
         apps=[APP_NAME], status="active", raise_on_blocked=False, timeout=180

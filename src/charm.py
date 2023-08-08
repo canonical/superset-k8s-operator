@@ -14,7 +14,9 @@ import logging
 
 from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
 from charms.nginx_ingress_integrator.v0.nginx_route import require_nginx_route
+from charms.redis_k8s.v0.redis import RedisRelationCharmEvents, RedisRequires
 from ops.charm import CharmBase, ConfigChangedEvent, PebbleReadyEvent
+from ops.framework import StoredState
 from ops.main import main
 from ops.model import (
     ActiveStatus,
@@ -22,15 +24,13 @@ from ops.model import (
     MaintenanceStatus,
     WaitingStatus,
 )
-from charms.redis_k8s.v0.redis import RedisRelationCharmEvents, RedisRequires
 
 from literals import APP_NAME, APPLICATION_PORT
 from log import log_event_handler
 from postgresql import Database
-from state import State
-from utils import generate_password,  load_superset_files
-from ops.framework import StoredState
 from redis import Redis
+from state import State
+from utils import generate_password, load_superset_files
 
 # Log messages can be retrieved using juju debug-log
 logger = logging.getLogger(__name__)
@@ -42,7 +42,10 @@ class SupersetK8SCharm(CharmBase):
     Attrs:
         _state: used to store data that is persisted across invocations.
         external_hostname: DNS listing used for external connections.
+        on: redis relation events from redis_k8s library
+        _stored: charm stored state
     """
+
     on = RedisRelationCharmEvents()
     _stored = StoredState()
 

@@ -5,28 +5,37 @@
 
 import logging
 
-from ops import framework
-from log import log_event_handler
 from charms.redis_k8s.v0.redis import RedisRelationCharmEvents
+from ops import framework
 from ops.framework import StoredState
+
+from log import log_event_handler
 
 logger = logging.getLogger(__name__)
 
 
 class Redis(framework.Object):
-    """Client for superset:redis relation."""
+    """Client for superset:redis relation.
+
+    Attrs:
+        on: redis relation events from redis_k8s library
+        _stored: charm stored state
+    """
 
     on = RedisRelationCharmEvents()
     _stored = StoredState()
 
     def __init__(self, charm):
         """Construct.
+
         Args:
             charm: The charm to attach the hooks to.
         """
         super().__init__(charm, "redis")
         self.charm = charm
-        self.framework.observe(charm.on.redis_relation_updated, self._on_redis_relation_changed)
+        self.framework.observe(
+            charm.on.redis_relation_updated, self._on_redis_relation_changed
+        )
 
     @log_event_handler(logger)
     def _on_redis_relation_changed(self, event):
@@ -53,14 +62,13 @@ class Redis(framework.Object):
 
     def _get_redis_relation_data(self):
         """Get the hostname and port from the redis relation data.
-        This is the current recommended way of accessing the relation data.
 
         Returns:
             redis_hostname: hostname of redis service
             redis_port: port of redis service
-        """        
-        for redis_unit in self.charm._stored.redis_relation: 
-            redis_unit_data = self.charm._stored.redis_relation[redis_unit] 
+        """
+        for redis_unit in self.charm._stored.redis_relation:
+            redis_unit_data = self.charm._stored.redis_relation[redis_unit]
             redis_hostname = redis_unit_data["hostname"]
             redis_port = redis_unit_data["port"]
 

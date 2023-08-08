@@ -10,7 +10,7 @@
 
 import json
 import logging
-from unittest import TestCase
+from unittest import TestCase, mock
 
 from ops.model import ActiveStatus, BlockedStatus, WaitingStatus
 from ops.testing import Harness
@@ -84,6 +84,8 @@ class TestCharm(TestCase):
                         "ADMIN_PASSWORD": "admin",
                         "CHARM_FUNCTION": "app-gunicorn",
                         "SQL_ALCHEMY_URI": "postgresql://postgres_user:admin@myhost:5432/superset",
+                        "REDIS_HOST": "redis-host",
+                        "REDIS_PORT": 6379,
                     },
                 }
             },
@@ -145,6 +147,8 @@ class TestCharm(TestCase):
                         "ADMIN_PASSWORD": "secure-pass",
                         "CHARM_FUNCTION": "app-gunicorn",
                         "SQL_ALCHEMY_URI": "postgresql://postgres_user:admin@myhost:5432/superset",
+                        "REDIS_HOST": "redis-host",
+                        "REDIS_PORT": 6379,
                     },
                 }
             },
@@ -181,7 +185,8 @@ class TestCharm(TestCase):
         }
 
 
-def simulate_lifecycle(harness):
+@mock.patch("charm.Redis._get_redis_relation_data")
+def simulate_lifecycle(harness, _get_redis_relation_data):
     """Simulate a healthy charm life-cycle.
 
     Args:
@@ -193,6 +198,11 @@ def simulate_lifecycle(harness):
     # Simulate pebble readiness.
     container = harness.model.unit.get_container("superset")
     harness.charm.on.superset_pebble_ready.emit(container)
+
+    # Simulate redis readiness.
+    _get_redis_relation_data.return_value = ("redis-host", 6379)
+    rel_id = harness.add_relation("redis", "redis-k8s")
+    harness.add_relation_unit(rel_id, "redis-k8s/0")
 
     # Simulate database readiness.
     event = make_database_changed_event()

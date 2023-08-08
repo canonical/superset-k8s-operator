@@ -4,6 +4,7 @@
 """Charm integration test config."""
 
 import logging
+import time
 
 import pytest
 import pytest_asyncio
@@ -12,6 +13,7 @@ from helpers import (
     METADATA,
     NGINX_NAME,
     POSTGRES_NAME,
+    REDIS_NAME,
     perform_superset_integrations,
 )
 from pytest_operator.plugin import OpsTest
@@ -30,6 +32,8 @@ async def deploy(ops_test: OpsTest):
         ]
     }
     await ops_test.model.deploy(POSTGRES_NAME, channel="14", trust=True)
+    await ops_test.model.deploy(REDIS_NAME, channel="edge", trust=True)
+    await ops_test.model.deploy(NGINX_NAME, trust=True)
 
     await ops_test.model.deploy(
         charm,
@@ -44,17 +48,17 @@ async def deploy(ops_test: OpsTest):
         raise_on_blocked=False,
         timeout=600,
     )
-    await ops_test.model.deploy(NGINX_NAME, trust=True)
 
     async with ops_test.fast_forward():
         await ops_test.model.wait_for_idle(
-            apps=[NGINX_NAME, POSTGRES_NAME],
+            apps=[NGINX_NAME, POSTGRES_NAME, REDIS_NAME],
             status="active",
             raise_on_blocked=False,
             timeout=600,
         )
 
         await perform_superset_integrations(ops_test)
+        time.sleep(30)  # wait for application to start
 
         await ops_test.model.wait_for_idle(
             apps=[NGINX_NAME, APP_NAME],
