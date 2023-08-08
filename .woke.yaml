@@ -2,3 +2,4 @@ ignore_files:
   # Ignore ingress charm library as it uses non compliant terminology:
   # whitelist.
   - lib/charms/nginx_ingress_integrator/v0/nginx_route.py
+  - lib/charms/redis-k8s/v0/redis.py
