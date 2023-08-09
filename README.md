@@ -10,12 +10,6 @@ juju deploy redis-k8s --edge
 
 # relate redis charm
 juju relate redis-k8s superset-k8s
-
-# remove relation
-juju remove-relation redis-k8s superset-k8s
-
-# remove application
-juju remove-application redis-k8s
 ```
 
 ### Ingress
