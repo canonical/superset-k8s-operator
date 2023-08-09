@@ -4,7 +4,6 @@ from cachelib.redis import RedisCache
 redis_host = os.getenv("REDIS_HOST")
 redis_port = os.getenv("REDIS_PORT")
 
-print(f"redis host: {redis_host}")
 # Redis caching
 CACHE_CONFIG = {
     "CACHE_TYPE": "redis",

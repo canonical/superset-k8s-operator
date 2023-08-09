@@ -87,7 +87,7 @@ juju remove-relation redis-k8s superset-k8s
 # remove application
 juju remove-application redis-k8s
 ```
-The recommended method for relating applications to the Redis Charm is using the `redis-k8s.v0.redis` library, an utilising stored state for accessing relation data. There is an [issue](https://github.com/canonical/redis-k8s-operator/issues/74) for updating this to use the data interfaces library in future.
+The recommended method for relating applications to the Redis Charm is using the `redis-k8s.v0.redis` library, and utilising stored state for accessing relation data. There is an [issue](https://github.com/canonical/redis-k8s-operator/issues/74) for updating this to use the data interfaces library in future.
 
 ## Cleanup
 # Remove the application before retrying

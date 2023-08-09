@@ -27,8 +27,8 @@ from ops.model import (
 
 from literals import APP_NAME, APPLICATION_PORT
 from log import log_event_handler
-from postgresql import Database
-from redis import Redis
+from relations.postgresql import Database
+from relations.redis import Redis
 from state import State
 from utils import generate_password, load_superset_files
 
