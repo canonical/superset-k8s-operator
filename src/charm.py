@@ -149,7 +149,7 @@ class SupersetK8SCharm(CharmBase):
             self.unit.status = BlockedStatus("Needs a PostgreSQL relation")
             return False
 
-        if not self._state.redis_relation == "enabled":
+        if not self._state.redis_relation:
             self.unit.status = BlockedStatus("Needs a Redis relation")
             return False
         return True

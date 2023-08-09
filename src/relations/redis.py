@@ -49,11 +49,11 @@ class Redis(framework.Object):
 
         if self.charm._stored.redis_relation:
             host, port = self._get_redis_relation_data()
-            self.charm._state.redis_relation = "enabled"
+            self.charm._state.redis_relation = True
         else:
             host = None
             port = None
-            self.charm._state.redis_relation = "disabled"
+            self.charm._state.redis_relation = False
 
         self.charm._state.redis_host = host
         self.charm._state.redis_port = port
