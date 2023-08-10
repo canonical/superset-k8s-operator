@@ -47,14 +47,9 @@ class Redis(framework.Object):
         if not self.charm.unit.is_leader():
             return
 
-        if self.charm._stored.redis_relation:
-            host, port = self._get_redis_relation_data()
-            self.charm._state.redis_relation = True
-        else:
-            host = None
-            port = None
-            self.charm._state.redis_relation = False
+        host, port, redis_relation = self._get_redis_relation_data()
 
+        self.charm._state.redis_relation = redis_relation
         self.charm._state.redis_host = host
         self.charm._state.redis_port = port
 
@@ -66,10 +61,12 @@ class Redis(framework.Object):
         Returns:
             redis_hostname: hostname of redis service
             redis_port: port of redis service
+            redis_relation: bool for if redis has been related
         """
-        for redis_unit in self.charm._stored.redis_relation:
-            redis_unit_data = self.charm._stored.redis_relation[redis_unit]
-            redis_hostname = redis_unit_data["hostname"]
-            redis_port = redis_unit_data["port"]
-
-        return redis_hostname, redis_port
+        rel = {}
+        if self.charm._stored.redis_relation:
+            rel = next(iter(self.charm._stored.redis_relation.values()))
+        redis_hostname = rel.get("hostname")
+        redis_port = rel.get("port")
+        redis_relation = bool(rel)
+        return redis_hostname, redis_port, redis_relation

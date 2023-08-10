@@ -200,7 +200,7 @@ def simulate_lifecycle(harness, _get_redis_relation_data):
     harness.charm.on.superset_pebble_ready.emit(container)
 
     # Simulate redis readiness.
-    _get_redis_relation_data.return_value = ("redis-host", 6379)
+    _get_redis_relation_data.return_value = ("redis-host", 6379, True)
     rel_id = harness.add_relation("redis", "redis-k8s")
     harness.add_relation_unit(rel_id, "redis-k8s/0")
 
