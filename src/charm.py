@@ -216,7 +216,6 @@ class SupersetK8SCharm(CharmBase):
             return
 
         if not self.ready_to_start():
-            event.defer()
             return
 
         try:
