@@ -72,6 +72,23 @@ juju deploy ./superset-k8s_ubuntu-22.04-amd64.charm --resource superset-image=ap
 # Check deployment was successful:
 juju status
 ```
+## Relations
+Redis acts as both a cache and message broker for Superset services. It's a requirement to have a redis relation in order to start the Superset application.
+```
+# deploy redis charm
+juju deploy redis-k8s --edge
+
+# relate redis charm
+juju relate redis-k8s superset-k8s
+
+# remove relation
+juju remove-relation redis-k8s superset-k8s
+
+# remove application
+juju remove-application redis-k8s
+```
+The recommended method for relating applications to the Redis Charm is using the `redis-k8s.v0.redis` library, and utilising stored state for accessing relation data. There is an [issue](https://github.com/canonical/redis-k8s-operator/issues/74) for updating this to use the data interfaces library in future.
+
 ## Cleanup
 # Remove the application before retrying
 ```

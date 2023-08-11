@@ -34,6 +34,9 @@ requires:
   postgresql_db:
     interface: postgresql_client
     limit: 1
+  redis:
+    interface: redis
+    limit: 1
 
 peers:
   peer:

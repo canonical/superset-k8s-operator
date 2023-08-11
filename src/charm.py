@@ -14,7 +14,9 @@ import logging
 
 from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
 from charms.nginx_ingress_integrator.v0.nginx_route import require_nginx_route
+from charms.redis_k8s.v0.redis import RedisRelationCharmEvents, RedisRequires
 from ops.charm import CharmBase, ConfigChangedEvent, PebbleReadyEvent
+from ops.framework import StoredState
 from ops.main import main
 from ops.model import (
     ActiveStatus,
@@ -25,7 +27,8 @@ from ops.model import (
 
 from literals import APP_NAME, APPLICATION_PORT
 from log import log_event_handler
-from postgresql import Database
+from relations.postgresql import Database
+from relations.redis import Redis
 from state import State
 from utils import generate_password, load_superset_files
 
@@ -39,7 +42,12 @@ class SupersetK8SCharm(CharmBase):
     Attrs:
         _state: used to store data that is persisted across invocations.
         external_hostname: DNS listing used for external connections.
+        on: redis relation events from redis_k8s library
+        _stored: charm stored state
     """
+
+    on = RedisRelationCharmEvents()
+    _stored = StoredState()
 
     @property
     def external_hostname(self):
@@ -56,11 +64,16 @@ class SupersetK8SCharm(CharmBase):
         self.name = APP_NAME
         self._state = State(self.app, lambda: self.model.get_relation("peer"))
 
-        # Handle relations
+        # Handle postgresql relation
         self.postgresql_db = DatabaseRequires(
             self, relation_name="postgresql_db", database_name="superset"
         )
         self.database = Database(self)
+
+        # Handle redis relation
+        self._stored.set_default(redis_relation={})
+        self.redis = RedisRequires(self, self._stored)
+        self.redis_relation = Redis(self)
 
         # Handle basic charm lifecycle
         self.framework.observe(self.on.install, self._on_install)
@@ -136,6 +149,9 @@ class SupersetK8SCharm(CharmBase):
             self.unit.status = BlockedStatus("Needs a PostgreSQL relation")
             return False
 
+        if not self._state.redis_relation:
+            self.unit.status = BlockedStatus("Needs a Redis relation")
+            return False
         return True
 
     @log_event_handler(logger)
@@ -183,6 +199,8 @@ class SupersetK8SCharm(CharmBase):
             "ADMIN_PASSWORD": self._state.admin_password,
             "CHARM_FUNCTION": self.config["charm-function"],
             "SQL_ALCHEMY_URI": self._state.sql_alchemy_uri,
+            "REDIS_HOST": self._state.redis_host,
+            "REDIS_PORT": self._state.redis_port,
         }
         return env
 

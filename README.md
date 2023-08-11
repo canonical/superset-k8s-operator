@@ -2,6 +2,15 @@
 Superset is fast, lightweight, intuitive, and loaded with options that make it easy for users of all skill sets to explore and visualize their data.
 
 ## Relations
+### Redis
+Redis acts as both a cache and message broker for Superset services. It's a requirement to have a redis relation in order to start the Superset application.
+```
+# deploy redis charm
+juju deploy redis-k8s --edge
+
+# relate redis charm
+juju relate redis-k8s superset-k8s
+```
 
 ### Ingress
 The Superset operator exposes its ports using the Nginx Ingress Integrator operator. You must first make sure to have an Nginx Ingress Controller deployed. To enable TLS connections, you must have a TLS certificate stored as a k8s secret (default name is "superset-tls"). A self-signed certificate for development purposes can be created as follows:
