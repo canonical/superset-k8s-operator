@@ -73,6 +73,7 @@ juju deploy ./superset-k8s_ubuntu-22.04-amd64.charm --resource superset-image=ap
 juju status
 ```
 ## Relations
+### Redis
 Redis acts as both a cache and message broker for Superset services. It's a requirement to have a redis relation in order to start the Superset application.
 ```
 # deploy redis charm
@@ -88,6 +89,23 @@ juju remove-relation redis-k8s superset-k8s
 juju remove-application redis-k8s
 ```
 The recommended method for relating applications to the Redis Charm is using the `redis-k8s.v0.redis` library, and utilising stored state for accessing relation data. There is an [issue](https://github.com/canonical/redis-k8s-operator/issues/74) for updating this to use the data interfaces library in future.
+
+### PostgreSQL
+PostgreSQL is used as the database that stores Superset metadata (slices, connections, tables, dashboards etc.). It's a requirement to have a PostgreSQL relation to start the Superset application.
+```
+# deploy postgresql charm
+juju deploy postgresql-k8s --channel 14/stable
+
+# relate postgresql charm
+juju relate postgresql-k8s superset-k8s
+
+# remove relation
+juju remove-relation postgresql-k8s superset-k8s
+
+# remove application
+juju remove-application postgresql-k8s
+```
+This relation makes use of the `data_platform_libs.v0.data_interfaces` library. The charm can be found on [Charmhub](https://charmhub.io/postgresql-k8s) and on [github](https://github.com/canonical/postgresql-k8s-operator).
 
 ## Cleanup
 # Remove the application before retrying

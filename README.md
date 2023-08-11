@@ -11,6 +11,15 @@ juju deploy redis-k8s --edge
 # relate redis charm
 juju relate redis-k8s superset-k8s
 ```
+### PostgreSQL
+PostgreSQL is used as the database that stores Superset metadata (slices, connections, tables, dashboards etc.). It's a requirement to have a PostgreSQL relation to start the Superset application.
+```
+# deploy postgresql charm
+juju deploy postgresql-k8s --channel 14/stable
+
+# relate postgresql charm
+juju relate postgresql-k8s superset-k8s
+```
 
 ### Ingress
 The Superset operator exposes its ports using the Nginx Ingress Integrator operator. You must first make sure to have an Nginx Ingress Controller deployed. To enable TLS connections, you must have a TLS certificate stored as a k8s secret (default name is "superset-tls"). A self-signed certificate for development purposes can be created as follows:
