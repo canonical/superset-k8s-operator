@@ -11,6 +11,7 @@ https://discourse.charmhub.io/t/4208
 """
 
 import logging
+import requests
 
 from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
 from charms.nginx_ingress_integrator.v0.nginx_route import require_nginx_route
@@ -24,7 +25,7 @@ from ops.model import (
     MaintenanceStatus,
     WaitingStatus,
 )
-
+from ops.pebble import CheckStatus
 from literals import APP_NAME, APPLICATION_PORT
 from log import log_event_handler
 from relations.postgresql import Database
@@ -82,6 +83,7 @@ class SupersetK8SCharm(CharmBase):
         )
         self.framework.observe(self.on.config_changed, self._on_config_changed)
         self.framework.observe(self.on.restart_action, self._on_restart)
+        self.framework.observe(self.on.update_status, self._on_update_status)
 
         # Handle Ingress
         self._require_nginx_route()
@@ -125,6 +127,24 @@ class SupersetK8SCharm(CharmBase):
         self.unit.status = WaitingStatus(f"configuring {APP_NAME}")
         self._update(event)
 
+    @log_event_handler(logger)
+    def _on_update_status(self):
+        """Handle `update-status` events."""
+        if not self.ready_to_start():
+            return
+
+        container = self.unit.get_container(self.name)
+        ui_functions = ["app", "app-gunicorn"]
+        
+        check = container.get_check('up')
+        if self.config["charm-function"] in ui_functions:
+            if check.status != CheckStatus.UP:
+                self.unit.status = WaitingStatus()
+                return
+
+        self.unit.status = ActiveStatus()
+
+
     def _restart_application(self, container):
         """Restart application.
 
@@ -133,7 +153,7 @@ class SupersetK8SCharm(CharmBase):
         """
         self.unit.status = MaintenanceStatus(f"restarting {APP_NAME}")
         container.restart(self.name)
-        self.unit.status = ActiveStatus()
+        self._on_update_status()
 
     def ready_to_start(self):
         """Check if peer relation is established.
@@ -242,11 +262,19 @@ class SupersetK8SCharm(CharmBase):
                     "environment": env,
                 }
             },
+            "checks": {
+                "up": {
+                    "override": "replace",
+                    "period": "10s",
+                    "http": {
+                        "url": "http://localhost:8088/superset/welcome/"
+                    }
+                }
+            }
         }
         container.add_layer(self.name, pebble_layer, combine=True)
         container.replan()
-
-        self.unit.status = ActiveStatus()
+        self._on_update_status()
 
 
 if __name__ == "__main__":
