@@ -31,8 +31,8 @@ class Database(framework.Object):
             charm.postgresql_db.on.endpoints_changed, self._on_database_changed
         )
         self.framework.observe(
-            charm.on.postgresql_db_relation_departed,
-            self._on_database_relation_departed,
+            charm.on.postgresql_db_relation_broken,
+            self._on_database_relation_broken,
         )
 
     @log_event_handler(logger)
@@ -43,6 +43,9 @@ class Database(framework.Object):
             event: The event triggered when the relation changed.
         """
         if not self.charm.unit.is_leader():
+            return
+
+        if not event.endpoints:
             return
 
         host, port = event.endpoints.split(",", 1)[0].split(":")
@@ -59,8 +62,8 @@ class Database(framework.Object):
         self.charm._update(event)
 
     @log_event_handler(logger)
-    def _on_database_relation_departed(self, event):
-        """Handle database departed event.
+    def _on_database_relation_broken(self, event):
+        """Handle database broken event.
 
         Args:
             event: The event triggered when the relation departs.
@@ -74,6 +77,6 @@ class Database(framework.Object):
             return
 
         self.charm._state.sql_alchemy_uri = None
-        self.charm._state.postgresql_relation = "disabled"
+        self.charm._state.postgresql_relation = False
 
         self.charm._update(event)
