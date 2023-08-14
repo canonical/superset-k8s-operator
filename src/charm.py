@@ -168,7 +168,7 @@ class SupersetK8SCharm(CharmBase):
             self.unit.status = WaitingStatus("Waiting for peer relation.")
             return False
 
-        if not self._state.postgresql_relation == "enabled":
+        if not self._state.postgresql_relation:
             self.unit.status = BlockedStatus("Needs a PostgreSQL relation")
             return False
 
@@ -239,7 +239,6 @@ class SupersetK8SCharm(CharmBase):
             return
 
         if not self.ready_to_start():
-            event.defer()
             return
 
         try:
