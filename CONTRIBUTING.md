@@ -62,6 +62,11 @@ juju model-config logging-config="<root>=INFO;unit=DEBUG"
 juju status
 juju debug-log
 ```
+### Configure juju
+```
+# customise update status hook interval:
+juju model-config update-status-hook-interval=1m
+```
 ### Deploy charm
 ```
 # Pack the charm:
@@ -69,6 +74,7 @@ charmcraft pack
 
 # Deploy the charm:
 juju deploy ./superset-k8s_ubuntu-22.04-amd64.charm --resource superset-image=apache/superset:2.1.0
+
 # Check deployment was successful:
 juju status
 ```

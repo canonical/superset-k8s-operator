@@ -11,7 +11,6 @@ https://discourse.charmhub.io/t/4208
 """
 
 import logging
-import requests
 
 from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
 from charms.nginx_ingress_integrator.v0.nginx_route import require_nginx_route
@@ -26,6 +25,7 @@ from ops.model import (
     WaitingStatus,
 )
 from ops.pebble import CheckStatus
+
 from literals import APP_NAME, APPLICATION_PORT
 from log import log_event_handler
 from relations.postgresql import Database
@@ -128,22 +128,25 @@ class SupersetK8SCharm(CharmBase):
         self._update(event)
 
     @log_event_handler(logger)
-    def _on_update_status(self):
-        """Handle `update-status` events."""
+    def _on_update_status(self, event):
+        """Handle `update-status` events.
+
+        Args:
+            event: The `update-status` event triggered at intervals
+        """
         if not self.ready_to_start():
             return
 
         container = self.unit.get_container(self.name)
         ui_functions = ["app", "app-gunicorn"]
-        
-        check = container.get_check('up')
+        check = container.get_check("up")
+
         if self.config["charm-function"] in ui_functions:
             if check.status != CheckStatus.UP:
                 self.unit.status = WaitingStatus()
                 return
 
         self.unit.status = ActiveStatus()
-
 
     def _restart_application(self, container):
         """Restart application.
@@ -260,21 +263,20 @@ class SupersetK8SCharm(CharmBase):
                     "command": "/app/k8s/k8s-bootstrap.sh",
                     "startup": "enabled",
                     "environment": env,
+                    "on-check-failure": {"up": "ignore"},
                 }
             },
             "checks": {
                 "up": {
                     "override": "replace",
                     "period": "10s",
-                    "http": {
-                        "url": "http://localhost:8088/superset/welcome/"
-                    }
+                    "http": {"url": "http://localhost:8088/"},
                 }
-            }
+            },
         }
         container.add_layer(self.name, pebble_layer, combine=True)
         container.replan()
-        self._on_update_status()
+        self.unit.status = WaitingStatus()
 
 
 if __name__ == "__main__":

@@ -13,6 +13,7 @@ import logging
 from unittest import TestCase, mock
 
 from ops.model import ActiveStatus, BlockedStatus, WaitingStatus
+from ops.pebble import CheckStatus
 from ops.testing import Harness
 
 from charm import SupersetK8SCharm
@@ -87,6 +88,7 @@ class TestCharm(TestCase):
                         "REDIS_HOST": "redis-host",
                         "REDIS_PORT": 6379,
                     },
+                    "on-check-failure": {"up": "ignore"},
                 }
             },
         }
@@ -102,8 +104,8 @@ class TestCharm(TestCase):
         )
         self.assertTrue(service.is_running())
 
-        # The ActiveStatus is set with no message.
-        self.assertEqual(harness.model.unit.status, ActiveStatus())
+        # The WaitingStatus is set with no message.
+        self.assertEqual(harness.model.unit.status, WaitingStatus())
 
     def test_invalid_config_value(self):
         """The charm blocks if an invalid config value is provided."""
@@ -150,7 +152,8 @@ class TestCharm(TestCase):
                         "REDIS_HOST": "redis-host",
                         "REDIS_PORT": 6379,
                     },
-                }
+                    "on-check-failure": {"up": "ignore"},
+                },
             },
         }
         got_plan = harness.get_container_pebble_plan("superset").to_dict()
@@ -159,8 +162,8 @@ class TestCharm(TestCase):
         ] = "example-pass"  # nosec
         self.assertEqual(got_plan, want_plan)
 
-        # The ActiveStatus is set with no message.
-        self.assertEqual(harness.model.unit.status, ActiveStatus())
+        # The WaitingStatus is set with no message.
+        self.assertEqual(harness.model.unit.status, WaitingStatus())
 
     def test_ingress(self):
         """The charm relates correctly to the nginx ingress charm."""
@@ -183,6 +186,32 @@ class TestCharm(TestCase):
             "backend-protocol": "HTTPS",
             "tls-secret-name": "superset-tls",
         }
+
+    def test_update_status_up(self):
+        """The charm updates the unit status to active based on UP status."""
+        harness = self.harness
+
+        simulate_lifecycle(harness)
+
+        container = harness.model.unit.get_container("superset")
+        container.get_check = mock.Mock(status="up")
+        container.get_check.return_value.status = CheckStatus.UP
+        harness.charm.on.update_status.emit()
+
+        self.assertEqual(harness.model.unit.status, ActiveStatus())
+
+    def test_update_status_down(self):
+        """The charm updates the unit status to waiting based on DOWN status."""
+        harness = self.harness
+
+        simulate_lifecycle(harness)
+
+        container = harness.model.unit.get_container("superset")
+        container.get_check = mock.Mock(status="up")
+        container.get_check.return_value.status = CheckStatus.DOWN
+        harness.charm.on.update_status.emit()
+
+        self.assertEqual(harness.model.unit.status, WaitingStatus())
 
 
 @mock.patch("charm.Redis._get_redis_relation_data")
