@@ -4,7 +4,6 @@
 """Charm integration test config."""
 
 import logging
-import time
 
 import pytest
 import pytest_asyncio
