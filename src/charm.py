@@ -143,7 +143,7 @@ class SupersetK8SCharm(CharmBase):
 
         if self.config["charm-function"] in ui_functions:
             if check.status != CheckStatus.UP:
-                self.unit.status = WaitingStatus()
+                self.unit.status = MaintenanceStatus()
                 return
 
         self.unit.status = ActiveStatus()

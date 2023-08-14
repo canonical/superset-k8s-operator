@@ -12,7 +12,12 @@ import json
 import logging
 from unittest import TestCase, mock
 
-from ops.model import ActiveStatus, BlockedStatus, WaitingStatus
+from ops.model import (
+    ActiveStatus,
+    BlockedStatus,
+    MaintenanceStatus,
+    WaitingStatus,
+)
 from ops.pebble import CheckStatus
 from ops.testing import Harness
 
@@ -201,7 +206,7 @@ class TestCharm(TestCase):
         self.assertEqual(harness.model.unit.status, ActiveStatus())
 
     def test_update_status_down(self):
-        """The charm updates the unit status to waiting based on DOWN status."""
+        """The charm updates the unit status to maintenance based on DOWN status."""
         harness = self.harness
 
         simulate_lifecycle(harness)
@@ -211,7 +216,7 @@ class TestCharm(TestCase):
         container.get_check.return_value.status = CheckStatus.DOWN
         harness.charm.on.update_status.emit()
 
-        self.assertEqual(harness.model.unit.status, WaitingStatus())
+        self.assertEqual(harness.model.unit.status, MaintenanceStatus())
 
 
 @mock.patch("charm.Redis._get_redis_relation_data")
