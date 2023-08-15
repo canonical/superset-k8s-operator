@@ -109,8 +109,11 @@ class TestCharm(TestCase):
         )
         self.assertTrue(service.is_running())
 
-        # The WaitingStatus is set with no message.
-        self.assertEqual(harness.model.unit.status, WaitingStatus())
+        # The MaintenanceStatus is set with replan message.
+        self.assertEqual(
+            harness.model.unit.status,
+            MaintenanceStatus("replanning application"),
+        )
 
     def test_invalid_config_value(self):
         """The charm blocks if an invalid config value is provided."""
@@ -167,8 +170,11 @@ class TestCharm(TestCase):
         ] = "example-pass"  # nosec
         self.assertEqual(got_plan, want_plan)
 
-        # The WaitingStatus is set with no message.
-        self.assertEqual(harness.model.unit.status, WaitingStatus())
+        # The MaintenanceStatus is set with replan message.
+        self.assertEqual(
+            harness.model.unit.status,
+            MaintenanceStatus("replanning application"),
+        )
 
     def test_ingress(self):
         """The charm relates correctly to the nginx ingress charm."""
@@ -203,7 +209,9 @@ class TestCharm(TestCase):
         container.get_check.return_value.status = CheckStatus.UP
         harness.charm.on.update_status.emit()
 
-        self.assertEqual(harness.model.unit.status, ActiveStatus())
+        self.assertEqual(
+            harness.model.unit.status, ActiveStatus("Status check: UP")
+        )
 
     def test_update_status_down(self):
         """The charm updates the unit status to maintenance based on DOWN status."""
@@ -216,7 +224,9 @@ class TestCharm(TestCase):
         container.get_check.return_value.status = CheckStatus.DOWN
         harness.charm.on.update_status.emit()
 
-        self.assertEqual(harness.model.unit.status, MaintenanceStatus())
+        self.assertEqual(
+            harness.model.unit.status, MaintenanceStatus("Status check: DOWN")
+        )
 
 
 @mock.patch("charm.Redis._get_redis_relation_data")

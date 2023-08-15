@@ -143,10 +143,10 @@ class SupersetK8SCharm(CharmBase):
 
         if self.config["charm-function"] in ui_functions:
             if check.status != CheckStatus.UP:
-                self.unit.status = MaintenanceStatus()
+                self.unit.status = MaintenanceStatus("Status check: DOWN")
                 return
 
-        self.unit.status = ActiveStatus()
+        self.unit.status = ActiveStatus("Status check: UP")
 
     def _restart_application(self, container):
         """Restart application.
@@ -156,7 +156,6 @@ class SupersetK8SCharm(CharmBase):
         """
         self.unit.status = MaintenanceStatus(f"restarting {APP_NAME}")
         container.restart(self.name)
-        self._on_update_status()
 
     def ready_to_start(self):
         """Check if peer relation is established.
@@ -275,7 +274,7 @@ class SupersetK8SCharm(CharmBase):
         }
         container.add_layer(self.name, pebble_layer, combine=True)
         container.replan()
-        self.unit.status = WaitingStatus()
+        self.unit.status = MaintenanceStatus("replanning application")
 
 
 if __name__ == "__main__":

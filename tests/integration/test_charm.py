@@ -35,5 +35,5 @@ class TestDeployment:
         await restart_application(ops_test)
         assert (
             ops_test.model.applications[APP_NAME].units[0].workload_status
-            == "active"
+            == "maintenance"
         )
