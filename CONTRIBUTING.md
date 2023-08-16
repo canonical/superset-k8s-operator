@@ -63,6 +63,10 @@ juju status
 juju debug-log
 ```
 ### Configure juju
+This is an optional step intended to make the update-status hook more responsive. The default value is 5m.
+Following deployment, the status of the application will be checked at this regular interval. By setting this to 1m the deployment will be able to reach an `Active` status soon after application start. Leaving this at 5m will require waiting 5 minutes following deployment for application verification.
+
+Be aware if you update this configuration on the model it will apply to all charms on that model.
 ```
 # customise update status hook interval:
 juju model-config update-status-hook-interval=1m
