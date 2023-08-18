@@ -8,6 +8,7 @@ import logging
 import os
 import secrets
 import string
+import random
 
 from literals import CONFIG_FILE, CONFIG_PATH, INIT_FILES, INIT_PATH
 
@@ -73,3 +74,15 @@ def load_superset_files(container):
         else:
             path = INIT_PATH
         push_files(container, f"templates/{file}", f"{path}/{file}", 0o744)
+
+def generate_random_string(length):
+    """Generate random string of numbers and letters.
+
+    Args:
+        length: length of the string generated
+
+    Returns:
+        random_string: random string of numbers and letters"""
+    characters = string.ascii_letters + string.digits
+    random_string = ''.join(random.choice(characters) for _ in range(length))
+    return random_string

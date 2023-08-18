@@ -41,7 +41,7 @@ echo "Initialising superset"
 
 if [[ "${CHARM_FUNCTION}" == "worker" ]]; then
   echo "Starting Celery worker..."
-  celery --app=superset.tasks.celery_app:app worker -O fair -l INFO
+  celery --app=superset.tasks.celery_app:app worker -O fair -l INFO --uid 1
 elif [[ "${CHARM_FUNCTION}" == "beat" ]]; then
   echo "Starting Celery beat..."
   celery --app=superset.tasks.celery_app:app beat --pidfile /tmp/celerybeat.pid -l INFO -s "${SUPERSET_HOME}"/celerybeat-schedule
