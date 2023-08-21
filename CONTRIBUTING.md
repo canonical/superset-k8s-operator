@@ -76,8 +76,14 @@ juju model-config update-status-hook-interval=1m
 # Pack the charm:
 charmcraft pack
 
-# Deploy the charm:
-juju deploy ./superset-k8s_ubuntu-22.04-amd64.charm --resource superset-image=apache/superset:2.1.0
+# deploy the web server
+juju deploy ./superset-k8s_ubuntu-22.04-amd64.charm --resource superset-image=apache/superset:2.1.0 superset-k8s-ui
+
+# deploy a worker
+juju deploy ./superset-k8s_ubuntu-22.04-amd64.charm --resource superset-image=apache/superset:2.1.0 --config charm-function=worker superset-k8s-worker
+
+# deploy the beat scheduler
+juju deploy ./superset-k8s_ubuntu-22.04-amd64.charm --resource superset-image=apache/superset:2.1.0 --config charm-function=beat superset-k8s-beat
 
 # Check deployment was successful:
 juju status
@@ -120,5 +126,5 @@ This relation makes use of the `data_platform_libs.v0.data_interfaces` library. 
 ## Cleanup
 # Remove the application before retrying
 ```
-juju remove-application superset-k8s --force
+juju remove-application superset-k8s-ui superset-k8s-beat superset-k8s-worker --force
 ```
