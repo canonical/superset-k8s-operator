@@ -26,12 +26,12 @@ from ops.model import (
 )
 from ops.pebble import CheckStatus
 
-from literals import APP_NAME, APPLICATION_PORT, INIT_USERS
+from literals import APP_NAME, APPLICATION_PORT
 from log import log_event_handler
 from relations.postgresql import Database
 from relations.redis import Redis
 from state import State
-from utils import generate_password, load_superset_files, generate_random_string
+from utils import generate_random_string, load_superset_files
 
 # Log messages can be retrieved using juju debug-log
 logger = logging.getLogger(__name__)
@@ -212,9 +212,9 @@ class SupersetK8SCharm(CharmBase):
         Returns:
             env: dictionary of environment variables
         """
-        superset_secret = (
-            self.config.get("superset-secret-key") or generate_password()
-        )
+        superset_secret = self.config.get(
+            "superset-secret-key"
+        ) or generate_random_string(32)
         charm_function = self.config["charm-function"]
         random_id = generate_random_string(5)
         env = {
@@ -224,7 +224,7 @@ class SupersetK8SCharm(CharmBase):
             "SQL_ALCHEMY_URI": self._state.sql_alchemy_uri,
             "REDIS_HOST": self._state.redis_host,
             "REDIS_PORT": self._state.redis_port,
-            "ADMIN_USER": f"{charm_function}-{random_id}"
+            "ADMIN_USER": f"{charm_function}-{random_id}",
         }
         return env
 

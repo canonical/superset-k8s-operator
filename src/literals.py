@@ -15,9 +15,3 @@ INIT_FILES = [
     "requirements-local.txt",
     "superset_config.py",
 ]
-INIT_USERS = {
-    "app-gunicorn": "admin",
-    "app": "admin",
-    "worker": "worker",
-    "beat": "beat",
-}

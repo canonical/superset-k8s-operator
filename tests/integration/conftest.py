@@ -8,11 +8,12 @@ import logging
 import pytest
 import pytest_asyncio
 from helpers import (
-    APP_NAME,
+    CHARM_FUNCTIONS,
     METADATA,
     NGINX_NAME,
     POSTGRES_NAME,
     REDIS_NAME,
+    UI_NAME,
     perform_superset_integrations,
 )
 from pytest_operator.plugin import OpsTest
@@ -34,20 +35,6 @@ async def deploy(ops_test: OpsTest):
     await ops_test.model.deploy(REDIS_NAME, channel="edge", trust=True)
     await ops_test.model.deploy(NGINX_NAME, trust=True)
 
-    await ops_test.model.deploy(
-        charm,
-        resources=resources,
-        application_name=APP_NAME,
-        num_units=1,
-    )
-
-    await ops_test.model.wait_for_idle(
-        apps=[APP_NAME],
-        status="blocked",
-        raise_on_blocked=False,
-        timeout=600,
-    )
-
     async with ops_test.fast_forward():
         await ops_test.model.wait_for_idle(
             apps=[NGINX_NAME, POSTGRES_NAME, REDIS_NAME],
@@ -56,15 +43,39 @@ async def deploy(ops_test: OpsTest):
             timeout=600,
         )
 
-        await perform_superset_integrations(ops_test)
+    for function, alias in CHARM_FUNCTIONS.items():
+        app_name = f"superset-k8s-{alias}"
+        await ops_test.model.deploy(
+            charm,
+            resources=resources,
+            application_name=app_name,
+            config={"charm-function": function},
+            num_units=1,
+        )
 
         await ops_test.model.wait_for_idle(
-            apps=[NGINX_NAME, APP_NAME],
-            status="active",
+            apps=[app_name],
+            status="blocked",
             raise_on_blocked=False,
-            timeout=300,
+            timeout=600,
         )
+
+        await perform_superset_integrations(ops_test, app_name)
+
         assert (
-            ops_test.model.applications[APP_NAME].units[0].workload_status
+            ops_test.model.applications[app_name].units[0].workload_status
             == "active"
         )
+
+    await ops_test.model.integrate(UI_NAME, NGINX_NAME)
+    await ops_test.model.wait_for_idle(
+        apps=[NGINX_NAME, UI_NAME],
+        status="active",
+        raise_on_blocked=False,
+        timeout=300,
+    )
+
+    assert (
+        ops_test.model.applications[UI_NAME].units[0].workload_status
+        == "active"
+    )

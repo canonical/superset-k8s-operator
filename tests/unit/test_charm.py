@@ -87,6 +87,7 @@ class TestCharm(TestCase):
                     "startup": "enabled",
                     "environment": {
                         "SUPERSET_SECRET_KEY": "example-pass",
+                        "ADMIN_USER": "unique-user",
                         "ADMIN_PASSWORD": "admin",
                         "CHARM_FUNCTION": "app-gunicorn",
                         "SQL_ALCHEMY_URI": "postgresql://postgres_user:admin@myhost:5432/superset",
@@ -101,6 +102,9 @@ class TestCharm(TestCase):
         got_plan["services"]["superset"]["environment"][
             "SUPERSET_SECRET_KEY"
         ] = "example-pass"  # nosec
+        got_plan["services"]["superset"]["environment"][
+            "ADMIN_USER"
+        ] = "unique-user"
         self.assertEqual(got_plan, want_plan)
 
         # The service was started.
@@ -155,6 +159,7 @@ class TestCharm(TestCase):
                     "environment": {
                         "SUPERSET_SECRET_KEY": "example-pass",
                         "ADMIN_PASSWORD": "secure-pass",
+                        "ADMIN_USER": "unique-user",
                         "CHARM_FUNCTION": "app-gunicorn",
                         "SQL_ALCHEMY_URI": "postgresql://postgres_user:admin@myhost:5432/superset",
                         "REDIS_HOST": "redis-host",
@@ -168,6 +173,9 @@ class TestCharm(TestCase):
         got_plan["services"]["superset"]["environment"][
             "SUPERSET_SECRET_KEY"
         ] = "example-pass"  # nosec
+        got_plan["services"]["superset"]["environment"][
+            "ADMIN_USER"
+        ] = "unique-user"
         self.assertEqual(got_plan, want_plan)
 
         # The MaintenanceStatus is set with replan message.
@@ -226,6 +234,48 @@ class TestCharm(TestCase):
 
         self.assertEqual(
             harness.model.unit.status, MaintenanceStatus("Status check: DOWN")
+        )
+
+    def test_beat_deployment(self):
+        """The pebble plan reflects the beat function."""
+        harness = self.harness
+        self.harness.update_config({"charm-function": "beat"})
+
+        simulate_lifecycle(harness)
+
+        # The plan reflects the function.
+        want_function = "beat"
+        got_function = harness.get_container_pebble_plan("superset").to_dict()
+        got_function = got_function["services"]["superset"]["environment"][
+            "CHARM_FUNCTION"
+        ]
+        self.assertEqual(got_function, want_function)
+
+        # The MaintenanceStatus is set with replan message.
+        self.assertEqual(
+            harness.model.unit.status,
+            MaintenanceStatus("replanning application"),
+        )
+
+    def test_worker_deployment(self):
+        """The pebble plan reflects the worker function."""
+        harness = self.harness
+        self.harness.update_config({"charm-function": "worker"})
+
+        simulate_lifecycle(harness)
+
+        # The plan reflects the function.
+        want_function = "worker"
+        got_function = harness.get_container_pebble_plan("superset").to_dict()
+        got_function = got_function["services"]["superset"]["environment"][
+            "CHARM_FUNCTION"
+        ]
+        self.assertEqual(got_function, want_function)
+
+        # The MaintenanceStatus is set with replan message.
+        self.assertEqual(
+            harness.model.unit.status,
+            MaintenanceStatus("replanning application"),
         )
 
 

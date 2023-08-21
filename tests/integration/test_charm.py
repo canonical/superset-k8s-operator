@@ -9,7 +9,7 @@ import logging
 import pytest
 import requests
 from conftest import deploy  # noqa: F401, pylint: disable=W0611
-from helpers import APP_NAME, get_unit_url, restart_application
+from helpers import UI_NAME, get_unit_url, restart_application
 from pytest_operator.plugin import OpsTest
 
 logger = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ class TestDeployment:
     async def test_ui(self, ops_test: OpsTest):
         """Perform GET request on the Superset UI host."""
         url = await get_unit_url(
-            ops_test, application=APP_NAME, unit=0, port=8088
+            ops_test, application=UI_NAME, unit=0, port=8088
         )
         logger.info("curling app address: %s", url)
 
@@ -34,6 +34,6 @@ class TestDeployment:
         """Removes an existing connector confirms database removed."""
         await restart_application(ops_test)
         assert (
-            ops_test.model.applications[APP_NAME].units[0].workload_status
+            ops_test.model.applications[UI_NAME].units[0].workload_status
             == "maintenance"
         )
