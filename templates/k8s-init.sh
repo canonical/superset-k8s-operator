@@ -43,13 +43,13 @@ superset db upgrade
 echo_step "1" "Complete" "Applying DB migrations"
 
 # Create an admin user
-echo_step "2" "Starting" "Setting up admin user ( admin / $ADMIN_PASSWORD )"
+echo_step "2" "Starting" "Setting up admin user ( $ADMIN_USER / $ADMIN_PASSWORD )"
 superset fab create-admin \
-              --username admin \
+              --username "$ADMIN_USER" \
               --firstname Superset \
               --lastname Admin \
               --email admin@superset.com \
-              --password $ADMIN_PASSWORD
+              --password "$ADMIN_PASSWORD"
 echo_step "2" "Complete" "Setting up admin user"
 # Create default roles and permissions
 echo_step "3" "Starting" "Setting up roles and perms"

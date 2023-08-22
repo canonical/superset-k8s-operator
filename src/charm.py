@@ -26,12 +26,17 @@ from ops.model import (
 )
 from ops.pebble import CheckStatus
 
-from literals import APP_NAME, APPLICATION_PORT
+from literals import (
+    APP_NAME,
+    APPLICATION_PORT,
+    UI_FUNCTIONS,
+    VALID_CHARM_FUNCTIONS,
+)
 from log import log_event_handler
 from relations.postgresql import Database
 from relations.redis import Redis
 from state import State
-from utils import generate_password, load_superset_files
+from utils import generate_random_string, load_superset_files
 
 # Log messages can be retrieved using juju debug-log
 logger = logging.getLogger(__name__)
@@ -138,10 +143,9 @@ class SupersetK8SCharm(CharmBase):
             return
 
         container = self.unit.get_container(self.name)
-        ui_functions = ["app", "app-gunicorn"]
-        check = container.get_check("up")
 
-        if self.config["charm-function"] in ui_functions:
+        if self.config["charm-function"] in UI_FUNCTIONS:
+            check = container.get_check("up")
             if check.status != CheckStatus.UP:
                 self.unit.status = MaintenanceStatus("Status check: DOWN")
                 return
@@ -199,9 +203,8 @@ class SupersetK8SCharm(CharmBase):
         Raises:
             ValueError: in case when invalid charm-funcion is entered
         """
-        valid_charm_functions = ["app-gunicorn", "app", "worker", "beat"]
         charm_function = self.model.config["charm-function"]
-        if charm_function not in valid_charm_functions:
+        if charm_function not in VALID_CHARM_FUNCTIONS:
             raise ValueError(
                 f"config: invalid charm function {charm_function!r}"
             )
@@ -212,17 +215,19 @@ class SupersetK8SCharm(CharmBase):
         Returns:
             env: dictionary of environment variables
         """
-        self._state.superset_secret = (
-            self.config.get("superset-secret-key") or generate_password()
-        )
-        self._state.admin_password = self.config["admin-password"]
+        superset_secret = self.config.get(
+            "superset-secret-key"
+        ) or generate_random_string(32)
+        charm_function = self.config["charm-function"]
+        random_id = generate_random_string(5)
         env = {
-            "SUPERSET_SECRET_KEY": self._state.superset_secret,
-            "ADMIN_PASSWORD": self._state.admin_password,
-            "CHARM_FUNCTION": self.config["charm-function"],
+            "SUPERSET_SECRET_KEY": superset_secret,
+            "ADMIN_PASSWORD": self.config["admin-password"],
+            "CHARM_FUNCTION": charm_function,
             "SQL_ALCHEMY_URI": self._state.sql_alchemy_uri,
             "REDIS_HOST": self._state.redis_host,
             "REDIS_PORT": self._state.redis_port,
+            "ADMIN_USER": f"{charm_function}-{random_id}",
         }
         return env
 
@@ -264,14 +269,19 @@ class SupersetK8SCharm(CharmBase):
                     "on-check-failure": {"up": "ignore"},
                 }
             },
-            "checks": {
-                "up": {
-                    "override": "replace",
-                    "period": "10s",
-                    "http": {"url": "http://localhost:8088/"},
-                }
-            },
         }
+        if self.config["charm-function"] in UI_FUNCTIONS:
+            pebble_layer.update(
+                {
+                    "checks": {
+                        "up": {
+                            "override": "replace",
+                            "period": "10s",
+                            "http": {"url": "http://localhost:8088/"},
+                        }
+                    }
+                },
+            )
         container.add_layer(self.name, pebble_layer, combine=True)
         container.replan()
         self.unit.status = MaintenanceStatus("replanning application")

@@ -30,16 +30,19 @@ def charm_path(file_path):
     return path
 
 
-def generate_password() -> str:
-    """Create randomized string for use as app passwords.
+def generate_random_string(length) -> str:
+    """Create randomized string for use as app passwords and username ID.
+
+    Args:
+        length: number of characters to generate
 
     Returns:
-        String of 32 randomized letter+digit characters
+        String of randomized letter+digit characters
     """
     return "".join(
         [
             secrets.choice(string.ascii_letters + string.digits)
-            for _ in range(32)
+            for _ in range(length)
         ]
     )
 

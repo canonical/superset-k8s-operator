@@ -1,6 +1,25 @@
 # superset-k8s-charm
 Superset is fast, lightweight, intuitive, and loaded with options that make it easy for users of all skill sets to explore and visualize their data.
 
+## Superset UI, worker and beat deployment
+The same Superset charm can act as either a web server, worker or beat-scheduler. This is determined by the configuration parameter `charm-function`, which can be any of `app-gunicorn` (web), `app` (web development), `worker` or `beat`. Each Superset application must be related to the same PostgreSQL and Redis clusters for communication. The default value of `charm-function` is `app-gunicorn`.
+
+```
+# pack the charm
+charmcraft pack
+
+# deploy the web server
+juju deploy ./superset-k8s_ubuntu-22.04-amd64.charm --resource superset-image=apache/superset:2.1.0 superset-k8s-ui
+
+# deploy a worker
+juju deploy ./superset-k8s_ubuntu-22.04-amd64.charm --resource superset-image=apache/superset:2.1.0 --config charm-function=worker superset-k8s-worker
+
+# deploy the beat scheduler
+juju deploy ./superset-k8s_ubuntu-22.04-amd64.charm --resource superset-image=apache/superset:2.1.0 --config charm-function=beat superset-k8s-beat
+```
+Note: while there can be multiple workers or web servers, there should only ever be 1 Superset beat deployment.
+
+
 ## Relations
 ### Redis
 Redis acts as both a cache and message broker for Superset services. It's a requirement to have a redis relation in order to start the Superset application.

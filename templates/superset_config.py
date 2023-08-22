@@ -1,5 +1,6 @@
 import os
 from cachelib.redis import RedisCache
+from celery.schedules import crontab
 
 # Redis caching
 CACHE_CONFIG = {
@@ -31,7 +32,83 @@ RESULTS_BACKEND = RedisCache(
     port=os.getenv("REDIS_PORT"),
     key_prefix="superset_results",
 )
+TALISMAN_ENABLED = True
+TALISMAN_CONFIG = {
+    "content_security_policy": {
+        "default-src": ["'self'"],
+        "img-src": ["'self'", "data:"],
+        "worker-src": ["'self'", "blob:"],
+        "connect-src": [
+            "'self'",
+            "https://api.mapbox.com",
+            "https://events.mapbox.com",
+        ],
+        "object-src": "'none'",
+        "style-src": ["'self'", "'unsafe-inline'"],
+        "script-src": ["'self'", "'unsafe-inline'"],
+    },
+    "force_https": False,
+}
 
+SQLALCHEMY_POOL_SIZE = 5  # Maximum number of connections in the pool
+SQLALCHEMY_POOL_TIMEOUT = 300  # Maximum time (in seconds) to wait for a connection
+SQLALCHEMY_MAX_OVERFLOW = 10
+
+class CeleryConfig(object):
+    broker_url = f"redis://{os.getenv('REDIS_HOST')}:{os.getenv('REDIS_PORT')}/4"
+    imports = (
+        "superset.sql_lab",
+        "superset.tasks",
+    )
+    result_backend = f"redis://{os.getenv('REDIS_HOST')}:{os.getenv('REDIS_PORT')}/5"
+    worker_log_level = "DEBUG"
+    worker_prefetch_multiplier = 10
+    task_acks_late = True
+    task_annotations = {
+        "sql_lab.get_sql_results": {
+            "rate_limit": "100/s",
+        },
+        "email_reports.send": {
+            "rate_limit": "1/s",
+            "time_limit": 120,
+            "soft_time_limit": 150,
+            "ignore_result": True,
+        },
+    }
+    beat_schedule = {
+        'reports.scheduler': {
+            'task': 'reports.scheduler',
+            'schedule': crontab(minute='*', hour='*'),
+        },
+        'reports.prune_log': {
+            'task': 'reports.prune_log',
+            'schedule': crontab(minute=0, hour=0),
+        },
+        "cache-warmup-daily": {
+            "task": "cache-warmup",
+            "schedule": crontab(minute="1", hour="9"),  # UTC @daily
+            "kwargs": {
+                "strategy_name": "top_n_dashboards",
+                "top_n": 10,
+                "since": "7 days ago",
+            },
+        }
+    }
+
+
+CELERY_CONFIG = CeleryConfig
+
+FEATURE_FLAGS = {
+    'ALERTS_ATTACH_REPORTS': True,
+    'DASHBOARD_CROSS_FILTERS': True,
+    'DASHBOARD_RBAC': True,
+    'EMBEDDABLE_CHARTS': True,
+    'SCHEDULED_QUERIES': True,
+    'ESTIMATE_QUERY_COST': True,
+    'ENABLE_TEMPLATE_PROCESSING': True,
+    'ALERT_REPORTS': True,
+
+}
 
 SECRET_KEY = os.getenv("SUPERSET_SECRET_KEY")
 

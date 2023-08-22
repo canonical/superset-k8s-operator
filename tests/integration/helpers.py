@@ -13,31 +13,31 @@ from pytest_operator.plugin import OpsTest
 logger = logging.getLogger(__name__)
 
 METADATA = yaml.safe_load(Path("./metadata.yaml").read_text())
-APP_NAME = METADATA["name"]
 NGINX_NAME = "nginx-ingress-integrator"
 POSTGRES_NAME = "postgresql-k8s"
 REDIS_NAME = "redis-k8s"
+UI_NAME = "superset-k8s-ui"
+CHARM_FUNCTIONS = {"app-gunicorn": "ui", "beat": "beat", "worker": "worker"}
 
 
-async def perform_superset_integrations(ops_test: OpsTest):
+async def perform_superset_integrations(ops_test: OpsTest, app_name):
     """Integrate Superset charm with Nginx charm.
 
     Args:
-        ops_test: PyTest object.
+        ops_test: PyTest object
+        app_name: The name of the Superset application (ui, worker or beat)
     """
-    await ops_test.model.integrate(APP_NAME, POSTGRES_NAME)
+    await ops_test.model.integrate(app_name, POSTGRES_NAME)
 
     await ops_test.model.wait_for_idle(
-        apps=[APP_NAME], status="blocked", raise_on_blocked=False, timeout=180
+        apps=[app_name], status="blocked", raise_on_blocked=False, timeout=180
     )
 
-    await ops_test.model.integrate(APP_NAME, REDIS_NAME)
+    await ops_test.model.integrate(app_name, REDIS_NAME)
 
     await ops_test.model.wait_for_idle(
-        apps=[APP_NAME], status="active", raise_on_blocked=False, timeout=180
+        apps=[app_name], status="active", raise_on_blocked=False, timeout=300
     )
-
-    await ops_test.model.integrate(APP_NAME, NGINX_NAME)
 
 
 async def get_unit_url(
@@ -69,7 +69,7 @@ async def restart_application(ops_test: OpsTest):
         ops_test: PyTest object.
     """
     action = (
-        await ops_test.model.applications[APP_NAME]
+        await ops_test.model.applications[UI_NAME]
         .units[0]
         .run_action("restart")
     )
