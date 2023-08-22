@@ -26,7 +26,12 @@ from ops.model import (
 )
 from ops.pebble import CheckStatus
 
-from literals import APP_NAME, APPLICATION_PORT
+from literals import (
+    APP_NAME,
+    APPLICATION_PORT,
+    UI_FUNCTIONS,
+    VALID_CHARM_FUNCTIONS,
+)
 from log import log_event_handler
 from relations.postgresql import Database
 from relations.redis import Redis
@@ -138,9 +143,8 @@ class SupersetK8SCharm(CharmBase):
             return
 
         container = self.unit.get_container(self.name)
-        ui_functions = ["app", "app-gunicorn"]
 
-        if self.config["charm-function"] in ui_functions:
+        if self.config["charm-function"] in UI_FUNCTIONS:
             check = container.get_check("up")
             if check.status != CheckStatus.UP:
                 self.unit.status = MaintenanceStatus("Status check: DOWN")
@@ -199,9 +203,8 @@ class SupersetK8SCharm(CharmBase):
         Raises:
             ValueError: in case when invalid charm-funcion is entered
         """
-        valid_charm_functions = ["app-gunicorn", "app", "worker", "beat"]
         charm_function = self.model.config["charm-function"]
-        if charm_function not in valid_charm_functions:
+        if charm_function not in VALID_CHARM_FUNCTIONS:
             raise ValueError(
                 f"config: invalid charm function {charm_function!r}"
             )
@@ -267,7 +270,7 @@ class SupersetK8SCharm(CharmBase):
                 }
             },
         }
-        if self.config["charm-function"] in ["app", "app-gunicorn"]:
+        if self.config["charm-function"] in UI_FUNCTIONS:
             pebble_layer.update(
                 {
                     "checks": {

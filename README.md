@@ -17,7 +17,7 @@ juju deploy ./superset-k8s_ubuntu-22.04-amd64.charm --resource superset-image=ap
 # deploy the beat scheduler
 juju deploy ./superset-k8s_ubuntu-22.04-amd64.charm --resource superset-image=apache/superset:2.1.0 --config charm-function=beat superset-k8s-beat
 ```
-Note: while there can be multiple workers or web servers, there should only every be 1 Superset beat deployment.
+Note: while there can be multiple workers or web servers, there should only ever be 1 Superset beat deployment.
 
 
 ## Relations

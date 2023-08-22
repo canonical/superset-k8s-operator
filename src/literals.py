@@ -15,3 +15,5 @@ INIT_FILES = [
     "requirements-local.txt",
     "superset_config.py",
 ]
+UI_FUNCTIONS = ["app", "app-gunicorn"]
+VALID_CHARM_FUNCTIONS = ["app-gunicorn", "app", "worker", "beat"]
