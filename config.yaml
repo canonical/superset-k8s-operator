@@ -35,7 +35,7 @@ options:
         Allowed options are: 'app-gunicorn', 'app', 'worker', 'beat'
     default: app-gunicorn
     type: string
-  alert-attach-reports:
+  alerts-attach-reports:
     description: |
         Determines whether to attach reports to alerts.
     default: True
