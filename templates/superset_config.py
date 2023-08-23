@@ -99,7 +99,7 @@ class CeleryConfig(object):
 CELERY_CONFIG = CeleryConfig
 
 FEATURE_FLAGS = {
-    flag_name: bool(os.getenv(flag_name, '').lower())
+    flag_name: os.getenv(flag_name, '').lower() != 'false'
     for flag_name in [
         'ALERTS_ATTACH_REPORTS',
         'DASHBOARD_CROSS_FILTERS',
