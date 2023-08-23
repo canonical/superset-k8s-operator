@@ -228,6 +228,18 @@ class SupersetK8SCharm(CharmBase):
             "REDIS_HOST": self._state.redis_host,
             "REDIS_PORT": self._state.redis_port,
             "ADMIN_USER": f"{charm_function}-{random_id}",
+            'ALERTS_ATTACH_REPORTS': self.config["alerts-attach-reports"],
+            'DASHBOARD_CROSS_FILTERS': self.config["dashboard-cross-filters"],
+            'DASHBOARD_RBAC': self.config["dashboard-rbac"],
+            'EMBEDDABLE_CHARTS': self.config["embeddable-charts"],
+            'SCHEDULED_QUERIES': self.config["scheduled-queries"],
+            'ESTIMATE_QUERY_COST': self.config["estimate-query-cost"],
+            'ENABLE_TEMPLATE_PROCESSING': self.config["enable-template-processing"],
+            'ALERT_REPORTS': self.config["alert-reports"],
+            'SQLALCHEMY_POOL_SIZE': self.config["sqlalchemy-pool-size"],
+            'SQLALCHEMY_POOL_TIMEOUT': self.config["sqlalchemy-pool-timeout"],
+            'SQLALCHEMY_MAX_OVERFLOW': self.config["sqlalchemy-max-overflow"],
+
         }
         return env
 
