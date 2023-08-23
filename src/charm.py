@@ -24,7 +24,9 @@ from ops.model import (
     MaintenanceStatus,
     WaitingStatus,
 )
+from charms.data_platform_libs.v0.data_models import TypedCharmBase
 from ops.pebble import CheckStatus
+from structured_config import CharmConfig
 
 from literals import (
     APP_NAME,
@@ -42,7 +44,7 @@ from utils import generate_random_string, load_superset_files
 logger = logging.getLogger(__name__)
 
 
-class SupersetK8SCharm(CharmBase):
+class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
     """Charm the service.
 
     Attrs:
@@ -51,6 +53,8 @@ class SupersetK8SCharm(CharmBase):
         on: redis relation events from redis_k8s library
         _stored: charm stored state
     """
+
+    config_type = CharmConfig
 
     on = RedisRelationCharmEvents()
     _stored = StoredState()
@@ -215,9 +219,11 @@ class SupersetK8SCharm(CharmBase):
         Returns:
             env: dictionary of environment variables
         """
-        superset_secret = self.config.get(
-            "superset-secret-key"
-        ) or generate_random_string(32)
+        if "superset-secret-key" in self.config:
+            superset_secret = self.config["superset-secret-key"]
+        else:
+            superset_secret = generate_random_string(32)
+
         charm_function = self.config["charm-function"]
         random_id = generate_random_string(5)
         env = {
