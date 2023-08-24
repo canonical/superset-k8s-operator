@@ -50,9 +50,9 @@ TALISMAN_CONFIG = {
     "force_https": False,
 }
 
-SQLALCHEMY_POOL_SIZE = 5  # Maximum number of connections in the pool
-SQLALCHEMY_POOL_TIMEOUT = 300  # Maximum time (in seconds) to wait for a connection
-SQLALCHEMY_MAX_OVERFLOW = 10
+SQLALCHEMY_POOL_SIZE = int(os.getenv('SQLALCHEMY_POOL_SIZE'))
+SQLALCHEMY_POOL_TIMEOUT = int(os.getenv('SQLALCHEMY_POOL_TIMEOUT'))
+SQLALCHEMY_MAX_OVERFLOW = int(os.getenv('SQLALCHEMY_MAX_OVERFLOW'))
 
 class CeleryConfig(object):
     broker_url = f"redis://{os.getenv('REDIS_HOST')}:{os.getenv('REDIS_PORT')}/4"
@@ -99,15 +99,17 @@ class CeleryConfig(object):
 CELERY_CONFIG = CeleryConfig
 
 FEATURE_FLAGS = {
-    'ALERTS_ATTACH_REPORTS': True,
-    'DASHBOARD_CROSS_FILTERS': True,
-    'DASHBOARD_RBAC': True,
-    'EMBEDDABLE_CHARTS': True,
-    'SCHEDULED_QUERIES': True,
-    'ESTIMATE_QUERY_COST': True,
-    'ENABLE_TEMPLATE_PROCESSING': True,
-    'ALERT_REPORTS': True,
-
+    flag_name: os.getenv(flag_name, '').lower() != 'false'
+    for flag_name in [
+        'ALERTS_ATTACH_REPORTS',
+        'DASHBOARD_CROSS_FILTERS',
+        'DASHBOARD_RBAC',
+        'EMBEDDABLE_CHARTS',
+        'SCHEDULED_QUERIES',
+        'ESTIMATE_QUERY_COST',
+        'ENABLE_TEMPLATE_PROCESSING',
+        'ALERT_REPORTS'
+    ]
 }
 
 SECRET_KEY = os.getenv("SUPERSET_SECRET_KEY")

@@ -93,7 +93,7 @@ juju status
 Redis acts as both a cache and message broker for Superset services. It's a requirement to have a redis relation in order to start the Superset application.
 ```
 # deploy redis charm
-juju deploy redis-k8s --edge
+juju deploy redis-k8s --channel edge
 
 # relate redis charm
 juju relate redis-k8s superset-k8s
