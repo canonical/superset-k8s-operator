@@ -13,9 +13,10 @@ https://discourse.charmhub.io/t/4208
 import logging
 
 from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
+from charms.data_platform_libs.v0.data_models import TypedCharmBase
 from charms.nginx_ingress_integrator.v0.nginx_route import require_nginx_route
 from charms.redis_k8s.v0.redis import RedisRelationCharmEvents, RedisRequires
-from ops.charm import CharmBase, ConfigChangedEvent, PebbleReadyEvent
+from ops.charm import ConfigChangedEvent, PebbleReadyEvent
 from ops.framework import StoredState
 from ops.main import main
 from ops.model import (
@@ -24,20 +25,14 @@ from ops.model import (
     MaintenanceStatus,
     WaitingStatus,
 )
-from charms.data_platform_libs.v0.data_models import TypedCharmBase
 from ops.pebble import CheckStatus
-from structured_config import CharmConfig
 
-from literals import (
-    APP_NAME,
-    APPLICATION_PORT,
-    UI_FUNCTIONS,
-    VALID_CHARM_FUNCTIONS,
-)
+from literals import APP_NAME, APPLICATION_PORT, UI_FUNCTIONS
 from log import log_event_handler
 from relations.postgresql import Database
 from relations.redis import Redis
 from state import State
+from structured_config import CharmConfig
 from utils import generate_random_string, load_superset_files
 
 # Log messages can be retrieved using juju debug-log
@@ -52,6 +47,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         external_hostname: DNS listing used for external connections.
         on: redis relation events from redis_k8s library
         _stored: charm stored state
+        config_type: the charm structured config
     """
 
     config_type = CharmConfig
@@ -201,18 +197,6 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         event.set_results({"result": f"{APP_NAME} successfully restarted"})
 
-    def _validate_config_params(self):
-        """Validate that configuration is valid.
-
-        Raises:
-            ValueError: in case when invalid charm-funcion is entered
-        """
-        charm_function = self.model.config["charm-function"]
-        if charm_function not in VALID_CHARM_FUNCTIONS:
-            raise ValueError(
-                f"config: invalid charm function {charm_function!r}"
-            )
-
     def _create_env(self):
         """Create state values from config to be used as environment variables.
 
@@ -262,12 +246,6 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             return
 
         if not self.ready_to_start():
-            return
-
-        try:
-            self._validate_config_params()
-        except (RuntimeError, ValueError) as err:
-            self.unit.status = BlockedStatus(str(err))
             return
 
         logger.info(f"configuring {APP_NAME}")

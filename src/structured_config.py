@@ -4,11 +4,11 @@
 
 """Structured configuration for the Kafka charm."""
 import logging
+from enum import Enum
 from typing import Optional
 
 from charms.data_platform_libs.v0.data_models import BaseConfigModel
 from pydantic import validator
-from enum import Enum
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,11 @@ class BaseEnumStr(str, Enum):
     """Base class for string enum."""
 
     def __str__(self) -> str:
-        """Return the value as a string."""
+        """Return the value as a string.
+
+        Returns:
+            string of config value
+        """
         return str(self.value)
 
 
@@ -53,7 +57,14 @@ class CharmConfig(BaseConfigModel):
     @validator("*", pre=True)
     @classmethod
     def blank_string(cls, value):
-        """Check for empty strings."""
+        """Check for empty strings.
+
+        Args:
+            value: configuration value
+
+        Returns:
+            None in place of empty string or value
+        """
         if value == "":
             return None
         return value
@@ -61,8 +72,56 @@ class CharmConfig(BaseConfigModel):
     @validator("sqlalchemy_pool_size")
     @classmethod
     def sqlalchemy_pool_size_validator(cls, value: str) -> Optional[int]:
-        """Check validity of `sqlalchemy_pool_size` field."""
+        """Check validity of `sqlalchemy_pool_size` field.
+
+        Args:
+            value: sqlalchemy-pool-size value
+
+        Returns:
+            int_value: integer for sqlalchemy-pool-size configuration
+
+        Raises:
+            ValueError: in the case when the value is out of range
+        """
         int_value = int(value)
-        if int_value >= 0 and int_value <= 300:
+        if 0 <= int_value <= 300:
+            return int_value
+        raise ValueError("Value out of range.")
+
+    @validator("sqlalchemy_pool_timeout")
+    @classmethod
+    def sqlalchemy_pool_timeout_validator(cls, value: str) -> Optional[int]:
+        """Check validity of `sqlalchemy_pool_timeout` field.
+
+        Args:
+            value: sqlalchemy-pool-timeout value
+
+        Returns:
+            int_value: integer for sqlalchemy-pool-timeout configuration
+
+        Raises:
+            ValueError: in the case when the value is out of range
+        """
+        int_value = int(value)
+        if 0 <= int_value <= 420:
+            return int_value
+        raise ValueError("Value out of range.")
+
+    @validator("sqlalchemy_max_overflow")
+    @classmethod
+    def sqlalchemy_max_overflow_validator(cls, value: str) -> Optional[int]:
+        """Check validity of `sqlalchemy_max_overflow` field.
+
+        Args:
+            value: sqlalchemy-max-overflow value
+
+        Returns:
+            int_value: integer for sqlalchemy-max-overflow configuration
+
+        Raises:
+            ValueError: in the case when the value is out of range
+        """
+        int_value = int(value)
+        if 0 <= int_value <= 100:
             return int_value
         raise ValueError("Value out of range.")
