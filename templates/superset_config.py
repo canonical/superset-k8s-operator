@@ -1,6 +1,7 @@
 import os
 from cachelib.redis import RedisCache
 from celery.schedules import crontab
+from flask_appbuilder.security.manager import AUTH_OAUTH
 
 # Redis caching
 CACHE_CONFIG = {
@@ -120,3 +121,32 @@ ENABLE_TIME_ROTATE = True
 
 # postgresql metadata db
 SQLALCHEMY_DATABASE_URI = os.getenv("SQL_ALCHEMY_URI")
+
+#OAUTH configuration
+required_auth_vars = ["GOOGLE_KEY", "GOOGLE_SECRET", "AUTH_DOMAIN"]
+
+if all(os.getauth(var) for var in required_auth_vars):
+    AUTH_TYPE = AUTH_OAUTH
+    OAUTH_PROVIDERS = [
+            {
+                "name": "google",
+                "icon": "fa-google",
+                "token_key": "access_token",
+                "remote_app": {
+                    "client_id": os.getenv("GOOGLE_KEY"),
+                    "client_secret": os.getenv("GOOGLE_SECRET"),
+                    "api_base_url": "https://www.googleapis.com/oauth2/v2/",
+                    "client_kwargs": {"scope": "email profile"},
+                    "request_token_url": None,
+                    "access_token_url": "https://accounts.google.com/o/oauth2/token",
+                    "authorize_url": "https://accounts.google.com/o/oauth2/auth",
+                    "authorize_params": {"hd": os.getenv("AUTH_DOMAIN", "")}
+                },
+            }
+        ]
+
+    # Will allow user self registration, allowing to create Flask users from Authorized User
+    AUTH_USER_REGISTRATION = True
+
+    # The default user self registration role
+    AUTH_USER_REGISTRATION_ROLE = "Public"

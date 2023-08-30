@@ -100,3 +100,15 @@ options:
         beyond the pool size when the pool is exhausted.
     default: 10
     type: int
+  google-client-id:
+    description: |
+      Client id from Google Oauth setup
+    type: string
+  google-client-secret:
+    description: |
+      Client password from Google Oauth setup
+    type: string
+  auth-domain:
+    description: |
+      The domain for which to allow google authentication ie. canonical.com
+    type: string
