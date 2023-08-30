@@ -2,7 +2,7 @@
 # Copyright 2023 Canonical Ltd.
 # See LICENSE file for licensing details.
 
-"""Structured configuration for the Kafka charm."""
+"""Structured configuration for the Superset charm."""
 import logging
 from enum import Enum
 from typing import Optional
@@ -28,7 +28,7 @@ class BaseEnumStr(str, Enum):
 class FunctionType(BaseEnumStr):
     """Enum for the `charm-function` field."""
 
-    GUNICORN = "app-gunicorn"
+    GUNICORN = "gunicorn"
     APP = "app"
     WORKER = "worker"
     BEAT = "beat"

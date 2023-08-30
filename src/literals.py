@@ -15,4 +15,4 @@ INIT_FILES = [
     "requirements-local.txt",
     "superset_config.py",
 ]
-UI_FUNCTIONS = ["app", "app-gunicorn"]
+UI_FUNCTIONS = ["app", "gunicorn"]
