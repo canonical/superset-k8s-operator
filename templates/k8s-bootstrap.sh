@@ -48,7 +48,7 @@ elif [[ "${CHARM_FUNCTION}" == "beat" ]]; then
 elif [[ "${CHARM_FUNCTION}" == "app" ]]; then
   echo "Starting web app..."
   flask run -p 8088 --with-threads --reload --debugger --host=0.0.0.0
-elif [[ "${CHARM_FUNCTION}" == "app-gunicorn" ]]; then
+elif [[ "${CHARM_FUNCTION}" == "gunicorn" ]]; then
   echo "Starting web app..."
   /usr/bin/run-server.sh
 fi
