@@ -125,7 +125,7 @@ SQLALCHEMY_DATABASE_URI = os.getenv("SQL_ALCHEMY_URI")
 #OAUTH configuration
 required_auth_vars = ["GOOGLE_KEY", "GOOGLE_SECRET", "AUTH_DOMAIN"]
 
-if all(os.getauth(var) for var in required_auth_vars):
+if all(os.getenv(var) for var in required_auth_vars):
     AUTH_TYPE = AUTH_OAUTH
     OAUTH_PROVIDERS = [
             {

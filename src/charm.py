@@ -241,9 +241,9 @@ class SupersetK8SCharm(CharmBase):
             "SQLALCHEMY_POOL_SIZE": self.config["sqlalchemy-pool-size"],
             "SQLALCHEMY_POOL_TIMEOUT": self.config["sqlalchemy-pool-timeout"],
             "SQLALCHEMY_MAX_OVERFLOW": self.config["sqlalchemy-max-overflow"],
-            "GOOGLE_KEY": self.config["google-client-id"],
-            "GOOGLE_SECRET": self.config["google-client-secret"],
-            "AUTH_DOMAIN": self.config["auth-domain"],
+            "GOOGLE_KEY": self.config.get("google-client-id"),
+            "GOOGLE_SECRET": self.config.get("google-client-secret"),
+            "AUTH_DOMAIN": self.config.get("auth-domain"),
         }
         return env
 
