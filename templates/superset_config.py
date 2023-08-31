@@ -122,11 +122,12 @@ if all(os.getenv(var) for var in required_auth_vars):
                     "client_id": os.getenv("GOOGLE_KEY"),
                     "client_secret": os.getenv("GOOGLE_SECRET"),
                     "api_base_url": "https://www.googleapis.com/oauth2/v2/",
-                    "client_kwargs": {"scope": "email profile"},
+                    "client_kwargs": {"scope": "email profile openid"},
                     "request_token_url": None,
                     "access_token_url": "https://accounts.google.com/o/oauth2/token",
                     "authorize_url": "https://accounts.google.com/o/oauth2/auth",
-                    "authorize_params": {"hd": os.getenv("OAUTH_DOMAIN", "")}
+                    "authorize_params": {"hd": os.getenv("OAUTH_DOMAIN", "")},
+                    "jwks_uri": "https://www.googleapis.com/oauth2/v3/certs",
                 },
             }
         ]
