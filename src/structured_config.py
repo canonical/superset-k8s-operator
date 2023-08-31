@@ -25,7 +25,7 @@ class BaseEnumStr(str, Enum):
         return str(self.value)
 
 
-class FunctionType(BaseEnumStr):
+class FunctionType(str, Enum):
     """Enum for the `charm-function` field."""
 
     GUNICORN = "gunicorn"
