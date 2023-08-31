@@ -101,7 +101,7 @@ class SupersetK8SCharm(CharmBase):
             service_name=self.app.name,
             service_port=APPLICATION_PORT,
             tls_secret_name=self.config["tls-secret-name"],
-            backend_protocol="HTTPS",
+            backend_protocol="HTTP",
         )
 
     @log_event_handler(logger)
@@ -219,7 +219,7 @@ class SupersetK8SCharm(CharmBase):
             "superset-secret-key"
         ) or generate_random_string(32)
         charm_function = self.config["charm-function"]
-        random_id = generate_random_string(5)
+        admin_email = self.config["oauth-admin-email"]
         env = {
             "SUPERSET_SECRET_KEY": superset_secret,
             "ADMIN_PASSWORD": self.config["admin-password"],
@@ -227,7 +227,6 @@ class SupersetK8SCharm(CharmBase):
             "SQL_ALCHEMY_URI": self._state.sql_alchemy_uri,
             "REDIS_HOST": self._state.redis_host,
             "REDIS_PORT": self._state.redis_port,
-            "ADMIN_USER": f"{charm_function}-{random_id}",
             "ALERTS_ATTACH_REPORTS": self.config["alerts-attach-reports"],
             "DASHBOARD_CROSS_FILTERS": self.config["dashboard-cross-filters"],
             "DASHBOARD_RBAC": self.config["dashboard-rbac"],
@@ -243,7 +242,8 @@ class SupersetK8SCharm(CharmBase):
             "SQLALCHEMY_MAX_OVERFLOW": self.config["sqlalchemy-max-overflow"],
             "GOOGLE_KEY": self.config.get("google-client-id"),
             "GOOGLE_SECRET": self.config.get("google-client-secret"),
-            "AUTH_DOMAIN": self.config.get("auth-domain"),
+            "OAUTH_DOMAIN": self.config.get("oauth-domain"),
+            "OAUTH_ADMIN_EMAIL": admin_email,
         }
         return env
 

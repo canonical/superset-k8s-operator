@@ -33,23 +33,9 @@ RESULTS_BACKEND = RedisCache(
     port=os.getenv("REDIS_PORT"),
     key_prefix="superset_results",
 )
-TALISMAN_ENABLED = True
-TALISMAN_CONFIG = {
-    "content_security_policy": {
-        "default-src": ["'self'"],
-        "img-src": ["'self'", "data:"],
-        "worker-src": ["'self'", "blob:"],
-        "connect-src": [
-            "'self'",
-            "https://api.mapbox.com",
-            "https://events.mapbox.com",
-        ],
-        "object-src": "'none'",
-        "style-src": ["'self'", "'unsafe-inline'"],
-        "script-src": ["'self'", "'unsafe-inline'"],
-    },
-    "force_https": False,
-}
+
+TALISMAN_ENABLED = False
+CONTENT_SECURITY_POLICY_WARNING = False
 
 SQLALCHEMY_POOL_SIZE = int(os.getenv('SQLALCHEMY_POOL_SIZE'))
 SQLALCHEMY_POOL_TIMEOUT = int(os.getenv('SQLALCHEMY_POOL_TIMEOUT'))
@@ -123,7 +109,7 @@ ENABLE_TIME_ROTATE = True
 SQLALCHEMY_DATABASE_URI = os.getenv("SQL_ALCHEMY_URI")
 
 #OAUTH configuration
-required_auth_vars = ["GOOGLE_KEY", "GOOGLE_SECRET", "AUTH_DOMAIN"]
+required_auth_vars = ["GOOGLE_KEY", "GOOGLE_SECRET", "OAUTH_DOMAIN"]
 
 if all(os.getenv(var) for var in required_auth_vars):
     AUTH_TYPE = AUTH_OAUTH
@@ -140,7 +126,7 @@ if all(os.getenv(var) for var in required_auth_vars):
                     "request_token_url": None,
                     "access_token_url": "https://accounts.google.com/o/oauth2/token",
                     "authorize_url": "https://accounts.google.com/o/oauth2/auth",
-                    "authorize_params": {"hd": os.getenv("AUTH_DOMAIN", "")}
+                    "authorize_params": {"hd": os.getenv("OAUTH_DOMAIN", "")}
                 },
             }
         ]
@@ -148,5 +134,9 @@ if all(os.getenv(var) for var in required_auth_vars):
     # Will allow user self registration, allowing to create Flask users from Authorized User
     AUTH_USER_REGISTRATION = True
 
-    # The default user self registration role
-    AUTH_USER_REGISTRATION_ROLE = "Public"
+    # The custom logic for user self registration role
+    admin_users = os.getenv("OAUTH_ADMIN_EMAIL")
+    AUTH_USER_REGISTRATION_ROLE_JMESPATH=f"contains(['{admin_users}'], email) && 'Admin' || 'Gamma'"
+
+    # For Google https redirect
+    ENABLE_PROXY_FIX = True

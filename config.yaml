@@ -108,7 +108,15 @@ options:
     description: |
       Client password from Google Oauth setup
     type: string
-  auth-domain:
+  oauth-domain:
     description: |
       The domain for which to allow google authentication ie. canonical.com
     type: string
+  oauth-admin-email:
+    description: |
+      Email(s) to be given an Admin role on initialization.
+      This should either be a single email or multiple comma seperated emails
+      eg. example.email@company.com, example.email2@company.com
+      Required for Oauth.
+    type: string
+    default: admin@superset.com
