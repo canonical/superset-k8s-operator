@@ -9,7 +9,7 @@ import os
 import secrets
 import string
 
-from literals import CONFIG_FILE, CONFIG_PATH, INIT_FILES, INIT_PATH
+from literals import CONFIG_FILES, CONFIG_PATH, INIT_FILES, INIT_PATH
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +71,7 @@ def load_superset_files(container):
         container: the application container
     """
     for file in INIT_FILES:
-        if file == CONFIG_FILE:
+        if file in CONFIG_FILES:
             path = CONFIG_PATH
         else:
             path = INIT_PATH

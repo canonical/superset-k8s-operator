@@ -2,6 +2,7 @@ import os
 from cachelib.redis import RedisCache
 from celery.schedules import crontab
 from flask_appbuilder.security.manager import AUTH_OAUTH
+from custom_sso_security_manager import CustomSsoSecurityManager
 
 # Redis caching
 CACHE_CONFIG = {
@@ -113,6 +114,7 @@ required_auth_vars = ["GOOGLE_KEY", "GOOGLE_SECRET", "OAUTH_DOMAIN"]
 
 if all(os.getenv(var) for var in required_auth_vars):
     AUTH_TYPE = AUTH_OAUTH
+    CUSTOM_SECURITY_MANAGER = CustomSsoSecurityManager
     OAUTH_PROVIDERS = [
             {
                 "name": "google",
@@ -129,7 +131,7 @@ if all(os.getenv(var) for var in required_auth_vars):
                     "authorize_params": {"hd": os.getenv("OAUTH_DOMAIN", "")},
                     "jwks_uri": "https://www.googleapis.com/oauth2/v3/certs",
                 },
-            }
+            },
         ]
 
     # Will allow user self registration, allowing to create Flask users from Authorized User
