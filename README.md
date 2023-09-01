@@ -19,6 +19,45 @@ juju deploy ./superset-k8s_ubuntu-22.04-amd64.charm --resource superset-image=ap
 ```
 Note: while there can be multiple workers or web servers, there should only ever be 1 Superset beat deployment.
 
+## Authentication
+Username/password authentication is enabled by default using the `admin` user and the password set via the Superset configuration value `admin-password`.
+
+To enable Google Oauth, you will need a Google project, you can create one [here](https://console.cloud.google.com/projectcreate).
+
+### Obtain Oauth2 credentials
+If you do not already have Oauth2 credentials set up then follow the steps below:
+1. Navigate to https://console.cloud.google.com/apis/credentials 
+2. Click `+ Create Credentials` 
+3. Select `Oauth client ID`
+4. Select application type (Web application)
+5. Name the application
+6. Add an Authorized redirect URI (`https://<host>:8088/oauth-authorized/google`)
+7. Create and download your client ID and client secret
+
+## Apply oauth configuration to Superset charm
+Create a file `oauth.yaml` using the Oauth2 credentials you obtained from Google, as follows:
+```
+superset-k8s:
+  google-client-id: "Your client id here"
+  google-client-secret: "Your client secret here"
+  oauth-domain: "yourcompanydomain.com"
+  oauth-admin-email: "youruser@yourcompany.com"
+
+```
+If you have given your charm deployment an alias this will replace `superset-k8s` in this file.
+
+Note: please ensure that the email provided by `oauth-admin-email` is one you can authenticate with Google, as this will be your `Admin` account. Additionally ensure that this email domain matches the `oauth-domain` provided.
+
+Apply these credentials to the Superset charm:
+```
+juju config superset-k8s --file=path/to/oauth.yaml
+```
+
+### Self-registration and roles
+By default, with Google Oauth, a Superset user account is automatically created following successful authentication. This user is provided the least privileged role of `Public`, this role can then be elevated in the UI or via API by an `Admin` user. 
+
+To change the role that is applied on self-registration, simply pass the role via the configuration parameter `self-registration-role`. Superset's standard roles and their associated permissions can be found [here](https://github.com/apache/superset/blob/master/RESOURCES/STANDARD_ROLES.md).
+
 
 ## Relations
 ### Redis

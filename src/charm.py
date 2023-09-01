@@ -31,6 +31,7 @@ from literals import (
     APPLICATION_PORT,
     UI_FUNCTIONS,
     VALID_CHARM_FUNCTIONS,
+    VALID_ROLES,
 )
 from log import log_event_handler
 from relations.postgresql import Database
@@ -208,6 +209,11 @@ class SupersetK8SCharm(CharmBase):
             raise ValueError(
                 f"config: invalid charm function {charm_function!r}"
             )
+        default_role = self.config["self-registration-role"]
+        if default_role not in VALID_ROLES:
+            raise ValueError(
+                f"config: invalid self-registration role {default_role!r}"
+            )
 
     def _create_env(self):
         """Create state values from config to be used as environment variables.
@@ -244,6 +250,7 @@ class SupersetK8SCharm(CharmBase):
             "GOOGLE_SECRET": self.config.get("google-client-secret"),
             "OAUTH_DOMAIN": self.config.get("oauth-domain"),
             "OAUTH_ADMIN_EMAIL": admin_email,
+            "SELF_REGISTRATION_ROLE": self.config["self-registration-role"],
         }
         return env
 
