@@ -15,7 +15,7 @@ maintainers:
   - Commercial Systems <jaas-crew@lists.canonical.com>
 
 source: https://github.com/canonical/superset-k8s-operator
-docs: https://github.com/canonical/superset-k8s-operator
+docs: https://discourse.charmhub.io/t/superset-k8s-documentation-overview/11762
 issues: https://github.com/canonical/superset-k8s-operator/issues
 
 containers:
