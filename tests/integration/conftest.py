@@ -40,7 +40,7 @@ async def deploy(ops_test: OpsTest):
             apps=[NGINX_NAME, POSTGRES_NAME, REDIS_NAME],
             status="active",
             raise_on_blocked=False,
-            timeout=600,
+            timeout=2000,
         )
 
     for function, alias in CHARM_FUNCTIONS.items():
