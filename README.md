@@ -41,7 +41,7 @@ superset-k8s:
   google-client-id: "Your client id here"
   google-client-secret: "Your client secret here"
   oauth-domain: "yourcompanydomain.com"
-  oauth-admin-email: "youruser@yourcompany.com"
+  oauth-admin-email: "youruser@yourcompanydomain.com"
 
 ```
 If you have given your charm deployment an alias this will replace `superset-k8s` in this file.

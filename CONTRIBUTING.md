@@ -93,7 +93,7 @@ juju status
 To validate Google Oauth authentication:
 ```
 # Port forward the web server
-kubectl port-forward pod/superset-k8s-0 8088:8088
+kubectl port-forward pod/superset-k8s-0 8088:8088 -n superset-k8s
 
 # Edit /etc/hosts
 sudo vim /etc/hosts
