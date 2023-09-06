@@ -88,6 +88,40 @@ juju deploy ./superset-k8s_ubuntu-22.04-amd64.charm --resource superset-image=ap
 # Check deployment was successful:
 juju status
 ```
+
+### Authentication
+To validate Google Oauth authentication:
+```
+# Port forward the web server
+kubectl port-forward pod/superset-k8s-0 8088:8088 -n superset-k8s
+
+```
+You can then update the Google `redirect_uri` to  `http://localhost:8088/oauth-authorized/google`.
+
+Please note: `redirect_uri` should be updated to `https://<host>/oauth-authorized/google` when deploying to production.
+
+Once you have authenticated with Google, to verify the user credentials that have been created you can access these through the PostgreSQL charm as follows:
+```
+# Get the postgresql password
+juju run postgresql-k8s/leader get-password
+
+# Make note of the postgresql unit IP
+juju status
+
+# SSH into the application
+juju ssh --container postgresql postgresql-k8s/leader bash
+
+# Use psql as the postgres user
+psql --host=<unit ip> --username=operator --password postgres
+
+# Connect to the superset database
+\c superset
+
+# Verify the credentials created for your user
+SELECT * FROM ab_user WHERE email = '<your email>';
+
+```
+
 ## Relations
 ### Redis
 Redis acts as both a cache and message broker for Superset services. It's a requirement to have a redis relation in order to start the Superset application.
