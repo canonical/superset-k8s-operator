@@ -95,15 +95,10 @@ To validate Google Oauth authentication:
 # Port forward the web server
 kubectl port-forward pod/superset-k8s-0 8088:8088 -n superset-k8s
 
-# Edit /etc/hosts
-sudo vim /etc/hosts
-
-# Add a mapping as follows
-127.0.0.1 superset.com
-
 ```
-You can then update the Google `redirect_uri` to  `http://superset.com:8088/oauth-authorized/google`.
+You can then update the Google `redirect_uri` to  `http://localhost:8088/oauth-authorized/google`.
 
+Please note: `redirect_uri` should be updated to `https://<host>/oauth-authorized/google` when deploying to production.
 
 Once you have authenticated with Google, to verify the user credentials that have been created you can access these through the PostgreSQL charm as follows:
 ```

@@ -110,7 +110,7 @@ options:
     type: string
   oauth-domain:
     description: |
-      The domain for which to allow google authentication ie. canonical.com
+      The domain for which to allow Google authentication i.e. canonical.com
     type: string
   oauth-admin-email:
     description: |
