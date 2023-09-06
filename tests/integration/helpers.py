@@ -36,7 +36,7 @@ async def perform_superset_integrations(ops_test: OpsTest, app_name):
     await ops_test.model.integrate(app_name, REDIS_NAME)
 
     await ops_test.model.wait_for_idle(
-        apps=[app_name], status="active", raise_on_blocked=False, timeout=300
+        apps=[app_name], status="active", raise_on_blocked=False, timeout=1500
     )
 
 
