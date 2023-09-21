@@ -1,4 +1,5 @@
 # superset-k8s-charm
+Apache Superset™ is an open-source modern data exploration and visualization platform.
 Superset is fast, lightweight, intuitive, and loaded with options that make it easy for users of all skill sets to explore and visualize their data.
 
 ## Superset UI, worker and beat deployment
@@ -15,6 +16,28 @@ juju deploy superset-k8s --config charm-function=worker superset-k8s-worker
 juju deploy superset-k8s --config charm-function=beat superset-k8s-beat
 ```
 Note: while there can be multiple workers or web servers, there should only ever be 1 Superset beat deployment.
+
+## Relations
+The following relations are required to start the Superset application.
+
+### Redis
+Redis acts as both a cache and message broker for Superset services. It's a requirement to have a redis relation in order to start the Superset application.
+```
+# deploy redis charm
+juju deploy redis-k8s --edge
+
+# relate redis charm
+juju relate redis-k8s superset-k8s
+```
+### PostgreSQL
+PostgreSQL is used as the database that stores Superset metadata (slices, connections, tables, dashboards etc.). It's a requirement to have a PostgreSQL relation to start the Superset application.
+```
+# deploy postgresql charm
+juju deploy postgresql-k8s --channel 14/stable
+
+# relate postgresql charm
+juju relate postgresql-k8s superset-k8s
+```
 
 ## Authentication
 Username/password authentication is enabled by default using the `admin` user and the password set via the Superset configuration value `admin-password`.
@@ -55,26 +78,6 @@ By default, with Google Oauth, a Superset user account is automatically created 
 
 To change the role that is applied on self-registration, simply pass the role via the configuration parameter `self-registration-role`. Superset's standard roles and their associated permissions can be found [here](https://github.com/apache/superset/blob/master/RESOURCES/STANDARD_ROLES.md).
 
-
-## Relations
-### Redis
-Redis acts as both a cache and message broker for Superset services. It's a requirement to have a redis relation in order to start the Superset application.
-```
-# deploy redis charm
-juju deploy redis-k8s --edge
-
-# relate redis charm
-juju relate redis-k8s superset-k8s
-```
-### PostgreSQL
-PostgreSQL is used as the database that stores Superset metadata (slices, connections, tables, dashboards etc.). It's a requirement to have a PostgreSQL relation to start the Superset application.
-```
-# deploy postgresql charm
-juju deploy postgresql-k8s --channel 14/stable
-
-# relate postgresql charm
-juju relate postgresql-k8s superset-k8s
-```
 
 ### Ingress
 The Superset operator exposes its ports using the Nginx Ingress Integrator operator. You must first make sure to have an Nginx Ingress Controller deployed. To enable TLS connections, you must have a TLS certificate stored as a k8s secret (default name is "superset-tls"). A self-signed certificate for development purposes can be created as follows:

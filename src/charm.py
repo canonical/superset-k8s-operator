@@ -262,7 +262,6 @@ class SupersetK8SCharm(CharmBase):
         """
         container = self.unit.get_container(self.name)
         if not container.can_connect():
-            event.defer()
             return
 
         if not self.ready_to_start():
@@ -274,11 +273,11 @@ class SupersetK8SCharm(CharmBase):
             self.unit.status = BlockedStatus(str(err))
             return
 
-        logger.info(f"configuring {APP_NAME}")
+        logger.info("configuring %s", APP_NAME)
         env = self._create_env()
         load_superset_files(container)
 
-        logger.info(f"planning {APP_NAME} execution")
+        logger.info("planning %s execution", APP_NAME)
         pebble_layer = {
             "summary": f"{APP_NAME} layer",
             "description": f"pebble config layer for {APP_NAME}",
