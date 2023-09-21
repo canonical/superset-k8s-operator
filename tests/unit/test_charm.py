@@ -88,6 +88,7 @@ class TestCharm(TestCase):
                     "environment": {
                         "SUPERSET_SECRET_KEY": "example-pass",
                         "ADMIN_USER": "unique-user",
+                        "ADMIN_USERNAME": "admin",
                         "ADMIN_PASSWORD": "admin",
                         "CHARM_FUNCTION": "app-gunicorn",
                         "SQL_ALCHEMY_URI": "postgresql://postgres_user:admin@myhost:5432/superset",
@@ -174,6 +175,7 @@ class TestCharm(TestCase):
                     "startup": "enabled",
                     "environment": {
                         "SUPERSET_SECRET_KEY": "example-pass",
+                        "ADMIN_USERNAME": "admin",
                         "ADMIN_PASSWORD": "secure-pass",
                         "ADMIN_USER": "unique-user",
                         "CHARM_FUNCTION": "app-gunicorn",

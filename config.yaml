@@ -24,6 +24,11 @@ options:
         and encrypting sensitive information on the database. If not defined a secret
         will be automatically generated.
     type: string
+  admin-username:
+    description: |
+        The username for the admin account created on app initialisation. Default is 'admin'.
+    default: admin
+    type: string
   admin-password:
     description: |
         The secret for the admin account created on app initialisation. Default is 'admin'.
