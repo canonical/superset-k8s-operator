@@ -66,7 +66,7 @@ class TestCharm(TestCase):
         got_plan = harness.get_container_pebble_plan("superset").to_dict()
         self.assertEqual(got_plan, {})
 
-        # The BlockStatus is set with a message.
+        # The WaitingStatus is set with a message.
         self.assertEqual(
             harness.model.unit.status,
             WaitingStatus("Waiting for peer relation."),

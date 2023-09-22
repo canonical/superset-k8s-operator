@@ -88,40 +88,6 @@ juju deploy ./superset-k8s_ubuntu-22.04-amd64.charm --resource superset-image=ap
 # Check deployment was successful:
 juju status
 ```
-
-### Authentication
-To validate Google Oauth authentication:
-```
-# Port forward the web server
-kubectl port-forward pod/superset-k8s-0 8088:8088 -n superset-k8s
-
-```
-You can then update the Google `redirect_uri` to  `http://localhost:8088/oauth-authorized/google`.
-
-Please note: `redirect_uri` should be updated to `https://<host>/oauth-authorized/google` when deploying to production.
-
-Once you have authenticated with Google, to verify the user credentials that have been created you can access these through the PostgreSQL charm as follows:
-```
-# Get the postgresql password
-juju run postgresql-k8s/leader get-password
-
-# Make note of the postgresql unit IP
-juju status
-
-# SSH into the application
-juju ssh --container postgresql postgresql-k8s/leader bash
-
-# Use psql as the postgres user
-psql --host=<unit ip> --username=operator --password postgres
-
-# Connect to the superset database
-\c superset
-
-# Verify the credentials created for your user
-SELECT * FROM ab_user WHERE email = '<your email>';
-
-```
-
 ## Relations
 ### Redis
 Redis acts as both a cache and message broker for Superset services. It's a requirement to have a redis relation in order to start the Superset application.
@@ -156,6 +122,39 @@ juju remove-relation postgresql-k8s superset-k8s
 juju remove-application postgresql-k8s
 ```
 This relation makes use of the `data_platform_libs.v0.data_interfaces` library. The charm can be found on [Charmhub](https://charmhub.io/postgresql-k8s) and on [github](https://github.com/canonical/postgresql-k8s-operator).
+
+### Authentication
+To validate Google Oauth authentication:
+```
+# Port forward the web server
+kubectl port-forward pod/superset-k8s-0 8088:8088 -n superset-k8s
+
+```
+You can then follow instructions in the [README.md](README.md) to set up the Google `redirect_uri` to  `http://localhost:8088/oauth-authorized/google`.
+
+Please note: `redirect_uri` should be updated to `https://<host>/oauth-authorized/google` when deploying to production.
+
+Once you have authenticated with Google, to verify the user credentials that have been created you can access these through the PostgreSQL charm as follows:
+```
+# Get the postgresql password
+juju run postgresql-k8s/leader get-password
+
+# Make note of the postgresql unit IP
+juju status
+
+# SSH into the application
+juju ssh --container postgresql postgresql-k8s/leader bash
+
+# Use psql as the postgres user
+psql --host=<unit ip> --username=operator --password postgres
+
+# Connect to the superset database
+\c superset
+
+# Verify the credentials created for your user
+SELECT * FROM ab_user WHERE email = '<your email>';
+
+```
 
 ## Cleanup
 # Remove the application before retrying
