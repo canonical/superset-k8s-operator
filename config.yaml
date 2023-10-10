@@ -1,0 +1,127 @@
+# Copyright 2023 Canonical Ltd.
+# See LICENSE file for licensing details.
+
+# This file defines charm config options, and populates the Configure tab on Charmhub.
+# If your charm does not require configuration options, delete this file entirely.
+#
+# See https://juju.is/docs/config for guidance.
+
+options:
+  external-hostname:
+    description: |
+        The DNS listing used for external connections. 
+        Will default to the name of the deployed application.
+    type: string
+    default: superset-k8s
+  tls-secret-name:
+    description: |
+        Name of the k8s secret which contains the TLS certificate to be used by ingress.
+    default: superset-tls
+    type: string
+  superset-secret-key:
+    description: |
+        Your App secret key will be used for securely signing the session cookie
+        and encrypting sensitive information on the database. If not defined a secret
+        will be automatically generated.
+    type: string
+  admin-password:
+    description: |
+        The secret for the admin account created on app initialisation. Default is 'admin'.
+    default: admin
+    type: string
+  charm-function:
+    description: |
+        The type of superset function you want the charm to fulfill.
+        Allowed options are: 'app-gunicorn', 'app', 'worker', 'beat'
+    default: app-gunicorn
+    type: string
+  alerts-attach-reports:
+    description: |
+        Determines whether to attach reports to alerts.
+    default: True
+    type: boolean
+  dashboard-cross-filters:
+    description: |
+        Enables the use of cross-filters on dashboards,
+        allowing users to interactively filter data 
+        across multiple visualizations.
+    default: True
+    type: boolean
+  dashboard-rbac:
+    description: |
+        Enables Role-Based Access Control (RBAC) for dashboards,
+        providing fine-grained control over who can view and modify
+        specific dashboards.
+    default: True
+    type: boolean
+  embeddable-charts:
+    description: |
+        Allows embedding of charts into external applications or websites.
+    default: True
+    type: boolean
+  scheduled-queries:
+    description: |
+        Enables the scheduling of queries to run automatically 
+        at specified intervals.
+    default: True
+    type: boolean
+  estimate-query-cost:
+    description: |
+        Provides an estimate of the query execution cost before running it,
+        helping users understand the potential resource consumption.
+    default: True
+    type: boolean
+  enable-template-processing:
+    description: |
+        Enables the processing of templates within queries 
+        or dashboard elements.
+    default: True
+    type: boolean
+  alert-reports:
+    description: |
+        Allows the creation of alert rules based on data in reports.
+    default: True
+    type: boolean
+  sqlalchemy-pool-size:
+    description: |
+        Specifies the maximum number of database connections
+        that can be kept in the connection pool.
+    default: 5
+    type: int
+  sqlalchemy-pool-timeout:
+    description: |
+        Defines the maximum time (in seconds) a thread is allowed
+        to wait for a connection from the pool.
+    default: 300
+    type: int
+  sqlalchemy-max-overflow:
+    description: |
+        Sets the maximum number of connections that can be created
+        beyond the pool size when the pool is exhausted.
+    default: 10
+    type: int
+  google-client-id:
+    description: |
+      Client id from Google Oauth setup
+    type: string
+  google-client-secret:
+    description: |
+      Client password from Google Oauth setup
+    type: string
+  oauth-domain:
+    description: |
+      The domain for which to allow Google authentication i.e. canonical.com
+    type: string
+  oauth-admin-email:
+    description: |
+      Email(s) to be given an Admin role on initialization.
+      Either a single email or a comma separated list.
+      eg. "example.email@company.com, example.email2@company.com"
+    type: string
+    default: admin@superset.com
+  self-registration-role:
+    description: |
+      The default role to be provided to users that self-register via Oauth.
+      One of `Admin`, `Alpha`, `Gamma`, `Public`, `sql_lab`
+    type: string
+    default: Public
