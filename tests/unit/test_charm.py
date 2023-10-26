@@ -109,6 +109,8 @@ class TestCharm(TestCase):
                         "OAUTH_DOMAIN": None,
                         "OAUTH_ADMIN_EMAIL": "admin@superset.com",
                         "SELF_REGISTRATION_ROLE": "Public",
+                        "HTTP_PROXY": None,
+                        "HTTPS_PROXY": None,
                     },
                     "on-check-failure": {"up": "ignore"},
                 }
@@ -196,6 +198,8 @@ class TestCharm(TestCase):
                         "OAUTH_DOMAIN": None,
                         "OAUTH_ADMIN_EMAIL": "admin@superset.com",
                         "SELF_REGISTRATION_ROLE": "Public",
+                        "HTTP_PROXY": None,
+                        "HTTPS_PROXY": None,
                     },
                     "on-check-failure": {"up": "ignore"},
                 },
