@@ -154,3 +154,4 @@ if all(os.getenv(var) for var in required_auth_vars):
 
 HTTP_PROXY = os.getenv("HTTP_PROXY")
 HTTPS_PROXY = os.getenv("HTTPS_PROXY")
+NO_PROXY = os.getenv("NO_PROXY")

@@ -133,3 +133,7 @@ options:
     description: |
       The HTTPS_PROXY value.
     type: string
+  no-proxy:
+    description: |
+      A comma-separated list of host names that should not go through any proxy.
+    type: string

@@ -111,6 +111,7 @@ class TestCharm(TestCase):
                         "SELF_REGISTRATION_ROLE": "Public",
                         "HTTP_PROXY": None,
                         "HTTPS_PROXY": None,
+                        "NO_PROXY": None,
                     },
                     "on-check-failure": {"up": "ignore"},
                 }
@@ -200,6 +201,7 @@ class TestCharm(TestCase):
                         "SELF_REGISTRATION_ROLE": "Public",
                         "HTTP_PROXY": None,
                         "HTTPS_PROXY": None,
+                        "NO_PROXY": None,
                     },
                     "on-check-failure": {"up": "ignore"},
                 },

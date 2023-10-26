@@ -258,6 +258,7 @@ class SupersetK8SCharm(CharmBase):
             "SELF_REGISTRATION_ROLE": self.config["self-registration-role"],
             "HTTP_PROXY": self.config.get("http-proxy"),
             "HTTPS_PROXY": self.config.get("https-proxy"),
+            "NO_PROXY": self.config.get("no-proxy"),
         }
         return env
 
