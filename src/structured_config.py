@@ -28,10 +28,10 @@ class BaseEnumStr(str, Enum):
 class FunctionType(str, Enum):
     """Enum for the `charm-function` field."""
 
-    GUNICORN = "gunicorn"
-    APP = "app"
-    WORKER = "worker"
-    BEAT = "beat"
+    app-gunicorn = "app-gunicorn"
+    app = "app"
+    worker = "worker"
+    beat = "beat"
 
 
 class CharmConfig(BaseConfigModel):
