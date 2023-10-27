@@ -28,10 +28,19 @@ class BaseEnumStr(str, Enum):
 class FunctionType(str, Enum):
     """Enum for the `charm-function` field."""
 
-    app-gunicorn = "app-gunicorn"
+    app_gunicorn = "app-gunicorn"
     app = "app"
     worker = "worker"
     beat = "beat"
+
+class RegistrationRole(str, Enum):
+    """Enum for the `self-registration-role` field."""
+
+    admin = "Admin"
+    alpha = "Alpha"
+    gamma = "Gamma"
+    public = "Public"
+    sql_lab = "sql_lab"
 
 
 class CharmConfig(BaseConfigModel):
@@ -53,6 +62,12 @@ class CharmConfig(BaseConfigModel):
     sqlalchemy_pool_size: int
     sqlalchemy_pool_timeout: int
     sqlalchemy_max_overflow: int
+    self_registration_role: RegistrationRole
+    oauth_admin_email: str
+    google_client_id: Optional[str]
+    google_client_secret: Optional[str]
+    oauth_domain: Optional[str]
+
 
     @validator("*", pre=True)
     @classmethod

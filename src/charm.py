@@ -231,12 +231,10 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         else:
             superset_secret = generate_random_string(32)
 
-        charm_function = self.config["charm-function"]
-        admin_email = self.config["oauth-admin-email"]
         env = {
             "SUPERSET_SECRET_KEY": superset_secret,
             "ADMIN_PASSWORD": self.config["admin-password"],
-            "CHARM_FUNCTION": charm_function,
+            "CHARM_FUNCTION": self.config["charm-function"].value,
             "SQL_ALCHEMY_URI": self._state.sql_alchemy_uri,
             "REDIS_HOST": self._state.redis_host,
             "REDIS_PORT": self._state.redis_port,
@@ -253,11 +251,11 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "SQLALCHEMY_POOL_SIZE": self.config["sqlalchemy-pool-size"],
             "SQLALCHEMY_POOL_TIMEOUT": self.config["sqlalchemy-pool-timeout"],
             "SQLALCHEMY_MAX_OVERFLOW": self.config["sqlalchemy-max-overflow"],
-            "GOOGLE_KEY": self.config.get("google-client-id"),
-            "GOOGLE_SECRET": self.config.get("google-client-secret"),
-            "OAUTH_DOMAIN": self.config.get("oauth-domain"),
-            "OAUTH_ADMIN_EMAIL": admin_email,
-            "SELF_REGISTRATION_ROLE": self.config["self-registration-role"],
+            "GOOGLE_KEY": self.config["google-client-id"],
+            "GOOGLE_SECRET": self.config["google-client-secret"],
+            "OAUTH_DOMAIN": self.config["oauth-domain"],
+            "OAUTH_ADMIN_EMAIL": self.config["oauth-admin-email"],
+            "SELF_REGISTRATION_ROLE": self.config["self-registration-role"].value,
         }
         return env
 
