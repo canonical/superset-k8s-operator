@@ -203,28 +203,6 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         event.set_results({"result": f"{APP_NAME} successfully restarted"})
 
-    def _validate_config_params(self):
-        """Validate that configuration is valid.
-
-        Raises:
-            ValueError: in case when invalid charm-funcion is entered
-                        in case when self-registration-role is not valid
-                        in case when a config value is an empty string
-        """
-        charm_function = self.model.config["charm-function"]
-        if charm_function not in VALID_CHARM_FUNCTIONS:
-            raise ValueError(
-                f"config: invalid charm function {charm_function!r}"
-            )
-        default_role = self.config["self-registration-role"]
-        if default_role not in VALID_ROLES:
-            raise ValueError(
-                f"config: invalid self-registration role {default_role!r}"
-            )
-        for key, value in self.config.items():
-            if value == "":
-                raise ValueError(f"value {key} cannot be an empty string.")
-
     def _create_env(self):
         """Create state values from config to be used as environment variables.
 
@@ -278,12 +256,6 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             return
 
         if not self.ready_to_start():
-            return
-
-        try:
-            self._validate_config_params()
-        except (RuntimeError, ValueError) as err:
-            self.unit.status = BlockedStatus(str(err))
             return
 
         logger.info("configuring %s", APP_NAME)

@@ -32,7 +32,7 @@ options:
   charm-function:
     description: |
         The type of superset function you want the charm to fulfill.
-        Allowed options are: 'gunicorn', 'app', 'worker', 'beat'
+        Allowed options are: 'app-gunicorn', 'app', 'worker', 'beat'
     default: app-gunicorn
     type: string
   alerts-attach-reports:
