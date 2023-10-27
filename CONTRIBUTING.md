@@ -19,13 +19,13 @@ This charm is used to deploy Superset Server in a k8s cluster. For local deploym
 ### Install Microk8s
 ```
 # Install Microk8s from snap:
-sudo snap install microk8s --classic --channel=1.25
+sudo snap install microk8s --channel 1.25-strict/stable
 
 # Add the 'ubuntu' user to the Microk8s group:
-sudo usermod -a -G microk8s ubuntu
+sudo usermod -a -G microk8s $USER
 
-# Give the 'ubuntu' user permissions to read the ~/.kube directory:
-sudo chown -f -R ubuntu ~/.kube
+# Give the your user permissions to read the ~/.kube directory:
+sudo chown -f -R $USER ~/.kube
 
 # Create the 'microk8s' group:
 newgrp microk8s
@@ -36,7 +36,7 @@ microk8s enable hostpath-storage dns
 ### Install Charmcraft
 ```
 # Install lxd from snap:
-sudo snap install lxd --classic --channel=5.12/stable
+sudo snap install lxd --classic --channel=5.19/stable
 
 # Install charmcraft from snap:
 sudo snap install charmcraft --classic --channel=2.2/stable

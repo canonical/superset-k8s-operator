@@ -24,7 +24,7 @@ The following relations are required to start the Superset application.
 Redis acts as both a cache and message broker for Superset services. It's a requirement to have a redis relation in order to start the Superset application.
 ```
 # deploy redis charm
-juju deploy redis-k8s --edge
+juju deploy redis-k8s --channel edge
 
 # relate redis charm
 juju relate redis-k8s superset-k8s
@@ -33,7 +33,7 @@ juju relate redis-k8s superset-k8s
 PostgreSQL is used as the database that stores Superset metadata (slices, connections, tables, dashboards etc.). It's a requirement to have a PostgreSQL relation to start the Superset application.
 ```
 # deploy postgresql charm
-juju deploy postgresql-k8s --channel 14/stable
+juju deploy postgresql-k8s --trust
 
 # relate postgresql charm
 juju relate postgresql-k8s superset-k8s
