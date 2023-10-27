@@ -27,7 +27,13 @@ from ops.model import (
 )
 from ops.pebble import CheckStatus
 
-from literals import APP_NAME, APPLICATION_PORT, UI_FUNCTIONS
+from literals import (
+    APP_NAME,
+    APPLICATION_PORT,
+    UI_FUNCTIONS,
+    VALID_CHARM_FUNCTIONS,
+    VALID_ROLES,
+)
 from log import log_event_handler
 from relations.postgresql import Database
 from relations.redis import Redis
@@ -101,7 +107,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             service_name=self.app.name,
             service_port=APPLICATION_PORT,
             tls_secret_name=self.config["tls-secret-name"],
-            backend_protocol="HTTPS",
+            backend_protocol="HTTP",
         )
 
     @log_event_handler(logger)
@@ -197,6 +203,23 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         event.set_results({"result": f"{APP_NAME} successfully restarted"})
 
+    def _validate_config_params(self):
+        """Validate that configuration is valid.
+
+        Raises:
+            ValueError: in case when invalid charm-funcion is entered
+        """
+        charm_function = self.model.config["charm-function"]
+        if charm_function not in VALID_CHARM_FUNCTIONS:
+            raise ValueError(
+                f"config: invalid charm function {charm_function!r}"
+            )
+        default_role = self.config["self-registration-role"]
+        if default_role not in VALID_ROLES:
+            raise ValueError(
+                f"config: invalid self-registration role {default_role!r}"
+            )
+
     def _create_env(self):
         """Create state values from config to be used as environment variables.
 
@@ -209,7 +232,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             superset_secret = generate_random_string(32)
 
         charm_function = self.config["charm-function"]
-        random_id = generate_random_string(5)
+        admin_email = self.config["oauth-admin-email"]
         env = {
             "SUPERSET_SECRET_KEY": superset_secret,
             "ADMIN_PASSWORD": self.config["admin-password"],
@@ -217,7 +240,6 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "SQL_ALCHEMY_URI": self._state.sql_alchemy_uri,
             "REDIS_HOST": self._state.redis_host,
             "REDIS_PORT": self._state.redis_port,
-            "ADMIN_USER": f"{charm_function}-{random_id}",
             "ALERTS_ATTACH_REPORTS": self.config["alerts-attach-reports"],
             "DASHBOARD_CROSS_FILTERS": self.config["dashboard-cross-filters"],
             "DASHBOARD_RBAC": self.config["dashboard-rbac"],
@@ -231,6 +253,11 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "SQLALCHEMY_POOL_SIZE": self.config["sqlalchemy-pool-size"],
             "SQLALCHEMY_POOL_TIMEOUT": self.config["sqlalchemy-pool-timeout"],
             "SQLALCHEMY_MAX_OVERFLOW": self.config["sqlalchemy-max-overflow"],
+            "GOOGLE_KEY": self.config.get("google-client-id"),
+            "GOOGLE_SECRET": self.config.get("google-client-secret"),
+            "OAUTH_DOMAIN": self.config.get("oauth-domain"),
+            "OAUTH_ADMIN_EMAIL": admin_email,
+            "SELF_REGISTRATION_ROLE": self.config["self-registration-role"],
         }
         return env
 
@@ -242,17 +269,22 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         """
         container = self.unit.get_container(self.name)
         if not container.can_connect():
-            event.defer()
             return
 
         if not self.ready_to_start():
             return
 
-        logger.info(f"configuring {APP_NAME}")
+        try:
+            self._validate_config_params()
+        except (RuntimeError, ValueError) as err:
+            self.unit.status = BlockedStatus(str(err))
+            return
+
+        logger.info("configuring %s", APP_NAME)
         env = self._create_env()
         load_superset_files(container)
 
-        logger.info(f"planning {APP_NAME} execution")
+        logger.info("planning %s execution", APP_NAME)
         pebble_layer = {
             "summary": f"{APP_NAME} layer",
             "description": f"pebble config layer for {APP_NAME}",

@@ -61,7 +61,7 @@ class TestCharm(TestCase):
         got_plan = harness.get_container_pebble_plan("superset").to_dict()
         self.assertEqual(got_plan, {})
 
-        # The BlockStatus is set with a message.
+        # The WaitingStatus is set with a message.
         self.assertEqual(
             harness.model.unit.status,
             WaitingStatus("Waiting for peer relation."),
@@ -99,6 +99,11 @@ class TestCharm(TestCase):
                         "SQLALCHEMY_POOL_SIZE": 5,
                         "SQLALCHEMY_POOL_TIMEOUT": 300,
                         "SQLALCHEMY_MAX_OVERFLOW": 10,
+                        "GOOGLE_KEY": None,
+                        "GOOGLE_SECRET": None,
+                        "OAUTH_DOMAIN": None,
+                        "OAUTH_ADMIN_EMAIL": "admin@superset.com",
+                        "SELF_REGISTRATION_ROLE": "Public",
                     },
                     "on-check-failure": {"up": "ignore"},
                 }
@@ -160,6 +165,11 @@ class TestCharm(TestCase):
                         "SQLALCHEMY_POOL_SIZE": 5,
                         "SQLALCHEMY_POOL_TIMEOUT": 300,
                         "SQLALCHEMY_MAX_OVERFLOW": 10,
+                        "GOOGLE_KEY": None,
+                        "GOOGLE_SECRET": None,
+                        "OAUTH_DOMAIN": None,
+                        "OAUTH_ADMIN_EMAIL": "admin@superset.com",
+                        "SELF_REGISTRATION_ROLE": "Public",
                     },
                     "on-check-failure": {"up": "ignore"},
                 },
@@ -198,7 +208,7 @@ class TestCharm(TestCase):
             "service-hostname": harness.charm.app.name,
             "service-name": harness.charm.app.name,
             "service-port": SERVER_PORT,
-            "backend-protocol": "HTTPS",
+            "backend-protocol": "HTTP",
             "tls-secret-name": "superset-tls",
         }
 
