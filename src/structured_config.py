@@ -33,6 +33,7 @@ class FunctionType(str, Enum):
     worker = "worker"
     beat = "beat"
 
+
 class RegistrationRole(str, Enum):
     """Enum for the `self-registration-role` field."""
 
@@ -70,7 +71,6 @@ class CharmConfig(BaseConfigModel):
     http_proxy: Optional[str]
     https_proxy: Optional[str]
     no_proxy: Optional[str]
-
 
     @validator("*", pre=True)
     @classmethod

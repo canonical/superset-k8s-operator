@@ -17,5 +17,3 @@ INIT_FILES = [
     "custom_sso_security_manager.py",
 ]
 UI_FUNCTIONS = ["app", "app-gunicorn"]
-VALID_CHARM_FUNCTIONS = ["app-gunicorn", "app", "worker", "beat"]
-VALID_ROLES = ["Admin", "Alpha", "Gamma", "Public", "sql_lab"]

@@ -238,7 +238,9 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "GOOGLE_SECRET": self.config["google-client-secret"],
             "OAUTH_DOMAIN": self.config["oauth-domain"],
             "OAUTH_ADMIN_EMAIL": self.config["oauth-admin-email"],
-            "SELF_REGISTRATION_ROLE": self.config["self-registration-role"].value,
+            "SELF_REGISTRATION_ROLE": self.config[
+                "self-registration-role"
+            ].value,
             "HTTP_PROXY": self.config["http-proxy"],
             "HTTPS_PROXY": self.config["https-proxy"],
             "NO_PROXY": self.config["no-proxy"],
