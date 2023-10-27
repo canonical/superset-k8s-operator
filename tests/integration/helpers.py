@@ -17,7 +17,7 @@ NGINX_NAME = "nginx-ingress-integrator"
 POSTGRES_NAME = "postgresql-k8s"
 REDIS_NAME = "redis-k8s"
 UI_NAME = "superset-k8s-ui"
-CHARM_FUNCTIONS = {"gunicorn": "ui", "beat": "beat", "worker": "worker"}
+CHARM_FUNCTIONS = {"app-gunicorn": "ui", "beat": "beat", "worker": "worker"}
 
 
 async def perform_superset_integrations(ops_test: OpsTest, app_name):
