@@ -125,3 +125,15 @@ options:
       One of `Admin`, `Alpha`, `Gamma`, `Public`, `sql_lab`
     type: string
     default: Public
+  http-proxy:
+    description: |
+      The HTTP_PROXY value.
+    type: string
+  https-proxy:
+    description: |
+      The HTTPS_PROXY value.
+    type: string
+  no-proxy:
+    description: |
+      A comma-separated list of host names that should not go through any proxy.
+    type: string

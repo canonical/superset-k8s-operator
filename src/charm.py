@@ -203,6 +203,8 @@ class SupersetK8SCharm(CharmBase):
 
         Raises:
             ValueError: in case when invalid charm-funcion is entered
+                        in case when self-registration-role is not valid
+                        in case when a config value is an empty string
         """
         charm_function = self.model.config["charm-function"]
         if charm_function not in VALID_CHARM_FUNCTIONS:
@@ -214,6 +216,9 @@ class SupersetK8SCharm(CharmBase):
             raise ValueError(
                 f"config: invalid self-registration role {default_role!r}"
             )
+        for key, value in self.config.items():
+            if value == "":
+                raise ValueError(f"value {key} cannot be an empty string.")
 
     def _create_env(self):
         """Create state values from config to be used as environment variables.
@@ -251,6 +256,9 @@ class SupersetK8SCharm(CharmBase):
             "OAUTH_DOMAIN": self.config.get("oauth-domain"),
             "OAUTH_ADMIN_EMAIL": admin_email,
             "SELF_REGISTRATION_ROLE": self.config["self-registration-role"],
+            "HTTP_PROXY": self.config.get("http-proxy"),
+            "HTTPS_PROXY": self.config.get("https-proxy"),
+            "NO_PROXY": self.config.get("no-proxy"),
         }
         return env
 
