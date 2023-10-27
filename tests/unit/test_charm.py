@@ -104,6 +104,9 @@ class TestCharm(TestCase):
                         "OAUTH_DOMAIN": None,
                         "OAUTH_ADMIN_EMAIL": "admin@superset.com",
                         "SELF_REGISTRATION_ROLE": "Public",
+                        "HTTP_PROXY": None,
+                        "HTTPS_PROXY": None,
+                        "NO_PROXY": None,
                     },
                     "on-check-failure": {"up": "ignore"},
                 }
@@ -136,7 +139,14 @@ class TestCharm(TestCase):
         simulate_lifecycle(harness)
 
         # Update the config.
-        self.harness.update_config({"admin-password": "secure-pass"})
+        self.harness.update_config(
+            {
+                "admin-password": "secure-pass",
+                "http-proxy": "proxy:1234",
+                "https-proxy": "proxy:1234",
+                "no-proxy": ".canonical.com",
+            }
+        )
 
         # The new plan reflects the change.
         want_plan = {
@@ -170,6 +180,9 @@ class TestCharm(TestCase):
                         "OAUTH_DOMAIN": None,
                         "OAUTH_ADMIN_EMAIL": "admin@superset.com",
                         "SELF_REGISTRATION_ROLE": "Public",
+                        "HTTP_PROXY": "proxy:1234",
+                        "HTTPS_PROXY": "proxy:1234",
+                        "NO_PROXY": ".canonical.com",
                     },
                     "on-check-failure": {"up": "ignore"},
                 },
