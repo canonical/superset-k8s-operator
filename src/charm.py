@@ -27,13 +27,7 @@ from ops.model import (
 )
 from ops.pebble import CheckStatus
 
-from literals import (
-    APP_NAME,
-    APPLICATION_PORT,
-    UI_FUNCTIONS,
-    VALID_CHARM_FUNCTIONS,
-    VALID_ROLES,
-)
+from literals import APP_NAME, APPLICATION_PORT, UI_FUNCTIONS
 from log import log_event_handler
 from relations.postgresql import Database
 from relations.redis import Redis
