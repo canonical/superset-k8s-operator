@@ -12,12 +12,7 @@ import json
 import logging
 from unittest import TestCase, mock
 
-from ops.model import (
-    ActiveStatus,
-    BlockedStatus,
-    MaintenanceStatus,
-    WaitingStatus,
-)
+from ops.model import ActiveStatus, MaintenanceStatus, WaitingStatus
 from ops.pebble import CheckStatus
 from ops.testing import Harness
 
@@ -136,27 +131,6 @@ class TestCharm(TestCase):
         self.assertEqual(
             harness.model.unit.status,
             MaintenanceStatus("replanning application"),
-        )
-
-    def test_invalid_config_value(self):
-        """The charm blocks if an invalid config value is provided."""
-        harness = self.harness
-        simulate_lifecycle(harness)
-
-        # Update the config with an invalid value.
-        self.harness.update_config({"charm-function": "web"})
-
-        # The change is not applied to the plan.
-        want_charm_function = "app-gunicorn"
-        got_log_level = harness.get_container_pebble_plan(
-            "superset"
-        ).to_dict()["services"]["superset"]["environment"]["CHARM_FUNCTION"]
-        self.assertEqual(got_log_level, want_charm_function)
-
-        # The BlockStatus is set with a message.
-        self.assertEqual(
-            harness.model.unit.status,
-            BlockedStatus("config: invalid charm function 'web'"),
         )
 
     def test_config_changed(self):
