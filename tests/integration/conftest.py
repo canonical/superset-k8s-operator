@@ -9,12 +9,11 @@ import pytest
 import pytest_asyncio
 from helpers import (
     CHARM_FUNCTIONS,
-    METADATA,
     NGINX_NAME,
     POSTGRES_NAME,
     REDIS_NAME,
     UI_NAME,
-    perform_superset_integrations,
+    deploy_and_relate_superset_charm,
 )
 from pytest_operator.plugin import OpsTest
 
@@ -25,12 +24,6 @@ logger = logging.getLogger(__name__)
 @pytest_asyncio.fixture(name="deploy", scope="module")
 async def deploy(ops_test: OpsTest):
     """Deploy the app."""
-    charm = await ops_test.build_charm(".")
-    resources = {
-        "superset-image": METADATA["resources"]["superset-image"][
-            "upstream-source"
-        ]
-    }
     await ops_test.model.deploy(POSTGRES_NAME, channel="14", trust=True)
     await ops_test.model.deploy(REDIS_NAME, channel="edge", trust=True)
     await ops_test.model.deploy(NGINX_NAME, trust=True)
@@ -45,26 +38,11 @@ async def deploy(ops_test: OpsTest):
 
     for function, alias in CHARM_FUNCTIONS.items():
         app_name = f"superset-k8s-{alias}"
-        await ops_test.model.deploy(
-            charm,
-            resources=resources,
-            application_name=app_name,
-            config={"charm-function": function},
-            num_units=1,
-        )
-
-        await ops_test.model.wait_for_idle(
-            apps=[app_name],
-            status="blocked",
-            raise_on_blocked=False,
-            timeout=600,
-        )
-
-        await perform_superset_integrations(ops_test, app_name)
-
-        assert (
-            ops_test.model.applications[app_name].units[0].workload_status
-            == "active"
+        superset_config = {"charm-function": function}
+        if app_name == UI_NAME:
+            superset_config.update({"load-examples": True})
+        await deploy_and_relate_superset_charm(
+            ops_test, app_name, superset_config
         )
 
     await ops_test.model.integrate(UI_NAME, NGINX_NAME)

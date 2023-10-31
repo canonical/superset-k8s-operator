@@ -112,6 +112,7 @@ class TestCharm(TestCase):
                         "HTTP_PROXY": None,
                         "HTTPS_PROXY": None,
                         "NO_PROXY": None,
+                        "SUPERSET_LOAD_EXAMPLES": False,
                     },
                     "on-check-failure": {"up": "ignore"},
                 }
@@ -209,6 +210,7 @@ class TestCharm(TestCase):
                         "HTTP_PROXY": "proxy:1234",
                         "HTTPS_PROXY": "proxy:1234",
                         "NO_PROXY": ".canonical.com",
+                        "SUPERSET_LOAD_EXAMPLES": False,
                     },
                     "on-check-failure": {"up": "ignore"},
                 },

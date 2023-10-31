@@ -6,7 +6,8 @@
 
 import logging
 from pathlib import Path
-
+import json
+import requests
 import yaml
 from pytest_operator.plugin import OpsTest
 
@@ -18,6 +19,43 @@ POSTGRES_NAME = "postgresql-k8s"
 REDIS_NAME = "redis-k8s"
 UI_NAME = "superset-k8s-ui"
 CHARM_FUNCTIONS = {"app-gunicorn": "ui", "beat": "beat", "worker": "worker"}
+API_AUTH_PAYLOAD = {
+    "username": "admin",
+    "password": "admin",
+    "provider": "db",
+}
+
+
+async def deploy_and_relate_superset_charm(
+    ops_test: OpsTest, app_name, config
+):
+    charm = await ops_test.build_charm(".")
+    resources = {
+        "superset-image": METADATA["resources"]["superset-image"][
+            "upstream-source"
+        ]
+    }
+    await ops_test.model.deploy(
+        charm,
+        resources=resources,
+        application_name=app_name,
+        config=config,
+        num_units=1,
+    )
+
+    await ops_test.model.wait_for_idle(
+        apps=[app_name],
+        status="blocked",
+        raise_on_blocked=False,
+        timeout=600,
+    )
+
+    await perform_superset_integrations(ops_test, app_name)
+
+    assert (
+        ops_test.model.applications[app_name].units[0].workload_status
+        == "active"
+    )
 
 
 async def perform_superset_integrations(ops_test: OpsTest, app_name):
@@ -74,3 +112,35 @@ async def restart_application(ops_test: OpsTest):
         .run_action("restart")
     )
     await action.wait()
+
+
+async def get_access_token(ops_test: OpsTest, base_url, headers):
+    response = requests.post(
+        base_url + "/api/v1/security/login", json=API_AUTH_PAYLOAD
+    )
+    access_token = response.json()
+    headers = {"Authorization": "Bearer " + access_token["access_token"]}
+    return headers
+
+
+async def get_chart_count(ops_test: OpsTest, base_url, headers):
+    chart_response = requests.get(base_url + "/api/v1/chart/", headers=headers)
+    charts = chart_response.json()
+    chart_count = charts["count"]
+    return chart_count
+
+
+async def simulate_crash(ops_test: OpsTest):
+    # Destroy charms
+    for function, alias in CHARM_FUNCTIONS.items():
+        app_name = f"superset-k8s-{alias}"
+        await ops_test.model.applications[app_name].destroy(force=True)
+        await ops_test.model.block_until(
+            lambda: app_name not in ops_test.model.applications
+        )
+
+    # Deploy charms again
+    for function, alias in CHARM_FUNCTIONS.items():
+        superset_config = {"charm-function": function}
+        app_name = f"superset-k8s-{alias}"
+        deploy_and_relate_superset_charm(ops_test, app_name, superset_config)
