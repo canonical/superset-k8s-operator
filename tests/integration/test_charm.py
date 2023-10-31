@@ -44,6 +44,16 @@ class TestDeployment:
             ops_test.model.applications[UI_NAME].units[0].workload_status
             == "maintenance"
         )
+        await ops_test.model.wait_for_idle(
+            apps=[UI_NAME],
+            status="active",
+            raise_on_blocked=False,
+            timeout=300,
+        )
+        assert (
+            ops_test.model.applications[UI_NAME].units[0].workload_status
+            == "active"
+        )
 
     async def test_charm_crash(self, ops_test: OpsTest):
         """Test backup and restore functionality.
@@ -56,15 +66,14 @@ class TestDeployment:
         )
         # Get number of charts
         headers = await get_access_token(ops_test, url)
-        chart_count = await get_chart_count(ops_test, url, headers)
-        assert chart_count == 102
+        original_charts = await get_chart_count(ops_test, url, headers)
 
         # Delete chart
-        requests.delete(url + "/api/v1/chart/131", headers=headers)
-        chart_count = await get_chart_count(ops_test, url, headers)
-        assert chart_count == 101
+        requests.delete(url + "/api/v1/chart/131", headers=headers, timeout=30)
+        new_charts = await get_chart_count(ops_test, url, headers)
+        assert new_charts == original_charts - 1
 
         await simulate_crash(ops_test)
 
-        chart_count = get_chart_count(ops_test, url, headers)
-        assert chart_count == 101
+        chart_count = await get_chart_count(ops_test, url, headers)
+        assert chart_count == new_charts

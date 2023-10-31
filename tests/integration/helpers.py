@@ -129,7 +129,7 @@ async def get_access_token(ops_test: OpsTest, base_url):
         headers: Request headers with access token.
     """
     response = requests.post(
-        base_url + "/api/v1/security/login", json=API_AUTH_PAYLOAD
+        base_url + "/api/v1/security/login", json=API_AUTH_PAYLOAD, timeout=30
     )
     access_token = response.json()
     headers = {"Authorization": "Bearer " + access_token["access_token"]}
@@ -147,7 +147,9 @@ async def get_chart_count(ops_test: OpsTest, base_url, headers):
     Returns:
         Count of Superset charts.
     """
-    chart_response = requests.get(base_url + "/api/v1/chart/", headers=headers)
+    chart_response = requests.get(
+        base_url + "/api/v1/chart/", headers=headers, timeout=30
+    )
     charts = chart_response.json()
     return charts["count"]
 
