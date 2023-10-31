@@ -6,7 +6,7 @@
 
 import logging
 from pathlib import Path
-import json
+
 import requests
 import yaml
 from pytest_operator.plugin import OpsTest
@@ -24,17 +24,21 @@ API_AUTH_PAYLOAD = {
     "password": "admin",
     "provider": "db",
 }
+UI_CONFIG = {"charm-function": "app-gunicorn"}
 
 
 async def deploy_and_relate_superset_charm(
-    ops_test: OpsTest, app_name, config
+    ops_test: OpsTest, app_name, config, charm, resources
 ):
-    charm = await ops_test.build_charm(".")
-    resources = {
-        "superset-image": METADATA["resources"]["superset-image"][
-            "upstream-source"
-        ]
-    }
+    """Deploy Superset charm..
+
+    Args:
+        ops_test: PyTest object.
+        app_name: Name of the application.
+        config: Configuration of the charm.
+        charm: The packed charm.
+        resources: The OCI image.
+    """
     await ops_test.model.deploy(
         charm,
         resources=resources,
@@ -114,7 +118,16 @@ async def restart_application(ops_test: OpsTest):
     await action.wait()
 
 
-async def get_access_token(ops_test: OpsTest, base_url, headers):
+async def get_access_token(ops_test: OpsTest, base_url):
+    """Get access token of the `admin` user.
+
+    Args:
+        ops_test: PyTest object.
+        base_url: Superset URL.
+
+    Returns:
+        headers: Request headers with access token.
+    """
     response = requests.post(
         base_url + "/api/v1/security/login", json=API_AUTH_PAYLOAD
     )
@@ -124,23 +137,40 @@ async def get_access_token(ops_test: OpsTest, base_url, headers):
 
 
 async def get_chart_count(ops_test: OpsTest, base_url, headers):
+    """Count Superset charts.
+
+    Args:
+        ops_test: PyTest object.
+        base_url: Superset URL.
+        headers: Request headers with access token.
+
+    Returns:
+        Count of Superset charts.
+    """
     chart_response = requests.get(base_url + "/api/v1/chart/", headers=headers)
     charts = chart_response.json()
-    chart_count = charts["count"]
-    return chart_count
+    return charts["count"]
 
 
 async def simulate_crash(ops_test: OpsTest):
-    # Destroy charms
-    for function, alias in CHARM_FUNCTIONS.items():
-        app_name = f"superset-k8s-{alias}"
-        await ops_test.model.applications[app_name].destroy(force=True)
-        await ops_test.model.block_until(
-            lambda: app_name not in ops_test.model.applications
-        )
+    """Simulate the crash of the Superset charm.
+
+    Args:
+        ops_test: PyTest object.
+    """
+    # Destroy charm
+    await ops_test.model.applications[UI_NAME].destroy(force=True)
+    await ops_test.model.block_until(
+        lambda: UI_NAME not in ops_test.model.applications
+    )
 
     # Deploy charms again
-    for function, alias in CHARM_FUNCTIONS.items():
-        superset_config = {"charm-function": function}
-        app_name = f"superset-k8s-{alias}"
-        deploy_and_relate_superset_charm(ops_test, app_name, superset_config)
+    charm = await ops_test.build_charm(".")
+    resources = {
+        "superset-image": METADATA["resources"]["superset-image"][
+            "upstream-source"
+        ]
+    }
+    await deploy_and_relate_superset_charm(
+        ops_test, UI_NAME, UI_CONFIG, charm, resources
+    )

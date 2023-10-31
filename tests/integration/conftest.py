@@ -9,6 +9,7 @@ import pytest
 import pytest_asyncio
 from helpers import (
     CHARM_FUNCTIONS,
+    METADATA,
     NGINX_NAME,
     POSTGRES_NAME,
     REDIS_NAME,
@@ -36,13 +37,24 @@ async def deploy(ops_test: OpsTest):
             timeout=2000,
         )
 
+    charm = await ops_test.build_charm(".")
+    resources = {
+        "superset-image": METADATA["resources"]["superset-image"][
+            "upstream-source"
+        ]
+    }
+
+    # Iterate through UI, worker and beat charms
     for function, alias in CHARM_FUNCTIONS.items():
         app_name = f"superset-k8s-{alias}"
         superset_config = {"charm-function": function}
+
+        # Load examples for the UI charm
         if app_name == UI_NAME:
-            superset_config.update({"load-examples": True})
+            superset_config.update({"load-examples": "True"})
+
         await deploy_and_relate_superset_charm(
-            ops_test, app_name, superset_config
+            ops_test, app_name, superset_config, charm, resources
         )
 
     await ops_test.model.integrate(UI_NAME, NGINX_NAME)
