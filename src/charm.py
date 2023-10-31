@@ -259,6 +259,7 @@ class SupersetK8SCharm(CharmBase):
             "HTTP_PROXY": self.config.get("http-proxy"),
             "HTTPS_PROXY": self.config.get("https-proxy"),
             "NO_PROXY": self.config.get("no-proxy"),
+            "SUPERSET_LOAD_EXAMPLES": self.config.get("load-examples"),
         }
         return env
 

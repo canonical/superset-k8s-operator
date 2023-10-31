@@ -107,6 +107,47 @@ juju relate superset-k8s nginx-ingress-integrator
 
 Once deployed, the hostname will default to the name of the application (superset-k8s), and can be configured using the external-hostname configuration on the Superset operator.
 
+## Backup and restore
+### Setting up storage
+Apache Superset is a stateless application, all of the metadata is stored in the PostgreSQL relation. Therefore backup and restore is achieved through backup and restoration of this data. A requirement for this is an [AWS S3 bucket](https://aws.amazon.com/s3/) for use with the [S3 integrator charm](https://charmhub.io/s3-integrator).
+
+```
+# Deploy the s3-integrator charm
+juju deploy s3-integrator
+
+# Provide S3 credentials
+juju run s3-integrator/leader sync-s3-credentials access-key=<your_key> secret-key=<your_secret_key>
+
+# Configure the s3-integrator
+juju config s3-integrator \
+    endpoint="https://s3.eu-west-2.amazonaws.com" \
+    bucket="superset-backup-bucket-1" \
+    path="/superset-backup" \
+    region="eu-west-2"
+
+# Relate postgres
+juju relate s3-integratior postgresql-k8s
+```
+
+More details and configuration values can be found in the [documentation for the PostgreSQL K8s charm](https://charmhub.io/postgresql-k8s/docs/h-configure-s3-aws)
+
+### Create and list backups
+```
+# Create a backup
+juju run postgresql-k8s/leader create-backup --wait 5m
+# List backups
+juju run postgresql-k8s/leader list-backups
+```
+More details found [here](https://charmhub.io/postgresql-k8s/docs/h-create-and-list-backups).
+
+### Restore a backup
+```
+# Check available backups
+juju run postgresql-k8s/leader list-backups
+# Restore backup by ID
+juju run postgresql-k8s/leader restore backup-id=YYYY-MM-DDTHH:MM:SSZ --wait 5m
+```
+More details found [here](https://charmhub.io/postgresql-k8s/docs/h-restore-backup).
 
 ## Contributing
 Please see the [Juju SDK documentation](https://juju.is/docs/sdk) for more information about developing and improving charms and [Contributing](CONTRIBUTING.md) for developer guidance.
