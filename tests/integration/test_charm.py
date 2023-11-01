@@ -37,24 +37,6 @@ class TestDeployment:
         response = requests.get(url, timeout=300, verify=False)  # nosec
         assert response.status_code == 200
 
-    async def test_restart_action(self, ops_test: OpsTest):
-        """Removes an existing connector confirms database removed."""
-        await restart_application(ops_test)
-        assert (
-            ops_test.model.applications[UI_NAME].units[0].workload_status
-            == "maintenance"
-        )
-        await ops_test.model.wait_for_idle(
-            apps=[UI_NAME],
-            status="active",
-            raise_on_blocked=False,
-            timeout=600,
-        )
-        assert (
-            ops_test.model.applications[UI_NAME].units[0].workload_status
-            == "active"
-        )
-
     async def test_charm_crash(self, ops_test: OpsTest):
         """Test backup and restore functionality.
 
@@ -77,3 +59,21 @@ class TestDeployment:
 
         chart_count = await get_chart_count(ops_test, url, headers)
         assert chart_count == new_charts
+
+    async def test_restart_action(self, ops_test: OpsTest):
+        """Removes an existing connector confirms database removed."""
+        await restart_application(ops_test)
+        assert (
+            ops_test.model.applications[UI_NAME].units[0].workload_status
+            == "maintenance"
+        )
+        await ops_test.model.wait_for_idle(
+            apps=[UI_NAME],
+            status="active",
+            raise_on_blocked=False,
+            timeout=600,
+        )
+        assert (
+            ops_test.model.applications[UI_NAME].units[0].workload_status
+            == "active"
+        )
