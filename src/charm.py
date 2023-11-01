@@ -13,9 +13,10 @@ https://discourse.charmhub.io/t/4208
 import logging
 
 from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
+from charms.data_platform_libs.v0.data_models import TypedCharmBase
 from charms.nginx_ingress_integrator.v0.nginx_route import require_nginx_route
 from charms.redis_k8s.v0.redis import RedisRelationCharmEvents, RedisRequires
-from ops.charm import CharmBase, ConfigChangedEvent, PebbleReadyEvent
+from ops.charm import ConfigChangedEvent, PebbleReadyEvent
 from ops.framework import StoredState
 from ops.main import main
 from ops.model import (
@@ -26,24 +27,19 @@ from ops.model import (
 )
 from ops.pebble import CheckStatus
 
-from literals import (
-    APP_NAME,
-    APPLICATION_PORT,
-    UI_FUNCTIONS,
-    VALID_CHARM_FUNCTIONS,
-    VALID_ROLES,
-)
+from literals import APP_NAME, APPLICATION_PORT, UI_FUNCTIONS
 from log import log_event_handler
 from relations.postgresql import Database
 from relations.redis import Redis
 from state import State
+from structured_config import CharmConfig
 from utils import generate_random_string, load_superset_files
 
 # Log messages can be retrieved using juju debug-log
 logger = logging.getLogger(__name__)
 
 
-class SupersetK8SCharm(CharmBase):
+class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
     """Charm the service.
 
     Attrs:
@@ -51,7 +47,10 @@ class SupersetK8SCharm(CharmBase):
         external_hostname: DNS listing used for external connections.
         on: redis relation events from redis_k8s library
         _stored: charm stored state
+        config_type: the charm structured config
     """
+
+    config_type = CharmConfig
 
     on = RedisRelationCharmEvents()
     _stored = StoredState()
@@ -198,45 +197,23 @@ class SupersetK8SCharm(CharmBase):
 
         event.set_results({"result": f"{APP_NAME} successfully restarted"})
 
-    def _validate_config_params(self):
-        """Validate that configuration is valid.
-
-        Raises:
-            ValueError: in case when invalid charm-funcion is entered
-                        in case when self-registration-role is not valid
-                        in case when a config value is an empty string
-        """
-        charm_function = self.model.config["charm-function"]
-        if charm_function not in VALID_CHARM_FUNCTIONS:
-            raise ValueError(
-                f"config: invalid charm function {charm_function!r}"
-            )
-        default_role = self.config["self-registration-role"]
-        if default_role not in VALID_ROLES:
-            raise ValueError(
-                f"config: invalid self-registration role {default_role!r}"
-            )
-        for key, value in self.config.items():
-            if value == "":
-                raise ValueError(f"value {key} cannot be an empty string.")
-
     def _create_env(self):
         """Create state values from config to be used as environment variables.
 
         Returns:
             env: dictionary of environment variables
         """
-        superset_secret = self.config.get("superset-secret-key") or (
-            self._state.secret_key or generate_random_string(32)
-        )
+
+        if self.config["superset-secret-key"]:
+            superset_secret = self.config["superset-secret-key"]
+        else:
+            superset_secret = self._state.secret_key or generate_random_string(32)
         self._state.superset_key = superset_secret
 
-        charm_function = self.config["charm-function"]
-        admin_email = self.config["oauth-admin-email"]
         env = {
             "SUPERSET_SECRET_KEY": superset_secret,
             "ADMIN_PASSWORD": self.config["admin-password"],
-            "CHARM_FUNCTION": charm_function,
+            "CHARM_FUNCTION": self.config["charm-function"].value,
             "SQL_ALCHEMY_URI": self._state.sql_alchemy_uri,
             "REDIS_HOST": self._state.redis_host,
             "REDIS_PORT": self._state.redis_port,
@@ -253,15 +230,17 @@ class SupersetK8SCharm(CharmBase):
             "SQLALCHEMY_POOL_SIZE": self.config["sqlalchemy-pool-size"],
             "SQLALCHEMY_POOL_TIMEOUT": self.config["sqlalchemy-pool-timeout"],
             "SQLALCHEMY_MAX_OVERFLOW": self.config["sqlalchemy-max-overflow"],
-            "GOOGLE_KEY": self.config.get("google-client-id"),
-            "GOOGLE_SECRET": self.config.get("google-client-secret"),
-            "OAUTH_DOMAIN": self.config.get("oauth-domain"),
-            "OAUTH_ADMIN_EMAIL": admin_email,
-            "SELF_REGISTRATION_ROLE": self.config["self-registration-role"],
-            "HTTP_PROXY": self.config.get("http-proxy"),
-            "HTTPS_PROXY": self.config.get("https-proxy"),
-            "NO_PROXY": self.config.get("no-proxy"),
-            "SUPERSET_LOAD_EXAMPLES": self.config.get("load-examples"),
+            "GOOGLE_KEY": self.config["google-client-id"],
+            "GOOGLE_SECRET": self.config["google-client-secret"],
+            "OAUTH_DOMAIN": self.config["oauth-domain"],
+            "OAUTH_ADMIN_EMAIL": self.config["oauth-admin-email"],
+            "SELF_REGISTRATION_ROLE": self.config[
+                "self-registration-role"
+            ].value,
+            "HTTP_PROXY": self.config["http-proxy"],
+            "HTTPS_PROXY": self.config["https-proxy"],
+            "NO_PROXY": self.config["no-proxy"],
+            "SUPERSET_LOAD_EXAMPLES": self.config["load-examples"],
         }
         return env
 
@@ -276,12 +255,6 @@ class SupersetK8SCharm(CharmBase):
             return
 
         if not self.ready_to_start():
-            return
-
-        try:
-            self._validate_config_params()
-        except (RuntimeError, ValueError) as err:
-            self.unit.status = BlockedStatus(str(err))
             return
 
         logger.info("configuring %s", APP_NAME)

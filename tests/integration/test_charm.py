@@ -66,7 +66,7 @@ class TestDeployment:
         assert chart_count == original_charts - 1
 
     async def test_restart_action(self, ops_test: OpsTest):
-        """Removes an existing connector confirms database removed."""
+        """Restarts Superset application."""
         await restart_application(ops_test)
         assert (
             ops_test.model.applications[UI_NAME].units[0].workload_status
