@@ -203,11 +203,12 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         Returns:
             env: dictionary of environment variables
         """
-
         if self.config["superset-secret-key"]:
             superset_secret = self.config["superset-secret-key"]
         else:
-            superset_secret = self._state.secret_key or generate_random_string(32)
+            superset_secret = self._state.secret_key or generate_random_string(
+                32
+            )
         self._state.superset_key = superset_secret
 
         env = {

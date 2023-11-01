@@ -1114,9 +1114,6 @@ class DataProvides(DataRelation):
         # Return the content that was removed
         return True
 
-        # Return the content that was removed
-        return True
-
     # Mandatory internal overrides
 
     @juju_secrets_only
