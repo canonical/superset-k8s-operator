@@ -24,7 +24,10 @@ API_AUTH_PAYLOAD = {
     "password": "admin",
     "provider": "db",
 }
-UI_CONFIG = {"charm-function": "app-gunicorn"}
+UI_CONFIG = {
+    "charm-function": "app-gunicorn",
+    "superset-secret-key": "juyIKSS7cFAqJlV",
+}
 
 
 async def deploy_and_relate_superset_charm(
@@ -136,22 +139,36 @@ async def get_access_token(ops_test: OpsTest, base_url):
     return headers
 
 
-async def get_chart_count(ops_test: OpsTest, base_url, headers):
+async def get_chart_count(ops_test: OpsTest, url, headers):
     """Count Superset charts.
 
     Args:
         ops_test: PyTest object.
-        base_url: Superset URL.
+        url: Superset URL.
         headers: Request headers with access token.
 
     Returns:
         Count of Superset charts.
     """
     chart_response = requests.get(
-        base_url + "/api/v1/chart/", headers=headers, timeout=30
+        url + "/api/v1/chart/", headers=headers, timeout=30
     )
     charts = chart_response.json()
     return charts["count"]
+
+
+async def delete_chart(ops_test: OpsTest, url, headers):
+    """Delete chart `131`.
+
+    Args:
+        ops_test: PyTest object.
+        url: Superset URL.
+        headers: Request headers with access token.
+    """
+    response = requests.delete(
+        url + "/api/v1/chart/131", headers=headers, timeout=30
+    )
+    assert response.status_code == 200
 
 
 async def simulate_crash(ops_test: OpsTest):

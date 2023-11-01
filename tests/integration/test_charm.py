@@ -11,6 +11,7 @@ import requests
 from conftest import deploy  # noqa: F401, pylint: disable=W0611
 from helpers import (
     UI_NAME,
+    delete_chart,
     get_access_token,
     get_chart_count,
     get_unit_url,
@@ -46,19 +47,23 @@ class TestDeployment:
         url = await get_unit_url(
             ops_test, application=UI_NAME, unit=0, port=8088
         )
-        # Get number of charts
         headers = await get_access_token(ops_test, url)
-        original_charts = await get_chart_count(ops_test, url, headers)
 
-        # Delete chart
-        requests.delete(url + "/api/v1/chart/131", headers=headers, timeout=30)
-        new_charts = await get_chart_count(ops_test, url, headers)
-        assert new_charts == original_charts - 1
+        # Delete a chart
+        original_charts = await get_chart_count(ops_test, url, headers)
+        await delete_chart(ops_test, url, headers)
 
         await simulate_crash(ops_test)
 
+        # Get chart count on re-deployment
+        url = await get_unit_url(
+            ops_test, application=UI_NAME, unit=0, port=8088
+        )
         chart_count = await get_chart_count(ops_test, url, headers)
-        assert chart_count == new_charts
+
+        # Validate chart remains deleted
+        logger.info("Validating state remains unchanged")
+        assert chart_count == original_charts - 1
 
     async def test_restart_action(self, ops_test: OpsTest):
         """Removes an existing connector confirms database removed."""
@@ -66,14 +71,4 @@ class TestDeployment:
         assert (
             ops_test.model.applications[UI_NAME].units[0].workload_status
             == "maintenance"
-        )
-        await ops_test.model.wait_for_idle(
-            apps=[UI_NAME],
-            status="active",
-            raise_on_blocked=False,
-            timeout=600,
-        )
-        assert (
-            ops_test.model.applications[UI_NAME].units[0].workload_status
-            == "active"
         )

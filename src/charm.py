@@ -226,9 +226,11 @@ class SupersetK8SCharm(CharmBase):
         Returns:
             env: dictionary of environment variables
         """
-        superset_secret = self.config.get(
-            "superset-secret-key"
-        ) or generate_random_string(32)
+        superset_secret = self.config.get("superset-secret-key") or (
+            self._state.secret_key or generate_random_string(32)
+        )
+        self._state.superset_key = superset_secret
+
         charm_function = self.config["charm-function"]
         admin_email = self.config["oauth-admin-email"]
         env = {

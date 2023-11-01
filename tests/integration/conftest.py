@@ -47,7 +47,10 @@ async def deploy(ops_test: OpsTest):
     # Iterate through UI, worker and beat charms
     for function, alias in CHARM_FUNCTIONS.items():
         app_name = f"superset-k8s-{alias}"
-        superset_config = {"charm-function": function}
+        superset_config = {
+            "charm-function": function,
+            "superset-secret-key": "juyIKSS7cFAqJlV",
+        }
 
         # Load examples for the UI charm
         if app_name == UI_NAME:
