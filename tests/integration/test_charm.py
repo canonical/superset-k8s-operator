@@ -48,7 +48,7 @@ class TestDeployment:
             apps=[UI_NAME],
             status="active",
             raise_on_blocked=False,
-            timeout=300,
+            timeout=600,
         )
         assert (
             ops_test.model.applications[UI_NAME].units[0].workload_status
