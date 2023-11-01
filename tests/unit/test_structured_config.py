@@ -52,7 +52,7 @@ def test_product_related_values(_harness) -> None:
 
 
 def check_valid_values(_harness, field: str, accepted_values: list) -> None:
-    """Check the correcteness of the passed values for a field.
+    """Check the correctness of the passed values for a field.
 
     Args:
         _harness: Harness object.
