@@ -158,16 +158,20 @@ async def get_chart_count(ops_test: OpsTest, url, headers):
 
 
 async def delete_chart(ops_test: OpsTest, url, headers):
-    """Delete chart `131`.
+    """Delete chart example chart `131`.
 
     Args:
         ops_test: PyTest object.
         url: Superset URL.
         headers: Request headers with access token.
     """
-    response = requests.delete(
-        url + "/api/v1/chart/131", headers=headers, timeout=30
-    )
+    try:
+        response = requests.delete(
+            url + "/api/v1/chart/131", headers=headers, timeout=30
+        )
+    except Exception as e:
+        logger.error(f"Error deleting chart caused by: {e}")
+
     assert response.status_code == 200
 
 
