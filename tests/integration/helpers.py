@@ -28,6 +28,7 @@ UI_CONFIG = {
     "charm-function": "app-gunicorn",
     "superset-secret-key": "juyIKSS7cFAqJlV",
 }
+SUPERSET_SECRET_KEY = "juyIKSS7cFAqJlV"  # nosec
 
 
 async def deploy_and_relate_superset_charm(

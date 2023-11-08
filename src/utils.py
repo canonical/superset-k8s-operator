@@ -30,7 +30,7 @@ def charm_path(file_path):
     return path
 
 
-def generate_random_string(length) -> str:
+def random_string(length) -> str:
     """Create randomized string for use as app passwords and username ID.
 
     Args:

@@ -14,6 +14,7 @@ from helpers import (
     NGINX_NAME,
     POSTGRES_NAME,
     REDIS_NAME,
+    SUPERSET_SECRET_KEY,
     UI_NAME,
     deploy_and_relate_superset_charm,
 )
@@ -52,7 +53,7 @@ async def deploy(ops_test: OpsTest):
             app_name = f"superset-k8s-{alias}"
             superset_config = {
                 "charm-function": function,
-                "superset-secret-key": "juyIKSS7cFAqJlV",
+                "superset-secret-key": SUPERSET_SECRET_KEY,
             }
 
             # Load examples for the UI charm
