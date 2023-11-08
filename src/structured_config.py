@@ -71,6 +71,7 @@ class CharmConfig(BaseConfigModel):
     http_proxy: Optional[str]
     https_proxy: Optional[str]
     no_proxy: Optional[str]
+    load_examples: bool
 
     @validator("*", pre=True)
     @classmethod

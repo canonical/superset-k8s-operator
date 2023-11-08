@@ -33,7 +33,7 @@ from relations.postgresql import Database
 from relations.redis import Redis
 from state import State
 from structured_config import CharmConfig
-from utils import generate_random_string, load_superset_files
+from utils import load_superset_files, random_string
 
 # Log messages can be retrieved using juju debug-log
 logger = logging.getLogger(__name__)
@@ -203,10 +203,11 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         Returns:
             env: dictionary of environment variables
         """
-        if "superset-secret-key" in self.config:
+        if self.config["superset-secret-key"]:
             superset_secret = self.config["superset-secret-key"]
         else:
-            superset_secret = generate_random_string(32)
+            superset_secret = self._state.secret_key or random_string(32)
+        self._state.superset_key = superset_secret
 
         env = {
             "SUPERSET_SECRET_KEY": superset_secret,
@@ -238,6 +239,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "HTTP_PROXY": self.config["http-proxy"],
             "HTTPS_PROXY": self.config["https-proxy"],
             "NO_PROXY": self.config["no-proxy"],
+            "SUPERSET_LOAD_EXAMPLES": self.config["load-examples"],
         }
         return env
 

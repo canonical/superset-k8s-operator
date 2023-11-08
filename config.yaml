@@ -137,3 +137,8 @@ options:
     description: |
       A comma-separated list of host names that should not go through any proxy.
     type: string
+  load-examples:
+    description: |
+      Loads example data source with corresponding data sets and charts for testing.
+    type: boolean
+    default: False
