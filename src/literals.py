@@ -10,9 +10,6 @@ CONFIG_FILES = ["superset_config.py", "custom_sso_security_manager.py"]
 CONFIG_PATH = "/app/pythonpath"
 INIT_PATH = "/app/k8s"
 INIT_FILES = [
-    "k8s-bootstrap.sh",
-    "k8s-init.sh",
-    "requirements-local.txt",
     "superset_config.py",
     "custom_sso_security_manager.py",
 ]
