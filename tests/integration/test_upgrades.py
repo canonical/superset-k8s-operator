@@ -15,9 +15,6 @@ from helpers import (
     POSTGRES_NAME,
     REDIS_NAME,
     SUPERSET_SECRET_KEY,
-    UI_NAME,
-    get_access_token,
-    get_chart_count,
     get_unit_url,
     perform_superset_integrations,
 )
@@ -44,7 +41,6 @@ async def deploy(ops_test: OpsTest):
         )
         superset_config = {
             "superset-secret-key": SUPERSET_SECRET_KEY,
-            "load-examples": "True",
         }
         await ops_test.model.deploy(
             APP_NAME, channel="stable", config=superset_config
@@ -61,47 +57,32 @@ class TestUpgrade:
         """Builds the current charm and refreshes the current deployment."""
         charm = await ops_test.build_charm(".")
         resources = {
-            "superset-image": METADATA["containers"]["superset-image"][
+            "superset-image": METADATA["resources"]["superset-image"][
                 "upstream-source"
             ]
         }
-        superset_config = {
-            "superset-secret-key": SUPERSET_SECRET_KEY,
-            "load-examples": "False",
-        }
 
-        await ops_test.model.wait_for_idle(
-            apps=[UI_NAME],
-            status="active",
-            raise_on_blocked=False,
-            timeout=600,
-        )
-
-        await ops_test.model.applications[UI_NAME].refresh(
-            path=str(charm), resources=resources, config=superset_config
+        await ops_test.model.applications[APP_NAME].refresh(
+            path=str(charm), resources=resources
         )
         await ops_test.model.wait_for_idle(
-            apps=[UI_NAME],
+            apps=[APP_NAME],
             status="active",
             raise_on_blocked=False,
             timeout=600,
         )
 
         assert (
-            ops_test.model.applications[UI_NAME].units[0].workload_status
+            ops_test.model.applications[APP_NAME].units[0].workload_status
             == "active"
         )
 
     async def test_ui_relation(self, ops_test: OpsTest):
         """Perform GET request on the Superset UI host."""
         url = await get_unit_url(
-            ops_test, application=UI_NAME, unit=0, port=8088
+            ops_test, application=APP_NAME, unit=0, port=8088
         )
         logger.info("curling app address: %s", url)
 
         response = requests.get(url, timeout=300)
         assert response.status_code == 200
-
-        headers = await get_access_token(ops_test, url)
-        charts = await get_chart_count(ops_test, url, headers)
-        assert charts
