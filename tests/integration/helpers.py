@@ -24,6 +24,7 @@ API_AUTH_PAYLOAD = {
     "password": "admin",
     "provider": "db",
 }
+APP_NAME = "superset-k8s"
 UI_CONFIG = {
     "charm-function": "app-gunicorn",
     "superset-secret-key": "juyIKSS7cFAqJlV",
