@@ -1,7 +1,7 @@
 # Copyright 2023 Canonical Ltd.
 # See LICENSE file for licensing details.
 
-"""Temporal charm upgrades integration tests."""
+"""Superset charm upgrades integration tests."""
 
 import asyncio
 import logging
