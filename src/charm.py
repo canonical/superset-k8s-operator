@@ -27,7 +27,7 @@ from ops.model import (
 )
 from ops.pebble import CheckStatus
 
-from literals import APP_NAME, APPLICATION_PORT, UI_FUNCTIONS
+from literals import APP_NAME, APPLICATION_PORT, CONFIG_PATH, UI_FUNCTIONS
 from log import log_event_handler
 from relations.postgresql import Database
 from relations.redis import Redis
@@ -240,6 +240,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "HTTPS_PROXY": self.config["https-proxy"],
             "NO_PROXY": self.config["no-proxy"],
             "SUPERSET_LOAD_EXAMPLES": self.config["load-examples"],
+            "PYTHONPATH": CONFIG_PATH,
         }
         return env
 

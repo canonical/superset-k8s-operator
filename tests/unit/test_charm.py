@@ -108,6 +108,7 @@ class TestCharm(TestCase):
                         "HTTPS_PROXY": None,
                         "NO_PROXY": None,
                         "SUPERSET_LOAD_EXAMPLES": False,
+                        "PYTHONPATH": "/app/pythonpath",
                     },
                     "on-check-failure": {"up": "ignore"},
                 }
@@ -185,6 +186,7 @@ class TestCharm(TestCase):
                         "HTTPS_PROXY": "proxy:1234",
                         "NO_PROXY": ".canonical.com",
                         "SUPERSET_LOAD_EXAMPLES": False,
+                        "PYTHONPATH": "/app/pythonpath",
                     },
                     "on-check-failure": {"up": "ignore"},
                 },

@@ -26,7 +26,7 @@ resources:
   superset-image:
     type: oci-image
     description: OCI image for superset
-    upstream-source: apache/superset:2.1.0
+    upstream-source: ghcr.io/canonical/charmed-superset-rock:2.1.0-22.04-edge
 
 requires:
   nginx-route:
