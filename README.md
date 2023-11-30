@@ -149,6 +149,49 @@ juju run postgresql-k8s/leader restore backup-id=YYYY-MM-DDTHH:MM:SSZ --wait 5m
 ```
 More details found [here](https://charmhub.io/postgresql-k8s/docs/h-restore-backup).
 
+## Scaling
+The Superset charm consists of 3 services (server, worker and beat), the server and worker services are independently scalable.
+- Server (`app-gunicorn`): Web server.
+- Worker (`worker`): for execution of jobs.
+- Beat (`beat`): for job scheduling.
+Communication between these services is via Redis which acts as a message broker. Due to the nature of the beat scheduler, it should not be scaled as this could cause some conflicing schedules. The remaining services can be scaled according to your needs.
+
+To scale an application, run:
+```
+juju scale-application <application_name> <num_of_desired_units>
+```
+Note: The applications must already be related to Redis as described above, or they will not be able to communicate.
+
+Example for scaling the superset-k8s-worker below:
+```
+# deploy postgresql and redis charms
+juju deploy postgresql-k8s --trust
+juju deploy redis-k8s --channel=edge
+
+# deploy the web server (with an alias)
+juju deploy superset-k8s superset-k8s-ui
+
+# deploy a worker
+juju deploy superset-k8s --config charm-function=worker superset-k8s-worker
+
+# deploy the beat scheduler
+juju deploy superset-k8s --config charm-function=beat superset-k8s-beat
+
+# relate applications
+juju relate superset-k8s-ui postgresql-k8s
+juju relate superset-k8s-ui redis-k8s
+juju relate superset-k8s-worker postgresql-k8s
+juju relate superset-k8s-worker redis-k8s
+juju relate superset-k8s-beat postgresql-k8s
+juju relate superset-k8s-beat redis-k8s
+
+# scale worker up
+juju scale-application superset-k8s-worker 3
+
+# scale worker down
+juju scale-application superset-k8s-worker 1
+```
+
 ## Contributing
 Please see the [Juju SDK documentation](https://juju.is/docs/sdk) for more information about developing and improving charms and [Contributing](CONTRIBUTING.md) for developer guidance.
 

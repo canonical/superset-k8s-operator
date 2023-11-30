@@ -89,6 +89,9 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         self.framework.observe(self.on.config_changed, self._on_config_changed)
         self.framework.observe(self.on.restart_action, self._on_restart)
         self.framework.observe(self.on.update_status, self._on_update_status)
+        self.framework.observe(
+            self.on.peer_relation_changed, self._on_peer_relation_changed
+        )
 
         # Handle Ingress
         self._require_nginx_route()
@@ -129,6 +132,19 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         Args:
             event: The event triggered when the relation changed.
         """
+        self.unit.status = WaitingStatus(f"configuring {APP_NAME}")
+        self._update(event)
+
+    @log_event_handler(logger)
+    def _on_peer_relation_changed(self, event):
+        """Handle peer relation changes.
+
+        Args:
+            event: The event triggered when the peer relation changed.
+        """
+        if self.unit.is_leader():
+            return
+
         self.unit.status = WaitingStatus(f"configuring {APP_NAME}")
         self._update(event)
 
@@ -197,20 +213,27 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         event.set_results({"result": f"{APP_NAME} successfully restarted"})
 
+    def _handle_superset_secret(self):
+        """Set superset secret in _state."""
+        if not self.unit.is_leader():
+            return
+
+        if self.config["superset-secret-key"]:
+            superset_secret = self.config["superset-secret-key"]
+        else:
+            superset_secret = self._state.secret_key or random_string(32)
+        self._state.superset_secret_key = superset_secret
+
     def _create_env(self):
         """Create state values from config to be used as environment variables.
 
         Returns:
             env: dictionary of environment variables
         """
-        if self.config["superset-secret-key"]:
-            superset_secret = self.config["superset-secret-key"]
-        else:
-            superset_secret = self._state.secret_key or random_string(32)
-        self._state.superset_key = superset_secret
+        self._handle_superset_secret()
 
         env = {
-            "SUPERSET_SECRET_KEY": superset_secret,
+            "SUPERSET_SECRET_KEY": self._state.superset_secret_key,
             "ADMIN_PASSWORD": self.config["admin-password"],
             "CHARM_FUNCTION": self.config["charm-function"].value,
             "SQL_ALCHEMY_URI": self._state.sql_alchemy_uri,
