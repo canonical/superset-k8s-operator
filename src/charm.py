@@ -72,7 +72,10 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         # Handle postgresql relation
         self.postgresql_db = DatabaseRequires(
-            self, relation_name="postgresql_db", database_name="superset"
+            self,
+            relation_name="postgresql_db",
+            database_name="superset",
+            extra_user_roles="admin",
         )
         self.database = Database(self)
 
