@@ -9,6 +9,7 @@ from pathlib import Path
 
 import requests
 import yaml
+from celery import Celery
 from pytest_operator.plugin import OpsTest
 
 logger = logging.getLogger(__name__)
@@ -19,6 +20,7 @@ POSTGRES_NAME = "postgresql-k8s"
 REDIS_NAME = "redis-k8s"
 UI_NAME = "superset-k8s-ui"
 CHARM_FUNCTIONS = {"app-gunicorn": "ui", "beat": "beat", "worker": "worker"}
+SCALABLE_SERVICES = {"app-gunicorn": "ui", "worker": "worker"}
 API_AUTH_PAYLOAD = {
     "username": "admin",
     "password": "admin",
@@ -199,3 +201,42 @@ async def simulate_crash(ops_test: OpsTest):
     await deploy_and_relate_superset_charm(
         ops_test, UI_NAME, UI_CONFIG, charm, resources
     )
+
+
+async def scale(ops_test: OpsTest, app, units):
+    """Scale the application to the provided number and wait for idle.
+
+    Args:
+        ops_test: PyTest object.
+        app: Application to be scaled.
+        units: Number of units required.
+    """
+    await ops_test.model.applications[app].scale(scale=units)
+
+    # Wait for model to settle
+    await ops_test.model.wait_for_idle(
+        apps=[app],
+        status="active",
+        idle_period=30,
+        raise_on_blocked=True,
+        timeout=600,
+        wait_for_exact_units=units,
+    )
+
+
+async def get_active_workers(ops_test: OpsTest):
+    """Get active superset workers from Redis broker.
+
+    Args:
+        ops_test: PyTest object.
+
+    Returns:
+        active_workers: dictionary of active works and their jobs.
+    """
+    status = await ops_test.model.get_status()  # noqa: F821
+    redis_ip = status["applications"][REDIS_NAME]["units"][f"{REDIS_NAME}/0"][
+        "address"
+    ]
+    app = Celery("superset", broker=f"redis://{redis_ip}:6379/4")
+    active_workers = app.control.inspect().active()
+    return active_workers

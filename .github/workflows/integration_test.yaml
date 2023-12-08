@@ -11,6 +11,7 @@ jobs:
         tox-environments:
           - integration-charm
           - integration-upgrades
+          - integration-scaling
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
