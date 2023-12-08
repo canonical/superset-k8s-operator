@@ -150,11 +150,11 @@ juju run postgresql-k8s/leader restore backup-id=YYYY-MM-DDTHH:MM:SSZ --wait 5m
 More details found [here](https://charmhub.io/postgresql-k8s/docs/h-restore-backup).
 
 ## Scaling
-The Superset charm consists of 3 services (server, worker and beat), the server and worker services are independently scalable.
+The Superset charm consists of 3 services deployed as separate applications (below), which scale independently.
 - Server (`app-gunicorn`): Web server.
 - Worker (`worker`): for execution of jobs.
 - Beat (`beat`): for job scheduling.
-Communication between these services is via Redis which acts as a message broker. Due to the nature of the beat scheduler, it should not be scaled as this could cause some conflicing schedules. The remaining services can be scaled according to your needs.
+Communication between these applications is via Redis which acts as a message broker. Due to the nature of the beat scheduler, it should not be scaled as this could cause some conflicing schedules. The remaining applications can be scaled according to your needs.
 
 To scale an application, run:
 ```
