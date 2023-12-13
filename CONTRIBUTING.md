@@ -93,6 +93,10 @@ juju model-config update-status-hook-interval=1m
 ```
 ### Deploy charm
 ```
+# Copy the repository
+git clone https://github.com/canonical/superset-k8s-operator.git
+cd superset-k8s-operator
+
 # Pack the charm:
 charmcraft pack
 
@@ -116,10 +120,10 @@ Redis acts as both a cache and message broker for Superset services. It's a requ
 juju deploy redis-k8s --channel edge
 
 # relate redis charm
-juju relate redis-k8s superset-k8s
+juju relate redis-k8s superset-k8s-ui
 
 # remove relation
-juju remove-relation redis-k8s superset-k8s
+juju remove-relation redis-k8s superset-k8s-ui
 
 # remove application
 juju remove-application redis-k8s
@@ -133,10 +137,10 @@ PostgreSQL is used as the database that stores Superset metadata (slices, connec
 juju deploy postgresql-k8s --channel 14/stable
 
 # relate postgresql charm
-juju relate postgresql-k8s superset-k8s
+juju relate postgresql-k8s superset-k8s-ui
 
 # remove relation
-juju remove-relation postgresql-k8s superset-k8s
+juju remove-relation postgresql-k8s superset-k8s-ui
 
 # remove application
 juju remove-application postgresql-k8s
