@@ -1,58 +1,78 @@
 MACHINE_NAME = superset-vm
 REPO_FOLDER = superset-k8s-operator
+CHARM_NAME = superset-k8s
+INGRESS_DNS = subjectAltName=DNS:superset-k8s
 REPO = https://github.com/canonical/$(REPO_FOLDER).git
 
-.PHONY: dev build install
+.PHONY: dev build install clean
 
-dev: setup-multipass install-microk8s install-charmcraft install-juju clone
+dev: install-multipass setup-multipass
 
-build: pack
+build: create-model deploy-postgresql deploy-redis setup-ingress deploy-ingress deploy-superset
 
-install: deploy-charm deploy-redis deploy-postgres
+install: relate-ui relate-worker relate-beat
 
-install: 
+clean: remove-charms remove-model remove-vm
+
+install-multipass:
+	sudo snap install multipass
 
 setup-multipass:
-	multipass launch -n $(MACHINE_NAME) -m 8G -c 4 -d 30G charm-dev
+	multipass launch -n $(MACHINE_NAME) -m 8G -c 4 -d 30G --name $(MACHINE_NAME) charm-dev
 
-install-microk8s:
-	multipass exec $(MACHINE_NAME) -- sudo snap install microk8s --channel=1.27-strict/stable
-	multipass exec $(MACHINE_NAME) -- sudo snap alias microk8s.kubectl kubectl
-	multipass exec $(MACHINE_NAME) -- bash -c 'sudo usermod -a -G snap_microk8s $$(whoami)'
-	multipass exec $(MACHINE_NAME) -- microk8s status --wait-ready
-	multipass exec $(MACHINE_NAME) -- sudo microk8s.enable dns rbac hostpath-storage
-	multipass exec $(MACHINE_NAME) -- bash -c "microk8s.kubectl rollout status deployments/coredns -n kube-system -w --timeout=600s; \
-	microk8s.kubectl rollout status deployments/hostpath-provisioner -n kube-system -w --timeout=600s"
-	
-install-charmcraft:
-	multipass exec $(MACHINE_NAME) -- sudo snap install lxd --classic --channel=5.0/stable
-	multipass exec $(MACHINE_NAME) -- sudo snap install charmcraft --classic --channel=latest/stable
-	multipass exec $(MACHINE_NAME) -- lxd init --auto
-
-install-juju:
-	multipass exec $(MACHINE_NAME) -- sudo snap install juju --channel=3.1/stable
-	multipass exec $(MACHINE_NAME) -- mkdir -p /home/ubuntu/.local/share/juju
+create-model:
 	multipass exec $(MACHINE_NAME) -- juju bootstrap microk8s superset-controller
-	multipass exec $(MACHINE_NAME) -- juju add-model superset-k8s
+	multipass exec $(MACHINE_NAME) -- juju add-model $(CHARM_NAME)
 	multipass exec $(MACHINE_NAME) -- juju model-config logging-config="<root>=INFO;unit=DEBUG"
 	multipass exec $(MACHINE_NAME) -- juju model-config update-status-hook-interval=1m
-	multipass exec $(MACHINE_NAME) -- juju debug-log
+	multipass exec $(MACHINE_NAME) -- juju status
 
-clone:
-	multipass exec $(MACHINE_NAME) -- bash -c '[ -d "$(REPO_FOLDER)/.git" ] || git clone $(REPO)'
-
-pack:
-	multipass exec $(MACHINE_NAME) -- bash -c 'cd $(REPO_FOLDER) && charmcraft pack'
-
-deploy-charm:
-	multipass exec $(MACHINE_NAME) -- juju deploy /home/ubuntu/$(REPO_FOLDER)/superset-k8s_ubuntu-22.04-amd64.charm --resource superset-image=apache/superset:2.1.0 superset-k8s
-	multipass exec $(MACHINE_NAME) -- juju deploy /home/ubuntu/$(REPO_FOLDER)/superset-k8s_ubuntu-22.04-amd64.charm --resource superset-image=apache/superset:2.1.0 --config charm-function=worker superset-k8s-worker
-	multipass exec $(MACHINE_NAME) -- juju deploy /home/ubuntu/$(REPO_FOLDER)/superset-k8s_ubuntu-22.04-amd64.charm --resource superset-image=apache/superset:2.1.0 --config charm-function=beat superset-k8s-beat
+deploy-postgresql:
+	multipass exec $(MACHINE_NAME) -- juju deploy postgresql-k8s --channel=14/stable --trust
+	multipass exec $(MACHINE_NAME) -- juju wait-for application postgresql-k8s --query='status=="active"' --timeout 10m
 
 deploy-redis:
-	multipass exec $(MACHINE_NAME) -- juju deploy redis-k8s --channel edge
-	multipass exec $(MACHINE_NAME) -- juju relate redis-k8s superset-k8s
+	multipass exec $(MACHINE_NAME) -- juju deploy redis-k8s --channel=edge
 
-deploy-postgres:
-	multipass exec $(MACHINE_NAME) -- juju deploy postgresql-k8s --channel 14/stable
-	multipass exec $(MACHINE_NAME) -- juju relate postgresql-k8s superset-k8s
+deploy-superset:
+	multipass exec $(MACHINE_NAME) -- juju deploy $(CHARM_NAME) --channel=edge  $(CHARM_NAME)-ui
+	multipass exec $(MACHINE_NAME) -- juju deploy $(CHARM_NAME) --channel=edge --config charm-function=worker $(CHARM_NAME)-worker
+	multipass exec $(MACHINE_NAME) -- juju deploy $(CHARM_NAME) --channel=edge --config charm-function=beat $(CHARM_NAME)-beat
+	multipass exec $(MACHINE_NAME) -- juju wait-for application superset-k8s-beat --query='status=="blocked"' --timeout 10m
+
+relate-ui:
+	multipass exec $(MACHINE_NAME) -- juju relate $(CHARM_NAME)-ui postgresql-k8s
+	multipass exec $(MACHINE_NAME) -- juju relate $(CHARM_NAME)-ui redis-k8s
+	multipass exec $(MACHINE_NAME) -- juju relate $(CHARM_NAME)-ui nginx-ingress-integrator
+	multipass exec $(MACHINE_NAME) -- juju wait-for application superset-k8s-ui --query='status=="active"' --timeout 10m
+
+relate-worker:
+	multipass exec $(MACHINE_NAME) -- juju relate $(CHARM_NAME)-worker postgresql-k8s
+	multipass exec $(MACHINE_NAME) -- juju relate $(CHARM_NAME)-worker redis-k8s
+	multipass exec $(MACHINE_NAME) -- juju wait-for application superset-k8s-worker --query='status=="active"' --timeout 10m
+
+relate-beat:
+	multipass exec $(MACHINE_NAME) -- juju relate $(CHARM_NAME)-beat postgresql-k8s
+	multipass exec $(MACHINE_NAME) -- juju relate $(CHARM_NAME)-beat redis-k8s
+	multipass exec $(MACHINE_NAME) -- juju wait-for application superset-k8s-beat --query='status=="active"' --timeout 10m
+
+setup-ingress:
+	multipass exec $(MACHINE_NAME) -- openssl genrsa -out server.key 2048
+	multipass exec $(MACHINE_NAME) -- openssl req -new -key server.key -out server.csr -subj "/CN=superset-k8s"
+	multipass exec $(MACHINE_NAME) -- openssl x509 -req -days 365 -in server.csr -signkey server.key -out server.crt -ext $(INGRESS_DNS)
+	multipass exec $(MACHINE_NAME) -- kubectl create secret tls superset-tls --cert=server.crt --key=server.key
+
+deploy-ingress:
+	multipass exec $(MACHINE_NAME) -- juju deploy nginx-ingress-integrator --channel=edge --revision=71 --trust
+
+remove-charms:
+	multipass exec $(MACHINE_NAME) -- juju remove-application postgresql-k8s redis-k8s superset-k8s-ui superset-k8s-worker superset-k8s-beat nginx-ingress-integrator --force
+
+remove-model:
+	multipass exec $(MACHINE_NAME) -- juju destroy-model superset-k8s --release-storage --force --no-wait
+
+remove-vm:
+	multipass delete $(MACHINE_NAME)
+
+purge:
+	multipass purge
