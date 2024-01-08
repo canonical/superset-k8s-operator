@@ -42,7 +42,9 @@ newgrp snap_microk8s
 microk8s status --wait-ready
 
 # Enable the necessary Microk8s addons:
-sudo microk8s.enable dns rbac hostpath-storage
+sudo microk8s.enable dns 
+sudo microk8s.enable rbac 
+sudo microk8s.enable hostpath-storage
 
 # Wait for addons to be rolled out:
 microk8s.kubectl rollout status deployments/coredns -n kube-system -w --timeout=600s
