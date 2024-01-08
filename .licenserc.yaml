@@ -4,7 +4,7 @@ header:
     copyright-owner: Canonical Ltd.
     copyright-year: 2023
     content: |
-      Copyright [year] [owner]
+      Copyright 2023 [owner]
       See LICENSE file for licensing details.
   paths:
     - '**'
