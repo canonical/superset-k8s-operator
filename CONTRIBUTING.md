@@ -15,31 +15,48 @@ tox                      # runs 'format', 'lint', and 'unit' environments
 
 This charm is used to deploy Superset Server in a k8s cluster. For local deployment, follow the following steps:
 
-## Set up your development environment
+## Set up your development environment with Multipass [~ 10 mins]
+When you’re trying things out, it’s good to be in an isolated environment, so you don’t have to worry too much about cleanup. It’s also nice if you don’t need to bother too much with setup. In the Juju world you can get both by spinning up an Ubuntu virtual machine (VM) with Multipass, specifically, using their Juju-ready `charm-dev` blueprint.
+```
+sudo snap install multipass
+multipass launch --cpus 4 --memory 8G --disk 30G --name superset-vm charm-dev
+```
+That's it! Your dependencies are all set up, please run `multipass shell superset-vm` and skip to `Create a model`.
+
+## Set up your development environment without Multipass blueprint
 ### Install Microk8s
 ```
-# Install Microk8s from snap:
-sudo snap install microk8s --classic --channel=1.25
+# Install microk8s from snap:
+sudo snap install microk8s --channel=1.27-strict/stable
 
-# Add the 'ubuntu' user to the Microk8s group:
-sudo usermod -a -G microk8s ubuntu
+# Setup an alias for kubectl:
+sudo snap alias microk8s.kubectl kubectl
 
-# Give the 'ubuntu' user permissions to read the ~/.kube directory:
-sudo chown -f -R ubuntu ~/.kube
+# Add your user to the Microk8s group:
+sudo usermod -a -G snap_microk8s $USER
 
-# Create the 'microk8s' group:
-newgrp microk8s
+# Switch to the 'microk8s' group:
+newgrp snap_microk8s
+
+# Wait for microk8s to be ready:
+microk8s status --wait-ready
 
 # Enable the necessary Microk8s addons:
-microk8s enable hostpath-storage dns
+sudo microk8s.enable dns 
+sudo microk8s.enable rbac 
+sudo microk8s.enable hostpath-storage
+
+# Wait for addons to be rolled out:
+microk8s.kubectl rollout status deployments/coredns -n kube-system -w --timeout=600s
+microk8s.kubectl rollout status deployments/hostpath-provisioner -n kube-system -w --timeout=600s
 ```
 ### Install Charmcraft
 ```
 # Install lxd from snap:
-sudo snap install lxd --classic --channel=5.12/stable
+sudo snap install lxd --classic --channel=5.0/stable
 
 # Install charmcraft from snap:
-sudo snap install charmcraft --classic --channel=2.2/stable
+sudo snap install charmcraft --classic --channel=latest/stable
 
 # Charmcraft relies on LXD. Configure LXD:
 lxd init --auto
@@ -49,9 +66,14 @@ lxd init --auto
 # Install the Juju CLI client, juju:
 sudo snap install juju --channel=3.1/stable
 
+# Make Juju directory
+mkdir -p ~/.local/share/juju
+
 # Install a "juju" controller into your "microk8s" cloud:
 juju bootstrap microk8s superset-controller
-
+```
+### Create a model
+```
 # Create a 'model' on this controller:
 juju add-model superset-k8s
 
@@ -73,6 +95,10 @@ juju model-config update-status-hook-interval=1m
 ```
 ### Deploy charm
 ```
+# Copy the repository
+git clone https://github.com/canonical/superset-k8s-operator.git
+cd superset-k8s-operator
+
 # Pack the charm:
 charmcraft pack
 
@@ -96,10 +122,10 @@ Redis acts as both a cache and message broker for Superset services. It's a requ
 juju deploy redis-k8s --channel edge
 
 # relate redis charm
-juju relate redis-k8s superset-k8s
+juju relate redis-k8s superset-k8s-ui
 
 # remove relation
-juju remove-relation redis-k8s superset-k8s
+juju remove-relation redis-k8s superset-k8s-ui
 
 # remove application
 juju remove-application redis-k8s
@@ -113,10 +139,10 @@ PostgreSQL is used as the database that stores Superset metadata (slices, connec
 juju deploy postgresql-k8s --channel 14/stable
 
 # relate postgresql charm
-juju relate postgresql-k8s superset-k8s
+juju relate postgresql-k8s superset-k8s-ui
 
 # remove relation
-juju remove-relation postgresql-k8s superset-k8s
+juju remove-relation postgresql-k8s superset-k8s-ui
 
 # remove application
 juju remove-application postgresql-k8s
