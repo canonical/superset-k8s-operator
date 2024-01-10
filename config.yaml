@@ -98,7 +98,7 @@ options:
     description: |
         Sets the maximum number of connections that can be created
         beyond the pool size when the pool is exhausted.
-    default: 10
+    default: 5
     type: int
   google-client-id:
     description: |
