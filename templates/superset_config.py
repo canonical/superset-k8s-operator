@@ -12,20 +12,20 @@ CACHE_CONFIG = {
 # TALISMAN_ENABLED=True
 FILTER_STATE_CACHE_CONFIG = {
     "CACHE_TYPE": "RedisCache",
-    "CACHE_DEFAULT_TIMEOUT": 86400,
+    "CACHE_DEFAULT_TIMEOUT": 86400, # 24 hours
     "CACHE_KEY_PREFIX": "superset_filter_cache",
     "CACHE_REDIS_URL": f"redis://{os.getenv('REDIS_HOST')}:{os.getenv('REDIS_PORT')}/1",
 }
 EXPLORE_FORM_DATA_CACHE_CONFIG = {
     "CACHE_TYPE": "RedisCache",
-    "CACHE_DEFAULT_TIMEOUT": 86400,
-    "CACHE_KEY_PREFIX": "superset_filter_cache",
+    "CACHE_DEFAULT_TIMEOUT": 86400, # 24 hours
+    "CACHE_KEY_PREFIX": "superset_explore_cache",
     "CACHE_REDIS_URL": f"redis://{os.getenv('REDIS_HOST')}:{os.getenv('REDIS_PORT')}/2",
 }
 DATA_CACHE_CONFIG = {
     "CACHE_TYPE": "SupersetMetastoreCache",
     "CACHE_KEY_PREFIX": "superset_results",
-    "CACHE_DEFAULT_TIMEOUT": 86400,
+    "CACHE_DEFAULT_TIMEOUT": 86400, # 24 hours
     "CACHE_REDIS_URL": f"redis://{os.getenv('REDIS_HOST')}:{os.getenv('REDIS_PORT')}/3",
 }
 
@@ -61,25 +61,15 @@ class CeleryConfig(object):
         "sql_lab.get_sql_results": {
             "rate_limit": "100/s",
         },
-        "email_reports.send": {
-            "rate_limit": "1/s",
-            "time_limit": 120,
-            "soft_time_limit": 150,
-            "ignore_result": True,
-        },
     }
     beat_schedule = {
-        "reports.scheduler": {
-            "task": "reports.scheduler",
-            "schedule": crontab(minute="*", hour="*"),
-        },
         "reports.prune_log": {
             "task": "reports.prune_log",
             "schedule": crontab(minute=0, hour=0),
         },
         "cache-warmup-daily": {
             "task": "cache-warmup",
-            "schedule": crontab(minute="1", hour="9"),  # UTC @daily
+            "schedule": crontab(minute="1", hour="7"),  # UTC @daily
             "kwargs": {
                 "strategy_name": "top_n_dashboards",
                 "top_n": 10,
