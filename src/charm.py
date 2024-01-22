@@ -162,6 +162,10 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             return
 
         container = self.unit.get_container(self.name)
+        valid_pebble_plan = self._validate_pebble_plan(container)
+        if not valid_pebble_plan:
+            self.unit.status = BlockedStatus("Missing/incomplete pebble plan.")
+            return
 
         if self.config["charm-function"] in UI_FUNCTIONS:
             check = container.get_check("up")
@@ -170,6 +174,22 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
                 return
 
         self.unit.status = ActiveStatus("Status check: UP")
+
+    def _validate_pebble_plan(self, container):
+        """Validate Superset pebble plan.
+
+        Args:
+            container: application container
+
+        Returns:
+            bool of pebble plan validity
+        """
+        plan = container.get_plan().to_dict()
+        if not plan:
+            return False
+        if not plan["services"].get(APP_NAME, {}).get("on-check-failure"):
+            return False
+        return True
 
     def _restart_application(self, container):
         """Restart application.

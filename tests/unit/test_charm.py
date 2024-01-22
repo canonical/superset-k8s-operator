@@ -12,7 +12,12 @@ import json
 import logging
 from unittest import TestCase, mock
 
-from ops.model import ActiveStatus, MaintenanceStatus, WaitingStatus
+from ops.model import (
+    ActiveStatus,
+    BlockedStatus,
+    MaintenanceStatus,
+    WaitingStatus,
+)
 from ops.pebble import CheckStatus
 from ops.testing import Harness
 
@@ -21,6 +26,9 @@ from state import State
 
 SERVER_PORT = "8088"
 logger = logging.getLogger(__name__)
+mock_incomplete_pebble_plan = {
+    "services": {"superset": {"override": "replace"}}
+}
 
 
 class TestCharm(TestCase):
@@ -257,6 +265,38 @@ class TestCharm(TestCase):
 
         self.assertEqual(
             harness.model.unit.status, MaintenanceStatus("Status check: DOWN")
+        )
+
+    def test_incomplete_pebble_plan(self):
+        """The charm updates the unit status to maintenance based on incomplete pebble plan."""
+        harness = self.harness
+        simulate_lifecycle(harness)
+
+        container = harness.model.unit.get_container("superset")
+        container.add_layer(
+            "superset", mock_incomplete_pebble_plan, combine=True
+        )
+        harness.charm.on.update_status.emit()
+
+        logger.info(harness.model.unit.status)
+        self.assertEqual(
+            harness.model.unit.status,
+            BlockedStatus("Missing/incomplete pebble plan."),
+        )
+
+    @mock.patch(
+        "charm.SupersetK8SCharm._validate_pebble_plan", return_value=True
+    )
+    def test_missing_pebble_plan(self, mock_validate_pebble_plan):
+        """The charm updates the unit status to maintenance based on missing pebble plan."""
+        harness = self.harness
+        simulate_lifecycle(harness)
+
+        mock_validate_pebble_plan.return_value = False
+        harness.charm.on.update_status.emit()
+        self.assertEqual(
+            harness.model.unit.status,
+            BlockedStatus("Missing/incomplete pebble plan."),
         )
 
     def test_beat_deployment(self):
