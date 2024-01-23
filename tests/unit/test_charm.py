@@ -275,8 +275,10 @@ class TestCharm(TestCase):
 
         self.assertEqual(
             harness.model.unit.status,
-            WaitingStatus("Missing/incomplete pebble plan."),
+            MaintenanceStatus("replanning application"),
         )
+        plan = harness.get_container_pebble_plan("superset").to_dict()
+        assert plan != mock_incomplete_pebble_plan
 
     @mock.patch(
         "charm.SupersetK8SCharm._validate_pebble_plan", return_value=True
@@ -290,17 +292,10 @@ class TestCharm(TestCase):
         harness.charm.on.update_status.emit()
         self.assertEqual(
             harness.model.unit.status,
-            WaitingStatus("Missing/incomplete pebble plan."),
+            MaintenanceStatus("replanning application"),
         )
-
-    def test_pebble_ready(self):
-        """The charm re-applies pebble plan."""
-        harness = self.harness
-        self.test_incomplete_pebble_plan()
-
-        harness.charm.on.superset_pebble_ready.emit("superset")
         plan = harness.get_container_pebble_plan("superset").to_dict()
-        assert plan != mock_incomplete_pebble_plan and plan is not None
+        assert plan is not None
 
     def test_beat_deployment(self):
         """The pebble plan reflects the beat function."""

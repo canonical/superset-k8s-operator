@@ -164,7 +164,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         container = self.unit.get_container(self.name)
         valid_pebble_plan = self._validate_pebble_plan(container)
         if not valid_pebble_plan:
-            self.unit.status = WaitingStatus("Missing/incomplete pebble plan.")
+            self._update(event)
             return
 
         if self.config["charm-function"] in UI_FUNCTIONS:
