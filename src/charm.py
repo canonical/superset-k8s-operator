@@ -185,11 +185,9 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             bool of pebble plan validity
         """
         plan = container.get_plan().to_dict()
-        if not plan:
-            return False
-        if not plan["services"].get(APP_NAME, {}).get("on-check-failure"):
-            return False
-        return True
+        return bool(
+            plan and plan["services"].get(APP_NAME, {}).get("on-check-failure")
+        )
 
     def _restart_application(self, container):
         """Restart application.
