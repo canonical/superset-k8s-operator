@@ -263,7 +263,7 @@ class TestCharm(TestCase):
         )
 
     def test_incomplete_pebble_plan(self):
-        """The charm updates the unit status to waiting based on incomplete pebble plan."""
+        """The charm re-applies the pebble plan if incomplete."""
         harness = self.harness
         simulate_lifecycle(harness)
 
@@ -284,7 +284,7 @@ class TestCharm(TestCase):
         "charm.SupersetK8SCharm._validate_pebble_plan", return_value=True
     )
     def test_missing_pebble_plan(self, mock_validate_pebble_plan):
-        """The charm updates the unit status to waiting based on missing pebble plan."""
+        """The charm re-applies the pebble plan if missing."""
         harness = self.harness
         simulate_lifecycle(harness)
 
