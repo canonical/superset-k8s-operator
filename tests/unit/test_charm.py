@@ -12,12 +12,7 @@ import json
 import logging
 from unittest import TestCase, mock
 
-from ops.model import (
-    ActiveStatus,
-    BlockedStatus,
-    MaintenanceStatus,
-    WaitingStatus,
-)
+from ops.model import ActiveStatus, MaintenanceStatus, WaitingStatus
 from ops.pebble import CheckStatus
 from ops.testing import Harness
 
@@ -268,7 +263,7 @@ class TestCharm(TestCase):
         )
 
     def test_incomplete_pebble_plan(self):
-        """The charm updates the unit status to maintenance based on incomplete pebble plan."""
+        """The charm updates the unit status to waiting based on incomplete pebble plan."""
         harness = self.harness
         simulate_lifecycle(harness)
 
@@ -278,17 +273,16 @@ class TestCharm(TestCase):
         )
         harness.charm.on.update_status.emit()
 
-        logger.info(harness.model.unit.status)
         self.assertEqual(
             harness.model.unit.status,
-            BlockedStatus("Missing/incomplete pebble plan."),
+            WaitingStatus("Missing/incomplete pebble plan."),
         )
 
     @mock.patch(
         "charm.SupersetK8SCharm._validate_pebble_plan", return_value=True
     )
     def test_missing_pebble_plan(self, mock_validate_pebble_plan):
-        """The charm updates the unit status to maintenance based on missing pebble plan."""
+        """The charm updates the unit status to waiting based on missing pebble plan."""
         harness = self.harness
         simulate_lifecycle(harness)
 
@@ -296,8 +290,17 @@ class TestCharm(TestCase):
         harness.charm.on.update_status.emit()
         self.assertEqual(
             harness.model.unit.status,
-            BlockedStatus("Missing/incomplete pebble plan."),
+            WaitingStatus("Missing/incomplete pebble plan."),
         )
+
+    def test_pebble_ready(self):
+        """The charm re-applies pebble plan."""
+        harness = self.harness
+        self.test_incomplete_pebble_plan()
+
+        harness.charm.on.superset_pebble_ready.emit("superset")
+        plan = harness.get_container_pebble_plan("superset").to_dict()
+        assert plan != mock_incomplete_pebble_plan and plan is not None
 
     def test_beat_deployment(self):
         """The pebble plan reflects the beat function."""
