@@ -285,6 +285,8 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "NO_PROXY": self.config["no-proxy"],
             "SUPERSET_LOAD_EXAMPLES": self.config["load-examples"],
             "PYTHONPATH": CONFIG_PATH,
+            "HTML_SANITIZATION": self.config["html-sanitization"],
+            "HTML_SANITIZATION_SCHEMA_EXTENSIONS": self.config["html-sanitization-schema-extensions"]
         }
         return env
 
