@@ -278,6 +278,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         """
         container = self.unit.get_container(self.name)
         if not container.can_connect():
+            event.defer()
             return
 
         if not self.ready_to_start():
