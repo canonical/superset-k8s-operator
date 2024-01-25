@@ -16,6 +16,7 @@ from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
 from charms.data_platform_libs.v0.data_models import TypedCharmBase
 from charms.nginx_ingress_integrator.v0.nginx_route import require_nginx_route
 from charms.redis_k8s.v0.redis import RedisRelationCharmEvents, RedisRequires
+from ops import pebble
 from ops.charm import ConfigChangedEvent, PebbleReadyEvent
 from ops.framework import StoredState
 from ops.main import main
@@ -25,7 +26,7 @@ from ops.model import (
     MaintenanceStatus,
     WaitingStatus,
 )
-from ops.pebble import CheckStatus, ConnectionError
+from ops.pebble import CheckStatus
 
 from literals import APP_NAME, APPLICATION_PORT, CONFIG_PATH, UI_FUNCTIONS
 from log import log_event_handler
