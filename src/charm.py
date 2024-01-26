@@ -16,6 +16,7 @@ from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
 from charms.data_platform_libs.v0.data_models import TypedCharmBase
 from charms.nginx_ingress_integrator.v0.nginx_route import require_nginx_route
 from charms.redis_k8s.v0.redis import RedisRelationCharmEvents, RedisRequires
+from ops import pebble
 from ops.charm import ConfigChangedEvent, PebbleReadyEvent
 from ops.framework import StoredState
 from ops.main import main
@@ -184,10 +185,14 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         Returns:
             bool of pebble plan validity
         """
-        plan = container.get_plan().to_dict()
-        return bool(
-            plan and plan["services"].get(APP_NAME, {}).get("on-check-failure")
-        )
+        try:
+            plan = container.get_plan().to_dict()
+            return bool(
+                plan
+                and plan["services"].get(self.name, {}).get("on-check-failure")
+            )
+        except pebble.ConnectionError:
+            return False
 
     def _restart_application(self, container):
         """Restart application.
