@@ -101,6 +101,13 @@ LOG_LEVEL = "DEBUG"
 TIME_ROTATE_LOG_LEVEL = "DEBUG"
 ENABLE_TIME_ROTATE = True
 
+# html santization
+HTML_SANITIZATION = os.getenv("HTML_SANITIZATION")
+sanitization_extention = os.getenv("HTML_SANITIZATION_SCHEMA_EXTENSIONS")
+
+if HTML_SANITIZATION and sanitization_extention:
+    HTML_SANITIZATION_SCHEMA_EXTENSIONS = sanitization_extention
+
 # postgresql metadata db
 SQLALCHEMY_DATABASE_URI = os.getenv("SQL_ALCHEMY_URI")
 

@@ -142,3 +142,13 @@ options:
       Loads example data source with corresponding data sets and charts for testing.
     type: boolean
     default: False
+  html-sanitization:
+    description: |
+      Sanitizes the HTML content used in markdowns to allow its rendering in a safe manner.
+      Disabling this option is not recommended for security reasons
+    type: boolean
+    default: True
+  html-sanitization-schema-extensions:
+    description: |
+      Use this configuration to extend the HTML sanitization schema.
+    type: string

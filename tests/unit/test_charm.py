@@ -112,6 +112,8 @@ class TestCharm(TestCase):
                         "NO_PROXY": None,
                         "SUPERSET_LOAD_EXAMPLES": False,
                         "PYTHONPATH": "/app/pythonpath",
+                        "HTML_SANITIZATION": True,
+                        "HTML_SANITIZATION_SCHEMA_EXTENSIONS": None,
                     },
                     "on-check-failure": {"up": "ignore"},
                 }
@@ -190,6 +192,8 @@ class TestCharm(TestCase):
                         "NO_PROXY": ".canonical.com",
                         "SUPERSET_LOAD_EXAMPLES": False,
                         "PYTHONPATH": "/app/pythonpath",
+                        "HTML_SANITIZATION": True,
+                        "HTML_SANITIZATION_SCHEMA_EXTENSIONS": None,
                     },
                     "on-check-failure": {"up": "ignore"},
                 },
