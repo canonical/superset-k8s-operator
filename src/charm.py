@@ -220,6 +220,10 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         if not self._state.redis_relation:
             self.unit.status = BlockedStatus("Needs a Redis relation")
             return False
+
+        container = self.unit.get_container(self.name)
+        if not container.can_connect():
+            return False
         return True
 
     @log_event_handler(logger)
@@ -300,8 +304,6 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             event: The event triggered when the relation changed.
         """
         container = self.unit.get_container(self.name)
-        if not container.can_connect():
-            return
 
         if not self.ready_to_start():
             return
