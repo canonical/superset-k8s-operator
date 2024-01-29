@@ -214,15 +214,16 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             return False
 
         if not self._state.postgresql_relation:
-            self.unit.status = BlockedStatus("Needs a PostgreSQL relation")
+            self.unit.status = BlockedStatus("Needs a PostgreSQL relation.")
             return False
 
         if not self._state.redis_relation:
-            self.unit.status = BlockedStatus("Needs a Redis relation")
+            self.unit.status = BlockedStatus("Needs a Redis relation.")
             return False
 
         container = self.unit.get_container(self.name)
         if not container.can_connect():
+            self.unit.status = WaitingStatus("Waiting for pebble ready.")
             return False
         return True
 
