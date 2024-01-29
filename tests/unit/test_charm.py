@@ -113,7 +113,7 @@ class TestCharm(TestCase):
                         "SUPERSET_LOAD_EXAMPLES": False,
                         "PYTHONPATH": "/app/pythonpath",
                         "HTML_SANITIZATION": True,
-                        "HTML_SANITIZATION_SCHEMA_EXTENSIONS": None
+                        "HTML_SANITIZATION_SCHEMA_EXTENSIONS": None,
                     },
                     "on-check-failure": {"up": "ignore"},
                 }
@@ -193,7 +193,7 @@ class TestCharm(TestCase):
                         "SUPERSET_LOAD_EXAMPLES": False,
                         "PYTHONPATH": "/app/pythonpath",
                         "HTML_SANITIZATION": True,
-                        "HTML_SANITIZATION_SCHEMA_EXTENSIONS": None
+                        "HTML_SANITIZATION_SCHEMA_EXTENSIONS": None,
                     },
                     "on-check-failure": {"up": "ignore"},
                 },
