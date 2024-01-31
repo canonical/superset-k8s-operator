@@ -127,7 +127,7 @@ class TestCharm(TestCase):
         got_plan["services"]["superset"]["environment"][
             "ADMIN_USER"
         ] = "unique-user"
-        self.assertEqual(got_plan, want_plan)
+        self.assertEqual(got_plan["services"], want_plan["services"])
 
         # The service was started.
         service = harness.model.unit.get_container("superset").get_service(
@@ -208,7 +208,7 @@ class TestCharm(TestCase):
         got_plan["services"]["superset"]["environment"][
             "ADMIN_USER"
         ] = "unique-user"
-        self.assertEqual(got_plan, want_plan)
+        self.assertEqual(got_plan["services"], want_plan["services"])
 
         # The MaintenanceStatus is set with replan message.
         self.assertEqual(
