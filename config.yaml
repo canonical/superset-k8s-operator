@@ -164,3 +164,13 @@ options:
     description: |
       The version of code deployed to an environment.
     type: string
+  sentry-sample-rate:
+    description: |
+      A number between 0 and 1 representing what % of errors should be sent to Sentry.
+      ie for 0.25, 25% of errors will be sent to Sentry.
+    default: "1"
+    type: string
+  sentry-redact-params:
+    description: Indicates whether or not event parameters sent to Sentry should be redacted.
+    default: false
+    type: boolean

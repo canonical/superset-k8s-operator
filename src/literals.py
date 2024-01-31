@@ -6,11 +6,10 @@
 
 APPLICATION_PORT = 8088
 APP_NAME = "superset"
-CONFIG_FILES = ["superset_config.py", "custom_sso_security_manager.py"]
-CONFIG_PATH = "/app/pythonpath"
-INIT_PATH = "/app/k8s"
-INIT_FILES = [
+CONFIG_FILES = [
     "superset_config.py",
     "custom_sso_security_manager.py",
+    "sentry_interceptor.py",
 ]
+CONFIG_PATH = "/app/pythonpath"
 UI_FUNCTIONS = ["app", "app-gunicorn"]
