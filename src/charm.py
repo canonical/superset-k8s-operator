@@ -295,6 +295,8 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
                 "html-sanitization-schema-extensions"
             ],
             "SENTRY_DSN": self.config["sentry-dsn"],
+            "SENTRY_RELEASE": self.config["sentry-release"],
+            "SENTRY_ENVIRONMENT": self.config["sentry-environment"],
         }
         return env
 

@@ -156,3 +156,11 @@ options:
     description: |
       The unique key for the Sentry project in which to log exceptions.
     type: string
+  sentry-environment:
+    description: |
+      The environment to log errors to in Sentry.
+    type: string
+  sentry-release:
+    description: |
+      The version of code deployed to an environment.
+    type: string

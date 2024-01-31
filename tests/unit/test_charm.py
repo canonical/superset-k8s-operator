@@ -115,6 +115,8 @@ class TestCharm(TestCase):
                         "HTML_SANITIZATION": True,
                         "HTML_SANITIZATION_SCHEMA_EXTENSIONS": None,
                         "SENTRY_DSN": None,
+                        "SENTRY_ENVIRONMENT": None,
+                        "SENTRY_RELEASE": None,
                     },
                     "on-check-failure": {"up": "ignore"},
                 }
@@ -196,6 +198,8 @@ class TestCharm(TestCase):
                         "HTML_SANITIZATION": True,
                         "HTML_SANITIZATION_SCHEMA_EXTENSIONS": None,
                         "SENTRY_DSN": None,
+                        "SENTRY_ENVIRONMENT": None,
+                        "SENTRY_RELEASE": None,
                     },
                     "on-check-failure": {"up": "ignore"},
                 },

@@ -8,9 +8,14 @@ import sentry_sdk
 
 # Monitoring with Sentry
 SENTRY_DSN = os.getenv("SENTRY_DSN")
-if SENTRY_DSN:
+SENTRY_ENVIRONMENT = os.getenv("SENTRY_ENVIRONMENT")
+SENTRY_RELEASE = os.getenv("SENTRY_RELEASE")
+
+if all([SENTRY_DSN, SENTRY_ENVIRONMENT, SENTRY_RELEASE]):
     sentry_sdk.init(
         dsn=SENTRY_DSN,
+        environment=SENTRY_ENVIRONMENT,
+        release=SENTRY_RELEASE,
         enable_tracing=True)
 
 # Redis caching
