@@ -3,6 +3,15 @@ from cachelib.redis import RedisCache
 from celery.schedules import crontab
 from flask_appbuilder.security.manager import AUTH_OAUTH
 from custom_sso_security_manager import CustomSsoSecurityManager
+import sentry_sdk
+
+
+# Monitoring with Sentry
+SENTRY_DSN = os.getenv("SENTRY_DSN")
+if SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        enable_tracing=True)
 
 # Redis caching
 CACHE_CONFIG = {

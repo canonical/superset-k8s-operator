@@ -114,6 +114,7 @@ class TestCharm(TestCase):
                         "PYTHONPATH": "/app/pythonpath",
                         "HTML_SANITIZATION": True,
                         "HTML_SANITIZATION_SCHEMA_EXTENSIONS": None,
+                        "SENTRY_DSN": None,
                     },
                     "on-check-failure": {"up": "ignore"},
                 }
@@ -194,6 +195,7 @@ class TestCharm(TestCase):
                         "PYTHONPATH": "/app/pythonpath",
                         "HTML_SANITIZATION": True,
                         "HTML_SANITIZATION_SCHEMA_EXTENSIONS": None,
+                        "SENTRY_DSN": None,
                     },
                     "on-check-failure": {"up": "ignore"},
                 },

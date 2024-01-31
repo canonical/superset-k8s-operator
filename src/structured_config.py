@@ -74,6 +74,7 @@ class CharmConfig(BaseConfigModel):
     load_examples: bool
     html_sanitization: bool
     html_sanitization_schema_extensions: Optional[str]
+    sentry_dsn: Optional[str]
 
     @validator("*", pre=True)
     @classmethod
