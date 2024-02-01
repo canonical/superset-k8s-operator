@@ -207,9 +207,9 @@ Note: `GLOBAL_ASYNC_QUERIES` by default is not enabled as this requires at least
 Additional feature flags are available which are not currently implemented by the Superset Charm, a complete list can be found [here](https://github.com/apache/superset/blob/master/RESOURCES/FEATURE_FLAGS.md), with descriptions [here](https://preset.io/blog/feature-flags-in-apache-superset-and-preset/).
 
 ## Global asynchronous queries (disabled by default)
-The `GLOBAL_ASYNC_QUERIES` feature flag enables asynchronous querying for Superset charts and dashboards (otherwise only available with SQLlabs). Queries are added to the Celery queue where they are picked up by the next available Superset worker, while the worker executes the queries the server recieves updates via regular HTTP polling.
+The `GLOBAL_ASYNC_QUERIES` feature flag enables asynchronous querying for Superset charts and dashboards (otherwise only available with SQLlabs). Queries are added to the Celery queue where they are picked up by the next available Superset worker, while the worker executes the queries the server receives updates via regular HTTP polling.
 
-With asychronous queries Superset can avoid browser timeouts that occur when executing long-running queries and instead default to the database timeouts as the limitation. Additionally this allows the system to handle a large number of concurrent users and queries without siginicant impact on performance, preventing bottlenecks during peak periods.
+With asynchronous queries Superset can avoid browser timeouts that occur when executing long-running queries and instead default to the database timeouts as the limitation. Additionally this allows the system to handle a large number of concurrent users and queries without siginicant impact on performance, preventing bottlenecks during peak periods.
 
 As the number of clients increase it may be necessary to scale both the Superset Charm worker and Superset Charm server to maintain performance as a large number of concurrent polling requests can strain server resources.
 
