@@ -298,6 +298,9 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "GLOBAL_ASYNC_QUERIES_JWT": self.config[
                 "global-async-queries-jwt"
             ],
+            "GLOBAL_ASYNC_QUERIES_POLLING_DELAY": self.config[
+                "global-async-queries-polling-delay"
+            ],
         }
         return env
 

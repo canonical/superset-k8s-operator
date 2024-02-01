@@ -116,6 +116,7 @@ class TestCharm(TestCase):
                         "HTML_SANITIZATION_SCHEMA_EXTENSIONS": None,
                         "GLOBAL_ASYNC_QUERIES": False,
                         "GLOBAL_ASYNC_QUERIES_JWT": "18b2f8fcd0d708d270c00508da6e8dfc7a21eff14ea438056809805150439a04",
+                        "GLOBAL_ASYNC_QUERIES_POLLING_DELAY": 500,
                     },
                     "on-check-failure": {"up": "ignore"},
                 }
@@ -198,6 +199,7 @@ class TestCharm(TestCase):
                         "HTML_SANITIZATION_SCHEMA_EXTENSIONS": None,
                         "GLOBAL_ASYNC_QUERIES": False,
                         "GLOBAL_ASYNC_QUERIES_JWT": "18b2f8fcd0d708d270c00508da6e8dfc7a21eff14ea438056809805150439a04",
+                        "GLOBAL_ASYNC_QUERIES_POLLING_DELAY": 500,
                     },
                     "on-check-failure": {"up": "ignore"},
                 },

@@ -162,3 +162,8 @@ options:
       jwt for communication with redis database for async querying
     type: string
     default: "18b2f8fcd0d708d270c00508da6e8dfc7a21eff14ea438056809805150439a04"
+  global-async-queries-polling-delay:
+    description: |
+      The timedelay in milliseconds for polling during asynchronous query execution.
+    type: int
+    default: 500

@@ -192,6 +192,46 @@ juju scale-application superset-k8s-worker 3
 juju scale-application superset-k8s-worker 1
 ```
 
+## Feature flags
+There are a number of features that can be enabled/disabled via the Superset charm `juju config superset-k8s-ui <flag-name>=<True>`. These are:
+- `DASHBOARD_CROSS_FILTERS` (default=true),
+- `DASHBOARD_RBAC`(default=true),
+- `EMBEDDABLE_CHARTS` (default=true),
+- `SCHEDULED_QUERIES` (default=true),
+- `ESTIMATE_QUERY_COST` (default=true),
+- `ENABLE_TEMPLATE_PROCESSING` (default=true),
+- `GLOBAL_ASYNC_QUERIES` (default=false),
+
+Note: `GLOBAL_ASYNC_QUERIES` by default is not enabled as this requires at least 1 worker deployment.
+
+Additional feature flags are available which are not currently implemented by the Superset Charm, a complete list can be found [here](https://github.com/apache/superset/blob/master/RESOURCES/FEATURE_FLAGS.md), with descriptions [here](https://preset.io/blog/feature-flags-in-apache-superset-and-preset/).
+
+## Global asynchronous queries (disabled by default)
+The `GLOBAL_ASYNC_QUERIES` feature flag enables asynchronous querying for Superset charts and dashboards (otherwise only available with SQLlabs). Queries are added to the Celery queue where they are picked up by the next available Superset worker, while the worker executes the queries the server recieves updates via regular HTTP polling.
+
+With asychronous queries Superset can avoid browser timeouts that occur when executing long-running queries and instead default to the database timeouts as the limitation. Additionally this allows the system to handle a large number of concurrent users and queries without siginicant impact on performance, preventing bottlenecks during peak periods.
+
+As the number of clients increase it may be necessary to scale both the Superset Charm worker and Superset Charm server to maintain performance as a large number of concurrent polling requests can strain server resources.
+
+Additional information on this feature can be found [here](https://github.com/apache/superset/issues/9190).
+
+## HTML Sanitization (enabled by default)
+By default HTML Sanitization is enabled in the Superset charm for security purposes. This imposes limitations within Superset’s configuration, which limit the set of tags and attributes available for use by the Handlebars Chart and the Markdown component in their default configuration.
+
+To enable Handlebars plugin with all CSS capabilities, there are two options to choose from:
+
+1. (Recommended) You can configure `HTML_SANITIZATION_SCHEMA_EXTENSIONS` with some additional config overrides. As long as `HTML_SANITIZATION` remains enabled, this allows you to to extend the sanitization schema to allow more HTML elements and attributes such as `style` and `class` attributes on all HTML tags. Example configuration below.
+2. Set `HTML_SANITIZATION=False`. This allows Markdown (and the Handlebars plugin) to render ALL HTML tags and attributes. This change removes the limits imposed HTML sanitization in their entirety. This is **not** advised for production deployments.
+
+```
+HTML_SANITIZATION_SCHEMA_EXTENSIONS = {
+  "attributes": {
+    "*": ["style","className"],
+  },
+  "tagNames": ["style"],
+}
+```
+
 ## Contributing
 Please see the [Juju SDK documentation](https://juju.is/docs/sdk) for more information about developing and improving charms and [Contributing](CONTRIBUTING.md) for developer guidance.
 
