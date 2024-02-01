@@ -74,6 +74,8 @@ class CharmConfig(BaseConfigModel):
     load_examples: bool
     html_sanitization: bool
     html_sanitization_schema_extensions: Optional[str]
+    global_async_queries: bool
+    global_async_queries_jwt: Optional[str]
 
     @validator("*", pre=True)
     @classmethod

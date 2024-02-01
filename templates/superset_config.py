@@ -92,9 +92,17 @@ FEATURE_FLAGS = {
         "ESTIMATE_QUERY_COST",
         "ENABLE_TEMPLATE_PROCESSING",
         "ALERT_REPORTS",
+        "GLOBAL_ASYNC_QUERIES",
     ]
 }
 
+# Asynchronour queries
+GLOBAL_ASYNC_QUERIES_REDIS_STREAM_PREFIX = "async-events-"
+GLOBAL_ASYNC_QUERIES_JWT_SECRET = os.getenv("GLOBAL_ASYNC_QUERIES_JWT")
+GLOBAL_ASYNC_QUERIES_REDIS_CONFIG = {
+    "port": os.getenv('REDIS_PORT'),
+    "host": os.getenv('REDIS_HOST'),
+}
 SECRET_KEY = os.getenv("SUPERSET_SECRET_KEY")
 
 LOG_LEVEL = "DEBUG"

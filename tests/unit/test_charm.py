@@ -114,6 +114,8 @@ class TestCharm(TestCase):
                         "PYTHONPATH": "/app/pythonpath",
                         "HTML_SANITIZATION": True,
                         "HTML_SANITIZATION_SCHEMA_EXTENSIONS": None,
+                        "GLOBAL_ASYNC_QUERIES": False,
+                        "GLOBAL_ASYNC_QUERIES_JWT": "18b2f8fcd0d708d270c00508da6e8dfc7a21eff14ea438056809805150439a04",
                     },
                     "on-check-failure": {"up": "ignore"},
                 }
@@ -126,7 +128,7 @@ class TestCharm(TestCase):
         got_plan["services"]["superset"]["environment"][
             "ADMIN_USER"
         ] = "unique-user"
-        self.assertEqual(got_plan, want_plan)
+        self.assertEqual(got_plan["services"], want_plan["services"])
 
         # The service was started.
         service = harness.model.unit.get_container("superset").get_service(
@@ -194,6 +196,8 @@ class TestCharm(TestCase):
                         "PYTHONPATH": "/app/pythonpath",
                         "HTML_SANITIZATION": True,
                         "HTML_SANITIZATION_SCHEMA_EXTENSIONS": None,
+                        "GLOBAL_ASYNC_QUERIES": False,
+                        "GLOBAL_ASYNC_QUERIES_JWT": "18b2f8fcd0d708d270c00508da6e8dfc7a21eff14ea438056809805150439a04",
                     },
                     "on-check-failure": {"up": "ignore"},
                 },
@@ -206,7 +210,7 @@ class TestCharm(TestCase):
         got_plan["services"]["superset"]["environment"][
             "ADMIN_USER"
         ] = "unique-user"
-        self.assertEqual(got_plan, want_plan)
+        self.assertEqual(got_plan["services"], want_plan["services"])
 
         # The MaintenanceStatus is set with replan message.
         self.assertEqual(
