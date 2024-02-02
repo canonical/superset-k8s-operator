@@ -39,7 +39,9 @@ async def deploy(ops_test: OpsTest):
     )
     superset_config = {"superset-secret-key": SUPERSET_SECRET_KEY}
     await ops_test.model.deploy(
-        APP_NAME, channel="stable", config=superset_config
+        APP_NAME,
+        channel="edge",
+        config=superset_config,
     )
     await perform_superset_integrations(ops_test, APP_NAME)
 
