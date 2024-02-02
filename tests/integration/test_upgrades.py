@@ -31,21 +31,19 @@ async def deploy(ops_test: OpsTest):
         ops_test.model.deploy(POSTGRES_NAME, channel="14", trust=True),
         ops_test.model.deploy(REDIS_NAME, channel="edge", trust=True),
     )
-
-    async with ops_test.fast_forward():
-        await ops_test.model.wait_for_idle(
-            apps=[POSTGRES_NAME, REDIS_NAME],
-            status="active",
-            raise_on_blocked=False,
-            timeout=2000,
-        )
-        superset_config = {
-            "superset-secret-key": SUPERSET_SECRET_KEY,
-        }
-        await ops_test.model.deploy(
-            APP_NAME, channel="stable", config=superset_config
-        )
-        await perform_superset_integrations(ops_test, APP_NAME)
+    await ops_test.model.wait_for_idle(
+        apps=[POSTGRES_NAME, REDIS_NAME],
+        status="active",
+        raise_on_blocked=False,
+        timeout=2000,
+    )
+    superset_config = {"superset-secret-key": SUPERSET_SECRET_KEY}
+    await ops_test.model.deploy(
+        APP_NAME,
+        channel="edge",
+        config=superset_config,
+    )
+    await perform_superset_integrations(ops_test, APP_NAME)
 
 
 @pytest.mark.abort_on_fail

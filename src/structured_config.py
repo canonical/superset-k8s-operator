@@ -77,6 +77,11 @@ class CharmConfig(BaseConfigModel):
     global_async_queries: bool
     global_async_queries_jwt: Optional[str]
     global_async_queries_polling_delay: int
+    sentry_dsn: Optional[str]
+    sentry_release: Optional[str]
+    sentry_environment: Optional[str]
+    sentry_redact_params: bool
+    sentry_sample_rate: Optional[str]
 
     @validator("*", pre=True)
     @classmethod
@@ -169,4 +174,23 @@ class CharmConfig(BaseConfigModel):
         int_value = int(value)
         if 500 <= int_value <= 5000:
             return int_value
+        raise ValueError("Value out of range.")
+
+    @validator("sentry_sample_rate")
+    @classmethod
+    def sentry_sample_rate_validator(cls, value: str) -> Optional[float]:
+        """Check validity of `sentry_sample_rate` field.
+
+        Args:
+            value: sentry_sample_rate value
+
+        Returns:
+            fload_value: integer for sentry_sample_rate configuration
+
+        Raises:
+            ValueError: in the case when the value is out of range
+        """
+        float_value = float(value)
+        if 0 <= float_value <= 1:
+            return float_value
         raise ValueError("Value out of range.")

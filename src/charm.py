@@ -301,6 +301,11 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "GLOBAL_ASYNC_QUERIES_POLLING_DELAY": self.config[
                 "global-async-queries-polling-delay"
             ],
+            "SENTRY_DSN": self.config["sentry-dsn"],
+            "SENTRY_RELEASE": self.config["sentry-release"],
+            "SENTRY_ENVIRONMENT": self.config["sentry-environment"],
+            "SENTRY_REDACT_PARAMS": self.config["sentry-redact-params"],
+            "SENTRY_SAMPLE_RATE": self.config["sentry-sample-rate"],
         }
         return env
 
