@@ -152,3 +152,25 @@ options:
     description: |
       Use this configuration to extend the HTML sanitization schema.
     type: string
+  sentry-dsn:
+    description: |
+      The unique key for the Sentry project in which to log exceptions.
+    type: string
+  sentry-environment:
+    description: |
+      The environment to log errors to in Sentry.
+    type: string
+  sentry-release:
+    description: |
+      The version of code deployed to an environment.
+    type: string
+  sentry-sample-rate:
+    description: |
+      A number between 0 and 1 representing what % of errors should be sent to Sentry.
+      ie for 0.25, 25% of errors will be sent to Sentry.
+    default: "1"
+    type: string
+  sentry-redact-params:
+    description: Indicates whether or not event parameters sent to Sentry should be redacted.
+    default: false
+    type: boolean

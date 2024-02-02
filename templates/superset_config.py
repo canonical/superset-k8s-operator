@@ -3,6 +3,30 @@ from cachelib.redis import RedisCache
 from celery.schedules import crontab
 from flask_appbuilder.security.manager import AUTH_OAUTH
 from custom_sso_security_manager import CustomSsoSecurityManager
+from sentry_interceptor import redact_params
+import sentry_sdk
+
+
+# Monitoring with Sentry
+SENTRY_DSN = os.getenv("SENTRY_DSN")
+SENTRY_ENVIRONMENT = os.getenv("SENTRY_ENVIRONMENT")
+SENTRY_RELEASE = os.getenv("SENTRY_RELEASE")
+SENTRY_SAMPLE_RATE = os.getenv("SENTRY_SAMPLE_RATE")
+SENTRY_REDACT_PARAMS = os.getenv("SENTRY_REDACT_PARAMS").lower() != "false"
+
+sentry_before_send = None
+if SENTRY_REDACT_PARAMS:
+    sentry_before_send = redact_params
+
+if all([SENTRY_DSN, SENTRY_ENVIRONMENT, SENTRY_RELEASE]):
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        environment=SENTRY_ENVIRONMENT,
+        release=SENTRY_RELEASE,
+        sample_rate=SENTRY_SAMPLE_RATE,
+        before_send=sentry_before_send,
+        enable_tracing=True,
+        )
 
 # Redis caching
 CACHE_CONFIG = {

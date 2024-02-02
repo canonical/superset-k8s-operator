@@ -294,6 +294,11 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "HTML_SANITIZATION_SCHEMA_EXTENSIONS": self.config[
                 "html-sanitization-schema-extensions"
             ],
+            "SENTRY_DSN": self.config["sentry-dsn"],
+            "SENTRY_RELEASE": self.config["sentry-release"],
+            "SENTRY_ENVIRONMENT": self.config["sentry-environment"],
+            "SENTRY_REDACT_PARAMS": self.config["sentry-redact-params"],
+            "SENTRY_SAMPLE_RATE": self.config["sentry-sample-rate"],
         }
         return env
 

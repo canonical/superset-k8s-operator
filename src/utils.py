@@ -9,7 +9,7 @@ import os
 import secrets
 import string
 
-from literals import CONFIG_FILES, CONFIG_PATH, INIT_FILES, INIT_PATH
+from literals import CONFIG_FILES, CONFIG_PATH
 
 logger = logging.getLogger(__name__)
 
@@ -70,9 +70,6 @@ def load_superset_files(container):
     Args:
         container: the application container
     """
-    for file in INIT_FILES:
-        if file in CONFIG_FILES:
-            path = CONFIG_PATH
-        else:
-            path = INIT_PATH
+    for file in CONFIG_FILES:
+        path = CONFIG_PATH
         push_files(container, f"templates/{file}", f"{path}/{file}", 0o744)
