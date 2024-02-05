@@ -5,7 +5,8 @@ from flask_appbuilder.security.manager import AUTH_OAUTH
 from custom_sso_security_manager import CustomSsoSecurityManager
 from sentry_interceptor import redact_params
 import sentry_sdk
-
+import json
+import yaml
 
 # Monitoring with Sentry
 SENTRY_DSN = os.getenv("SENTRY_DSN")
@@ -127,7 +128,7 @@ ENABLE_TIME_ROTATE = True
 
 # html sanitization
 HTML_SANITIZATION = os.getenv("HTML_SANITIZATION").lower() != "false"
-HTML_SANITIZATION_SCHEMA_EXTENSIONS = os.getenv("HTML_SANITIZATION_SCHEMA_EXTENSIONS", {})
+HTML_SANITIZATION_SCHEMA_EXTENSIONS = json.dumps(yaml.safe_load(os.getenv("HTML_SANITIZATION_SCHEMA_EXTENSIONS")))
 
 # postgresql metadata db
 SQLALCHEMY_DATABASE_URI = os.getenv("SQL_ALCHEMY_URI")
