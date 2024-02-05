@@ -152,6 +152,7 @@ options:
     description: |
       Use this configuration to extend the HTML sanitization schema.
     type: string
+    default: "{}"
   sentry-dsn:
     description: |
       The unique key for the Sentry project in which to log exceptions.
