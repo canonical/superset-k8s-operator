@@ -209,7 +209,7 @@ Additional feature flags are available which are not currently implemented by th
 ## Global asynchronous queries (disabled by default)
 The `GLOBAL_ASYNC_QUERIES` feature flag enables asynchronous querying for Superset charts and dashboards (otherwise only available with SQLlabs). Queries are added to the Celery queue where they are picked up by the next available Superset worker, while the worker executes the queries the server receives updates via regular HTTP polling.
 
-With asynchronous queries Superset can avoid browser timeouts that occur when executing long-running queries and instead default to the database timeouts as the limitation. Additionally this allows the system to handle a large number of concurrent users and queries without signifcant impact on performance, preventing bottlenecks during peak periods.
+With asynchronous queries Superset can avoid browser timeouts that occur when executing long-running queries and instead default to the database timeouts as the limitation. Additionally this allows the system to handle a large number of concurrent users and queries without significant impact on performance, preventing bottlenecks during peak periods.
 
 As the number of clients increase it may be necessary to scale both the Superset Charm worker and Superset Charm server to maintain performance as a large number of concurrent polling requests can strain server resources.
 
