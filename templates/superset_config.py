@@ -127,7 +127,7 @@ ENABLE_TIME_ROTATE = True
 
 # html sanitization
 HTML_SANITIZATION = os.getenv("HTML_SANITIZATION").lower() != "false"
-HTML_SANITIZATION_SCHEMA_EXTENSIONS = yaml.safe_load(os.getenv("HTML_SANITIZATION_SCHEMA_EXTENSIONS"))
+HTML_SANITIZATION_SCHEMA_EXTENSIONS = yaml.safe_load(os.getenv("HTML_SANITIZATION_SCHEMA_EXTENSIONS"), "{}")
 
 # postgresql metadata db
 SQLALCHEMY_DATABASE_URI = os.getenv("SQL_ALCHEMY_URI")
