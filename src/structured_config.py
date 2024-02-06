@@ -74,6 +74,9 @@ class CharmConfig(BaseConfigModel):
     load_examples: bool
     html_sanitization: bool
     html_sanitization_schema_extensions: Optional[str]
+    global_async_queries: bool
+    global_async_queries_jwt: Optional[str]
+    global_async_queries_polling_delay: int
     sentry_dsn: Optional[str]
     sentry_release: Optional[str]
     sentry_environment: Optional[str]
@@ -149,6 +152,27 @@ class CharmConfig(BaseConfigModel):
         """
         int_value = int(value)
         if 0 <= int_value <= 100:
+            return int_value
+        raise ValueError("Value out of range.")
+
+    @validator("global_async_queries_polling_delay")
+    @classmethod
+    def global_async_queries_polling_delay_validator(
+        cls, value: str
+    ) -> Optional[int]:
+        """Check validity of `global_async_query_polling_delay` field.
+
+        Args:
+            value: global-async-query-polling-delay value
+
+        Returns:
+            int_value: integer for global-async-query-polling-delay configuration
+
+        Raises:
+            ValueError: in the case when the value is out of range
+        """
+        int_value = int(value)
+        if 500 <= int_value <= 5000:
             return int_value
         raise ValueError("Value out of range.")
 

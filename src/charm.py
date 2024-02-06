@@ -294,6 +294,13 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "HTML_SANITIZATION_SCHEMA_EXTENSIONS": self.config[
                 "html-sanitization-schema-extensions"
             ],
+            "GLOBAL_ASYNC_QUERIES": self.config["global-async-queries"],
+            "GLOBAL_ASYNC_QUERIES_JWT": self.config[
+                "global-async-queries-jwt"
+            ],
+            "GLOBAL_ASYNC_QUERIES_POLLING_DELAY": self.config[
+                "global-async-queries-polling-delay"
+            ],
             "SENTRY_DSN": self.config["sentry-dsn"],
             "SENTRY_RELEASE": self.config["sentry-release"],
             "SENTRY_ENVIRONMENT": self.config["sentry-environment"],
