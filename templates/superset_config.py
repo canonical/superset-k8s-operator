@@ -23,9 +23,8 @@ if all([SENTRY_DSN, SENTRY_ENVIRONMENT, SENTRY_RELEASE]):
         dsn=SENTRY_DSN,
         environment=SENTRY_ENVIRONMENT,
         release=SENTRY_RELEASE,
-        sample_rate=SENTRY_SAMPLE_RATE,
+        sample_rate=float(SENTRY_SAMPLE_RATE),
         before_send=sentry_before_send,
-        enable_tracing=True,
         )
 
 # Redis caching
