@@ -122,6 +122,8 @@ class TestCharm(TestCase):
                         "SENTRY_RELEASE": None,
                         "SENTRY_REDACT_PARAMS": False,
                         "SENTRY_SAMPLE_RATE": 1.0,
+                        "SERVER_ALIAS": "superset-k8s",
+                        "APPLICATION_PORT": 8088,
                     },
                     "on-check-failure": {"up": "ignore"},
                 }
@@ -210,6 +212,8 @@ class TestCharm(TestCase):
                         "SENTRY_RELEASE": None,
                         "SENTRY_REDACT_PARAMS": False,
                         "SENTRY_SAMPLE_RATE": 1.0,
+                        "SERVER_ALIAS": "superset-k8s",
+                        "APPLICATION_PORT": 8088,
                     },
                     "on-check-failure": {"up": "ignore"},
                 },

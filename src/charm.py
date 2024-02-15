@@ -306,6 +306,8 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "SENTRY_ENVIRONMENT": self.config["sentry-environment"],
             "SENTRY_REDACT_PARAMS": self.config["sentry-redact-params"],
             "SENTRY_SAMPLE_RATE": self.config["sentry-sample-rate"],
+            "SERVER_ALIAS": self.config["server-alias"],
+            "APPLICATION_PORT": APPLICATION_PORT,
         }
         return env
 
@@ -353,6 +355,10 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
                     }
                 },
             )
+
+            # Open port for cache warm-up.
+            self.model.unit.open_port(port=APPLICATION_PORT, protocol="tcp")
+
         container.add_layer(self.name, pebble_layer, combine=True)
         container.replan()
         self.unit.status = MaintenanceStatus("replanning application")

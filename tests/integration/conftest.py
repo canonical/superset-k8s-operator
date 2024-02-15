@@ -54,6 +54,7 @@ async def deploy(ops_test: OpsTest):
             superset_config = {
                 "charm-function": function,
                 "superset-secret-key": SUPERSET_SECRET_KEY,
+                "server-alias": UI_NAME,
             }
 
             # Load examples for the UI charm
