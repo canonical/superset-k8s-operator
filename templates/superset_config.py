@@ -5,6 +5,8 @@ from flask_appbuilder.security.manager import AUTH_OAUTH
 from custom_sso_security_manager import CustomSsoSecurityManager
 from sentry_interceptor import redact_params
 import sentry_sdk
+import yaml
+
 
 APPLICATION_PORT = os.getenv("APPLICATION_PORT")
 SERVER_ALIAS = os.getenv("SERVER_ALIAS")
@@ -25,9 +27,8 @@ if all([SENTRY_DSN, SENTRY_ENVIRONMENT, SENTRY_RELEASE]):
         dsn=SENTRY_DSN,
         environment=SENTRY_ENVIRONMENT,
         release=SENTRY_RELEASE,
-        sample_rate=SENTRY_SAMPLE_RATE,
+        sample_rate=float(SENTRY_SAMPLE_RATE),
         before_send=sentry_before_send,
-        enable_tracing=True,
         )
 
 # Redis caching
@@ -139,7 +140,7 @@ ENABLE_TIME_ROTATE = True
 
 # html sanitization
 HTML_SANITIZATION = os.getenv("HTML_SANITIZATION").lower() != "false"
-HTML_SANITIZATION_SCHEMA_EXTENSIONS = os.getenv("HTML_SANITIZATION_SCHEMA_EXTENSIONS", {})
+HTML_SANITIZATION_SCHEMA_EXTENSIONS = yaml.safe_load(os.getenv("HTML_SANITIZATION_SCHEMA_EXTENSIONS", "{}"))
 
 # postgresql metadata db
 SQLALCHEMY_DATABASE_URI = os.getenv("SQL_ALCHEMY_URI")
