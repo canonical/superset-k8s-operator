@@ -189,3 +189,7 @@ options:
     description: Indicates whether or not event parameters sent to Sentry should be redacted.
     default: false
     type: boolean
+  server-alias:
+    description: The alias the server charm has been deployed with if it differs from the default.
+    default: superset-k8s
+    type: string

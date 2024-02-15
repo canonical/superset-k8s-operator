@@ -7,6 +7,10 @@ from sentry_interceptor import redact_params
 import sentry_sdk
 import yaml
 
+
+APPLICATION_PORT = os.getenv("APPLICATION_PORT")
+SERVER_ALIAS = os.getenv("SERVER_ALIAS")
+
 # Monitoring with Sentry
 SENTRY_DSN = os.getenv("SENTRY_DSN")
 SENTRY_ENVIRONMENT = os.getenv("SENTRY_ENVIRONMENT")
@@ -65,7 +69,7 @@ SQLALCHEMY_POOL_SIZE = int(os.getenv("SQLALCHEMY_POOL_SIZE"))
 SQLALCHEMY_POOL_TIMEOUT = int(os.getenv("SQLALCHEMY_POOL_TIMEOUT"))
 SQLALCHEMY_MAX_OVERFLOW = int(os.getenv("SQLALCHEMY_MAX_OVERFLOW"))
 
-
+# Celery cache warm-up
 class CeleryConfig(object):
     broker_url = (
         f"redis://{os.getenv('REDIS_HOST')}:{os.getenv('REDIS_PORT')}/4"
@@ -103,6 +107,7 @@ class CeleryConfig(object):
 
 
 CELERY_CONFIG = CeleryConfig
+WEBDRIVER_BASEURL = f"http://{SERVER_ALIAS}:{APPLICATION_PORT}/"
 
 FEATURE_FLAGS = {
     flag_name: os.getenv(flag_name, "").lower() != "false"

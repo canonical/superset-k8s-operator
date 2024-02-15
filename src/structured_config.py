@@ -82,6 +82,7 @@ class CharmConfig(BaseConfigModel):
     sentry_environment: Optional[str]
     sentry_redact_params: bool
     sentry_sample_rate: Optional[str]
+    server_alias: str
 
     @validator("*", pre=True)
     @classmethod
