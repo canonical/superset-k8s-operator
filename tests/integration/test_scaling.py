@@ -14,6 +14,7 @@ from helpers import (
     REDIS_NAME,
     SCALABLE_SERVICES,
     SUPERSET_SECRET_KEY,
+    UI_NAME,
     deploy_and_relate_superset_charm,
     get_active_workers,
     scale,
@@ -54,6 +55,7 @@ async def deploy(ops_test: OpsTest):
             superset_config = {
                 "charm-function": function,
                 "superset-secret-key": SUPERSET_SECRET_KEY,
+                "server-alias": UI_NAME,
             }
 
             await deploy_and_relate_superset_charm(
