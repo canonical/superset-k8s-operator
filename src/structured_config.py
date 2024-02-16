@@ -42,6 +42,7 @@ class RegistrationRole(str, Enum):
     gamma = "Gamma"
     public = "Public"
     sql_lab = "sql_lab"
+    canonical = "Canonical"
 
 
 class CharmConfig(BaseConfigModel):
