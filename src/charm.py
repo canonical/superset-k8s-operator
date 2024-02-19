@@ -28,13 +28,20 @@ from ops.model import (
 )
 from ops.pebble import CheckStatus
 
-from literals import APP_NAME, APPLICATION_PORT, CONFIG_PATH, UI_FUNCTIONS
+from literals import (
+    APP_NAME,
+    APPLICATION_PORT,
+    CONFIG_PATH,
+    DEFAULT_ROLES,
+    SQL_AB_ROLE,
+    UI_FUNCTIONS,
+)
 from log import log_event_handler
 from relations.postgresql import Database
 from relations.redis import Redis
 from state import State
 from structured_config import CharmConfig
-from utils import load_superset_files, random_string
+from utils import load_superset_files, query_metadata_database, random_string
 
 # Log messages can be retrieved using juju debug-log
 logger = logging.getLogger(__name__)
@@ -194,6 +201,24 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         except pebble.ConnectionError:
             return False
 
+    def _validate_self_registration_role(self):
+        """Determine allowed Superset roles.
+
+        Raises:
+            ValueError: in case role value is not allowed.
+        """
+        uri = self._state.sql_alchemy_uri
+        sql = SQL_AB_ROLE
+
+        allowed_roles = query_metadata_database(uri, sql)
+        if not allowed_roles:
+            allowed_roles = DEFAULT_ROLES
+        role = self.config["self-registration-role"]
+        if role not in allowed_roles:
+            raise ValueError(
+                f"The self-registration role {role} is not allowed. Use only {allowed_roles}."
+            )
+
     def _restart_application(self, container):
         """Restart application.
 
@@ -257,6 +282,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             env: dictionary of environment variables
         """
         self._handle_superset_secret()
+        self._validate_self_registration_role()
 
         env = {
             "SUPERSET_SECRET_KEY": self._state.superset_secret_key,

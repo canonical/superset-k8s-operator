@@ -363,6 +363,16 @@ class TestCharm(TestCase):
             MaintenanceStatus("replanning application"),
         )
 
+    def test_invalid_default_role(self):
+        """The pebble plan reflects the worker function."""
+        harness = self.harness
+
+        simulate_lifecycle(harness)
+        with self.assertRaises(ValueError):
+            self.harness.update_config(
+                {"self-registration-role": "InvalidRole"}
+            )
+
 
 @mock.patch("charm.Redis._get_redis_relation_data")
 def simulate_lifecycle(harness, _get_redis_relation_data):

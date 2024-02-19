@@ -9,6 +9,9 @@ import os
 import secrets
 import string
 
+from sqlalchemy import create_engine
+from sqlalchemy.exc import SQLAlchemyError
+
 from literals import CONFIG_FILES, CONFIG_PATH
 
 logger = logging.getLogger(__name__)
@@ -73,3 +76,23 @@ def load_superset_files(container):
     for file in CONFIG_FILES:
         path = CONFIG_PATH
         push_files(container, f"templates/{file}", f"{path}/{file}", 0o744)
+
+
+def query_metadata_database(uri, sql):
+    """Query metadata database.
+
+    Args:
+        uri: database uri string.
+        sql: SQL query to execute.
+
+    Return:
+        List of returned values.
+    """
+    try:
+        engine = create_engine(uri)
+        with engine.connect() as connection:
+            result = connection.execute(sql)
+            return [row[0] for row in result.fetchall()]
+    except SQLAlchemyError as e:
+        logger.exception("Error accessing database: %s", str(e))
+        return []
