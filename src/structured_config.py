@@ -34,16 +34,6 @@ class FunctionType(str, Enum):
     beat = "beat"
 
 
-class RegistrationRole(str, Enum):
-    """Enum for the `self-registration-role` field."""
-
-    admin = "Admin"
-    alpha = "Alpha"
-    gamma = "Gamma"
-    public = "Public"
-    sql_lab = "sql_lab"
-
-
 class CharmConfig(BaseConfigModel):
     """Manager for the structured configuration."""
 
@@ -63,7 +53,7 @@ class CharmConfig(BaseConfigModel):
     sqlalchemy_pool_size: int
     sqlalchemy_pool_timeout: int
     sqlalchemy_max_overflow: int
-    self_registration_role: RegistrationRole
+    self_registration_role: str
     oauth_admin_email: str
     google_client_id: Optional[str]
     google_client_secret: Optional[str]

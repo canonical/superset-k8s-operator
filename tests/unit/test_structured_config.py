@@ -45,11 +45,6 @@ def test_product_related_values(_harness) -> None:
     accepted_values = ["app-gunicorn", "worker", "beat"]
     check_valid_values(_harness, "charm-function", accepted_values)
 
-    # self-registration-role
-    check_invalid_values(_harness, "self-registration-role", erroneus_values)
-    accepted_values = ["Admin", "Alpha", "Gamma", "Public", "sql_lab"]
-    check_valid_values(_harness, "self-registration-role", accepted_values)
-
 
 def check_valid_values(_harness, field: str, accepted_values: list) -> None:
     """Check the correctness of the passed values for a field.

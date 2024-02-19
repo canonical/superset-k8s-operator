@@ -122,7 +122,7 @@ options:
   self-registration-role:
     description: |
       The default role to be provided to users that self-register via Oauth.
-      One of `Admin`, `Alpha`, `Gamma`, `Public`, `sql_lab`
+      This role must exist already in Superset and is case sensitive.
     type: string
     default: Public
   http-proxy:
