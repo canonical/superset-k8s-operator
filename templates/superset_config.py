@@ -109,6 +109,8 @@ class CeleryConfig(object):
 CELERY_CONFIG = CeleryConfig
 WEBDRIVER_BASEURL = f"http://{SERVER_ALIAS}:{APPLICATION_PORT}/"
 
+SUPERSET_WEBSERVER_TIMEOUT = int(os.getenv("WEBSERVER_TIMEOUT"))
+
 FEATURE_FLAGS = {
     flag_name: os.getenv(flag_name, "").lower() != "false"
     for flag_name in [

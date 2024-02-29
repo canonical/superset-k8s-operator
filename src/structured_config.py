@@ -73,6 +73,7 @@ class CharmConfig(BaseConfigModel):
     sentry_redact_params: bool
     sentry_sample_rate: Optional[str]
     server_alias: str
+    webserver_timeout: int
 
     @validator("*", pre=True)
     @classmethod
@@ -176,7 +177,7 @@ class CharmConfig(BaseConfigModel):
             value: sentry_sample_rate value
 
         Returns:
-            fload_value: integer for sentry_sample_rate configuration
+            float_value: float for sentry_sample_rate configuration
 
         Raises:
             ValueError: in the case when the value is out of range
@@ -184,4 +185,23 @@ class CharmConfig(BaseConfigModel):
         float_value = float(value)
         if 0 <= float_value <= 1:
             return float_value
+        raise ValueError("Value out of range.")
+
+    @validator("webserver_timeout")
+    @classmethod
+    def webserver_timeout_validator(cls, value: str) -> Optional[float]:
+        """Check validity of `webserver_timeout` field.
+
+        Args:
+            value: webserver_timeout value
+
+        Returns:
+            int: integer for webserver_timeout configuration
+
+        Raises:
+            ValueError: in the case when the value is out of range
+        """
+        int_value = int(value)
+        if 60 <= int_value <= 300:
+            return int_value
         raise ValueError("Value out of range.")
