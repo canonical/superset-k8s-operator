@@ -35,10 +35,16 @@ async def deploy(ops_test: OpsTest):
 
     async with ops_test.fast_forward():
         await ops_test.model.wait_for_idle(
-            apps=[NGINX_NAME, POSTGRES_NAME, REDIS_NAME],
+            apps=[POSTGRES_NAME, REDIS_NAME],
             status="active",
             raise_on_blocked=False,
             timeout=2000,
+        )
+        await ops_test.model.wait_for_idle(
+            apps=[NGINX_NAME],
+            status="waiting",
+            raise_on_blocked=False,
+            timeout=200,
         )
 
         charm = await ops_test.build_charm(".")
