@@ -28,10 +28,14 @@ def test_config_parsing_parameters_integer_values(_harness) -> None:
         "sqlalchemy-pool-size",
         "sqlalchemy-pool-timeout",
         "sqlalchemy-max-overflow",
+        "webserver-timeout",
     ]
     erroneus_values = [2147483648, -2147483649]
     valid_values = [42, 100, 1]
+    webserver_timeout_valid_values = [60, 170, 300]
     for field in integer_fields:
+        if field == "webserver-timeout":
+            valid_values = webserver_timeout_valid_values
         check_invalid_values(_harness, field, erroneus_values)
         check_valid_values(_harness, field, valid_values)
 

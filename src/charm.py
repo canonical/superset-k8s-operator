@@ -332,6 +332,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "SENTRY_SAMPLE_RATE": self.config["sentry-sample-rate"],
             "SERVER_ALIAS": self.config["server-alias"],
             "APPLICATION_PORT": APPLICATION_PORT,
+            "WEBSERVER_TIMEOUT": self.config["webserver-timeout"],
         }
         return env
 

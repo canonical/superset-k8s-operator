@@ -193,3 +193,7 @@ options:
     description: The alias the server charm has been deployed with if it differs from the default.
     default: superset-k8s
     type: string
+  webserver-timeout:
+    description: The time in seconds the server can maintain a database connection.
+    default: 180
+    type: int
