@@ -31,6 +31,12 @@ if all([SENTRY_DSN, SENTRY_ENVIRONMENT, SENTRY_RELEASE]):
         before_send=sentry_before_send,
         )
 
+PREFERRED_DATABASE = [
+    "PostgreSQL",
+    "Trino",
+    "MySQL",
+]
+
 # Redis caching
 CACHE_CONFIG = {
     "CACHE_TYPE": "redis",
