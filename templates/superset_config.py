@@ -68,8 +68,17 @@ RESULTS_BACKEND = RedisCache(
     key_prefix="superset_results",
 )
 
-TALISMAN_ENABLED = False
-CONTENT_SECURITY_POLICY_WARNING = False
+TALISMAN_ENABLED = True
+TALISMAN_CONFIG = {
+     "force_https": False,
+     "content_security_policy": {
+        "default-src": ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+        "img-src": ["'self'", "data:"],
+        "worker-src": ["'self'", "blob:"],
+        "connect-src": ["'self'", "https://api.mapbox.com", "https://events.mapbox.com"],
+        "object-src": "'none'",
+     }
+}
 
 SQLALCHEMY_POOL_SIZE = int(os.getenv("SQLALCHEMY_POOL_SIZE"))
 SQLALCHEMY_POOL_TIMEOUT = int(os.getenv("SQLALCHEMY_POOL_TIMEOUT"))
