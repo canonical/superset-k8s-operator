@@ -127,6 +127,7 @@ class TestCharm(TestCase):
                         "WEBSERVER_TIMEOUT": 180,
                         "STATSD_HOST": None,
                         "STATSD_PORT": None,
+                        'LOG_FILE': '/var/log/superset.log',
                     },
                     "on-check-failure": {"up": "ignore"},
                 }
@@ -220,6 +221,7 @@ class TestCharm(TestCase):
                         "WEBSERVER_TIMEOUT": 180,
                         "STATSD_HOST": None,
                         "STATSD_PORT": None,
+                        'LOG_FILE': '/var/log/superset.log',
                     },
                     "on-check-failure": {"up": "ignore"},
                 },

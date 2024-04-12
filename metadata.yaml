@@ -40,6 +40,14 @@ requires:
   statsd-exporter:
     interface: statsd_exporter
     limit: 1
+  log-proxy:
+    interface: loki_push_api
+    optional: true
+    limit: 1
+
+provides:
+  grafana-dashboard:
+    interface: grafana_dashboard
 
 peers:
   peer:

@@ -14,6 +14,8 @@ import logging
 
 from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
 from charms.data_platform_libs.v0.data_models import TypedCharmBase
+from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
+from charms.loki_k8s.v0.loki_push_api import LogProxyConsumer
 from charms.nginx_ingress_integrator.v0.nginx_route import require_nginx_route
 from charms.redis_k8s.v0.redis import RedisRelationCharmEvents, RedisRequires
 from ops import pebble
@@ -33,6 +35,7 @@ from literals import (
     APPLICATION_PORT,
     CONFIG_PATH,
     DEFAULT_ROLES,
+    LOG_FILE,
     SQL_AB_ROLE,
     UI_FUNCTIONS,
 )
@@ -108,6 +111,16 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         # Handle Ingress
         self._require_nginx_route()
+
+        # Loki
+        self.log_proxy = LogProxyConsumer(
+            self, log_files=[LOG_FILE], relation_name="log-proxy"
+        )
+
+        # Grafana
+        self._grafana_dashboards = GrafanaDashboardProvider(
+            self, relation_name="grafana-dashboard"
+        )
 
     def _require_nginx_route(self):
         """Require nginx-route relation based on current configuration."""
@@ -337,6 +350,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "WEBSERVER_TIMEOUT": self.config["webserver-timeout"],
             "STATSD_HOST": self._state.statsd_host,
             "STATSD_PORT": self._state.statsd_port,
+            "LOG_FILE": LOG_FILE,
         }
         return env
 
