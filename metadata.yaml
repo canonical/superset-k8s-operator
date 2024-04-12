@@ -37,6 +37,9 @@ requires:
   redis:
     interface: redis
     limit: 1
+  statsd-exporter:
+    interface: statsd_exporter
+    limit: 1
 
 peers:
   peer:

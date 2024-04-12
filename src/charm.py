@@ -39,6 +39,7 @@ from literals import (
 from log import log_event_handler
 from relations.postgresql import Database
 from relations.redis import Redis
+from relations.statsd import StatsDRelationHandler
 from state import State
 from structured_config import CharmConfig
 from utils import load_superset_files, query_metadata_database, random_string
@@ -86,6 +87,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             extra_user_roles="admin",
         )
         self.database = Database(self)
+        self.statsd = StatsDRelationHandler(self)
 
         # Handle redis relation
         self._stored.set_default(redis_relation={})
@@ -333,6 +335,8 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "SERVER_ALIAS": self.config["server-alias"],
             "APPLICATION_PORT": APPLICATION_PORT,
             "WEBSERVER_TIMEOUT": self.config["webserver-timeout"],
+            "STATSD_HOST": self._state.statsd_host,
+            "STATSD_PORT": self._state.statsd_port,
         }
         return env
 

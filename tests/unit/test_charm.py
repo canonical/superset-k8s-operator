@@ -125,6 +125,8 @@ class TestCharm(TestCase):
                         "SERVER_ALIAS": "superset-k8s",
                         "APPLICATION_PORT": 8088,
                         "WEBSERVER_TIMEOUT": 180,
+                        "STATSD_HOST": None,
+                        "STATSD_PORT": None,
                     },
                     "on-check-failure": {"up": "ignore"},
                 }
@@ -216,6 +218,8 @@ class TestCharm(TestCase):
                         "SERVER_ALIAS": "superset-k8s",
                         "APPLICATION_PORT": 8088,
                         "WEBSERVER_TIMEOUT": 180,
+                        "STATSD_HOST": None,
+                        "STATSD_PORT": None,
                     },
                     "on-check-failure": {"up": "ignore"},
                 },
@@ -375,6 +379,47 @@ class TestCharm(TestCase):
                 {"self-registration-role": "InvalidRole"}
             )
 
+    def test_statsd_relation_changed(self):
+        """The charm uses the configuration values from statsd relation."""
+        harness = self.harness
+        simulate_lifecycle(harness)
+        data = {
+            "statsd": {
+                "statsd_host": "statsd",
+                "statsd_port": "9125",
+            },
+        }
+        # Create the relation
+        rel_id = harness.add_relation("statsd-exporter", "superset-k8s")
+        harness.add_relation_unit(rel_id, "superset-k8s/0")
+
+        event = make_statsd_relation_event(rel_id, data)
+        harness.charm.statsd._on_relation_changed(event)
+        self.assertTrue(event.relation.data["statsd"]["statsd_host"])
+        got_plan = harness.get_container_pebble_plan("superset").to_dict()
+        got_port = got_plan["services"]["superset"]["environment"][
+            "STATSD_PORT"
+        ]
+        assert got_port == "9125"
+
+    def test_statsd_relation_broken(self):
+        """The charm does not use statsd connection data."""
+        harness = self.harness
+        simulate_lifecycle(harness)
+
+        rel_id = harness.add_relation("statsd-exporter", "superset-k8s")
+        harness.add_relation_unit(rel_id, "superset-k8s/0")
+
+        data = {"statsd": {}}
+        event = make_statsd_relation_event(rel_id, data)
+        harness.charm.statsd._on_relation_broken(event)
+        self.assertFalse(event.relation.data["statsd"].get("statsd_host"))
+        got_plan = harness.get_container_pebble_plan("superset").to_dict()
+        got_port = got_plan["services"]["superset"]["environment"][
+            "STATSD_PORT"
+        ]
+        assert got_port is None
+
 
 @mock.patch("charm.Redis._get_redis_relation_data")
 def simulate_lifecycle(harness, _get_redis_relation_data):
@@ -398,6 +443,33 @@ def simulate_lifecycle(harness, _get_redis_relation_data):
     # Simulate database readiness.
     event = make_database_changed_event()
     harness.charm.database._on_database_changed(event)
+
+
+def make_statsd_relation_event(rel_id, data):
+    """Create and return a mock statsd changed event.
+
+    Args:
+        rel_id: the relation ID.
+        data: the relation databag.
+
+    Returns:
+        Event dict.
+    """
+    return type(
+        "Event",
+        (),
+        {
+            "app": "statsd",
+            "relation": type(
+                "Relation",
+                (),
+                {
+                    "data": data,
+                    "id": rel_id,
+                },
+            ),
+        },
+    )
 
 
 def make_database_changed_event():
