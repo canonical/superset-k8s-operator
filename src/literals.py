@@ -15,4 +15,8 @@ CONFIG_PATH = "/app/pythonpath"
 UI_FUNCTIONS = ["app", "app-gunicorn"]
 DEFAULT_ROLES = ["Public", "Gamma", "Alpha", "Admin"]
 SQL_AB_ROLE = "SELECT name FROM ab_role;"
+
+# Observability literals
 LOG_FILE = "/var/log/superset.log"
+EXPOSE_PORT = 9102
+ACCEPT_PORT = 9125

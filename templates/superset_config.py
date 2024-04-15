@@ -33,10 +33,7 @@ if all([SENTRY_DSN, SENTRY_ENVIRONMENT, SENTRY_RELEASE]):
         )
 
 # StatsD logging
-statsd_host = os.getenv('STATSD_HOST')
-statsd_port = os.getenv('STATSD_PORT')
-if statsd_host and statsd_port:
-    STATS_LOGGER = StatsdStatsLogger(host=statsd_host, port=statsd_port)
+STATS_LOGGER = StatsdStatsLogger(host="localhost", port=os.getenv("STATSD_PORT"))
 
 PREFERRED_DATABASE = [
     "PostgreSQL",
