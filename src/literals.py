@@ -18,5 +18,5 @@ SQL_AB_ROLE = "SELECT name FROM ab_role;"
 
 # Observability literals
 LOG_FILE = "/var/log/superset.log"
-EXPOSE_PORT = 9102
-ACCEPT_PORT = 9125
+PROMETHEUS_METRICS_PORT = 9102
+STATSD_PORT = 9125

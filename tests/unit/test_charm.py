@@ -244,6 +244,29 @@ class TestCharm(TestCase):
             MaintenanceStatus("replanning application"),
         )
 
+    def test_observability_pebble_layer(self):
+        """The pebble plan is correctly generated when the charm is ready."""
+        harness = self.harness
+        simulate_lifecycle(harness)
+
+        # The plan is generated after pebble is ready.
+        want_plan = {
+            "services": {
+                "prometheus-statsd-exporter": {
+                    "override": "replace",
+                    "summary": "statsd metrics exporter",
+                    "command": "/usr/bin/statsd_exporter",
+                    "startup": "enabled",
+                    "after": ["superset"],
+                },
+            }
+        }
+        got_plan = harness.get_container_pebble_plan("superset").to_dict()
+        self.assertEqual(
+            got_plan["services"]["prometheus-statsd-exporter"],
+            want_plan["services"]["prometheus-statsd-exporter"],
+        )
+
     def test_ingress(self):
         """The charm relates correctly to the nginx ingress charm."""
         harness = self.harness

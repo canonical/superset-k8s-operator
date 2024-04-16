@@ -32,14 +32,14 @@ from ops.model import (
 from ops.pebble import CheckStatus
 
 from literals import (
-    ACCEPT_PORT,
     APP_NAME,
     APPLICATION_PORT,
     CONFIG_PATH,
     DEFAULT_ROLES,
-    EXPOSE_PORT,
     LOG_FILE,
+    PROMETHEUS_METRICS_PORT,
     SQL_AB_ROLE,
+    STATSD_PORT,
     UI_FUNCTIONS,
 )
 from log import log_event_handler
@@ -127,7 +127,13 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         self._prometheus_scraping = MetricsEndpointProvider(
             self,
             relation_name="metrics-endpoint",
-            jobs=[{"static_configs": [{"targets": [f"*:{EXPOSE_PORT}"]}]}],
+            jobs=[
+                {
+                    "static_configs": [
+                        {"targets": [f"*:{PROMETHEUS_METRICS_PORT}"]}
+                    ]
+                }
+            ],
             refresh_event=self.on.config_changed,
         )
 
@@ -357,7 +363,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "SERVER_ALIAS": self.config["server-alias"],
             "APPLICATION_PORT": APPLICATION_PORT,
             "WEBSERVER_TIMEOUT": self.config["webserver-timeout"],
-            "STATSD_PORT": ACCEPT_PORT,
+            "STATSD_PORT": STATSD_PORT,
             "LOG_FILE": LOG_FILE,
         }
         return env
@@ -418,8 +424,10 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             self.model.unit.open_port(port=APPLICATION_PORT, protocol="tcp")
 
             # Open ports for accepting and exposing metrics
-            self.model.unit.open_port(port=EXPOSE_PORT, protocol="tcp")
-            self.model.unit.open_port(port=ACCEPT_PORT, protocol="udp")
+            self.model.unit.open_port(
+                port=PROMETHEUS_METRICS_PORT, protocol="tcp"
+            )
+            self.model.unit.open_port(port=STATSD_PORT, protocol="udp")
 
         container.add_layer(self.name, pebble_layer, combine=True)
         container.replan()
