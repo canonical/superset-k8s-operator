@@ -14,7 +14,10 @@ import logging
 
 from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
 from charms.data_platform_libs.v0.data_models import TypedCharmBase
+from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
+from charms.loki_k8s.v0.loki_push_api import LogProxyConsumer
 from charms.nginx_ingress_integrator.v0.nginx_route import require_nginx_route
+from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointProvider
 from charms.redis_k8s.v0.redis import RedisRelationCharmEvents, RedisRequires
 from ops import pebble
 from ops.charm import ConfigChangedEvent, PebbleReadyEvent
@@ -33,7 +36,10 @@ from literals import (
     APPLICATION_PORT,
     CONFIG_PATH,
     DEFAULT_ROLES,
+    LOG_FILE,
+    PROMETHEUS_METRICS_PORT,
     SQL_AB_ROLE,
+    STATSD_PORT,
     UI_FUNCTIONS,
 )
 from log import log_event_handler
@@ -106,6 +112,30 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         # Handle Ingress
         self._require_nginx_route()
+
+        # Loki
+        self.log_proxy = LogProxyConsumer(
+            self, log_files=[LOG_FILE], relation_name="log-proxy"
+        )
+
+        # Grafana
+        self._grafana_dashboards = GrafanaDashboardProvider(
+            self, relation_name="grafana-dashboard"
+        )
+
+        # Prometheus
+        self._prometheus_scraping = MetricsEndpointProvider(
+            self,
+            relation_name="metrics-endpoint",
+            jobs=[
+                {
+                    "static_configs": [
+                        {"targets": [f"*:{PROMETHEUS_METRICS_PORT}"]}
+                    ]
+                }
+            ],
+            refresh_event=self.on.config_changed,
+        )
 
     def _require_nginx_route(self):
         """Require nginx-route relation based on current configuration."""
@@ -333,6 +363,8 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "SERVER_ALIAS": self.config["server-alias"],
             "APPLICATION_PORT": APPLICATION_PORT,
             "WEBSERVER_TIMEOUT": self.config["webserver-timeout"],
+            "STATSD_PORT": STATSD_PORT,
+            "LOG_FILE": LOG_FILE,
         }
         return env
 
@@ -365,7 +397,14 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
                     "startup": "enabled",
                     "environment": env,
                     "on-check-failure": {"up": "ignore"},
-                }
+                },
+                "prometheus-statsd-exporter": {
+                    "override": "replace",
+                    "summary": "statsd metrics exporter",
+                    "command": "/usr/bin/statsd_exporter",
+                    "startup": "enabled",
+                    "after": [self.name],
+                },
             },
         }
         if self.config["charm-function"] in UI_FUNCTIONS:
@@ -383,6 +422,12 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
             # Open port for cache warm-up.
             self.model.unit.open_port(port=APPLICATION_PORT, protocol="tcp")
+
+            # Open ports for accepting and exposing metrics
+            self.model.unit.open_port(
+                port=PROMETHEUS_METRICS_PORT, protocol="tcp"
+            )
+            self.model.unit.open_port(port=STATSD_PORT, protocol="udp")
 
         container.add_layer(self.name, pebble_layer, combine=True)
         container.replan()

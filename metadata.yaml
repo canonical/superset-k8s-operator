@@ -37,6 +37,17 @@ requires:
   redis:
     interface: redis
     limit: 1
+  log-proxy:
+    interface: loki_push_api
+    optional: true
+    limit: 1
+
+provides:
+  grafana-dashboard:
+    interface: grafana_dashboard
+  metrics-endpoint:
+    interface: prometheus_scrape
+
 
 peers:
   peer:

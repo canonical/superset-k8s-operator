@@ -231,6 +231,40 @@ HTML_SANITIZATION_SCHEMA_EXTENSIONS = {
   "tagNames": ["style"],
 }
 ```
+### Observability
+
+The Superset charm can be related to the
+[Canonical Observability Stack](https://charmhub.io/topics/canonical-observability-stack)
+in order to collect logs and telemetry. Superset can relate directly to Grafana and Loki
+and utilizes an intermediate (StatsD exporter tool) to provide metrics to Prometheus.
+To deploy cos-lite and expose its endpoints as offers, follow these steps:
+
+```bash
+# Deploy the cos-lite bundle:
+juju add-model cos
+juju deploy cos-lite --trust
+```
+
+```bash
+# Expose the cos integration endpoints:
+juju offer prometheus:metrics-endpoint
+juju offer loki:logging
+juju offer grafana:grafana-dashboard
+
+# Relate superset to the cos-lite apps:
+juju relate superset-k8s admin/cos.grafana
+juju relate superset-k8s admin/cos.loki
+juju relate superset-k8s admin/cos.prometheus
+```
+
+```bash
+# Access grafana with username "admin" and password:
+juju run grafana/0 -m cos get-admin-password --wait 1m
+# Grafana is listening on port 3000 of the app ip address.
+# Dashboard can be accessed under "Superset Metrics"
+```
+
+Find out more information about the StatsD_exporter [here](https://github.com/prometheus/statsd_exporter).
 
 ## Contributing
 Please see the [Juju SDK documentation](https://juju.is/docs/sdk) for more information about developing and improving charms and [Contributing](CONTRIBUTING.md) for developer guidance.

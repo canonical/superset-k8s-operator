@@ -4,6 +4,7 @@ from celery.schedules import crontab
 from flask_appbuilder.security.manager import AUTH_OAUTH
 from custom_sso_security_manager import CustomSsoSecurityManager
 from sentry_interceptor import redact_params
+from superset.stats_logger import StatsdStatsLogger
 import sentry_sdk
 import yaml
 
@@ -30,6 +31,9 @@ if all([SENTRY_DSN, SENTRY_ENVIRONMENT, SENTRY_RELEASE]):
         sample_rate=float(SENTRY_SAMPLE_RATE),
         before_send=sentry_before_send,
         )
+
+# StatsD logging
+STATS_LOGGER = StatsdStatsLogger(host="localhost", port=os.getenv("STATSD_PORT"))
 
 PREFERRED_DATABASE = [
     "PostgreSQL",
@@ -151,9 +155,11 @@ GLOBAL_ASYNC_QUERIES_REDIS_CONFIG = {
 GLOBAL_ASYNC_QUERIES_POLLING_DELAY = os.getenv("GLOBAL_ASYNC_QUERIES_POLLING_DELAY")
 SECRET_KEY = os.getenv("SUPERSET_SECRET_KEY")
 
+# Log rotation
 LOG_LEVEL = "DEBUG"
 TIME_ROTATE_LOG_LEVEL = "DEBUG"
 ENABLE_TIME_ROTATE = True
+FILENAME = os.getenv("LOG_FILE")
 
 # html sanitization
 HTML_SANITIZATION = os.getenv("HTML_SANITIZATION").lower() != "false"

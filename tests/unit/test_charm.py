@@ -125,6 +125,8 @@ class TestCharm(TestCase):
                         "SERVER_ALIAS": "superset-k8s",
                         "APPLICATION_PORT": 8088,
                         "WEBSERVER_TIMEOUT": 180,
+                        "STATSD_PORT": 9125,
+                        "LOG_FILE": "/var/log/superset.log",
                     },
                     "on-check-failure": {"up": "ignore"},
                 }
@@ -137,7 +139,9 @@ class TestCharm(TestCase):
         got_plan["services"]["superset"]["environment"][
             "ADMIN_USER"
         ] = "unique-user"
-        self.assertEqual(got_plan["services"], want_plan["services"])
+        self.assertEqual(
+            got_plan["services"]["superset"], want_plan["services"]["superset"]
+        )
 
         # The service was started.
         service = harness.model.unit.get_container("superset").get_service(
@@ -216,6 +220,8 @@ class TestCharm(TestCase):
                         "SERVER_ALIAS": "superset-k8s",
                         "APPLICATION_PORT": 8088,
                         "WEBSERVER_TIMEOUT": 180,
+                        "STATSD_PORT": 9125,
+                        "LOG_FILE": "/var/log/superset.log",
                     },
                     "on-check-failure": {"up": "ignore"},
                 },
@@ -228,12 +234,37 @@ class TestCharm(TestCase):
         got_plan["services"]["superset"]["environment"][
             "ADMIN_USER"
         ] = "unique-user"
-        self.assertEqual(got_plan["services"], want_plan["services"])
+        self.assertEqual(
+            got_plan["services"]["superset"], want_plan["services"]["superset"]
+        )
 
         # The MaintenanceStatus is set with replan message.
         self.assertEqual(
             harness.model.unit.status,
             MaintenanceStatus("replanning application"),
+        )
+
+    def test_observability_pebble_layer(self):
+        """The pebble plan is correctly generated when the charm is ready."""
+        harness = self.harness
+        simulate_lifecycle(harness)
+
+        # The plan is generated after pebble is ready.
+        want_plan = {
+            "services": {
+                "prometheus-statsd-exporter": {
+                    "override": "replace",
+                    "summary": "statsd metrics exporter",
+                    "command": "/usr/bin/statsd_exporter",
+                    "startup": "enabled",
+                    "after": ["superset"],
+                },
+            }
+        }
+        got_plan = harness.get_container_pebble_plan("superset").to_dict()
+        self.assertEqual(
+            got_plan["services"]["prometheus-statsd-exporter"],
+            want_plan["services"]["prometheus-statsd-exporter"],
         )
 
     def test_ingress(self):
