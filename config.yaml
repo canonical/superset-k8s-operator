@@ -197,3 +197,7 @@ options:
     description: The time in seconds the server can maintain a database connection.
     default: 180
     type: int
+  allow-adhoc-subquery:
+    description: Feature flag for metric subqueries.
+    default: false
+    type: boolean

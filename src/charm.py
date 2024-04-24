@@ -333,6 +333,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "SERVER_ALIAS": self.config["server-alias"],
             "APPLICATION_PORT": APPLICATION_PORT,
             "WEBSERVER_TIMEOUT": self.config["webserver-timeout"],
+            "ALLOW_ADHOC_SUBQUERY": self.config["allow-adhoc-subquery"],
         }
         return env
 

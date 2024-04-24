@@ -125,6 +125,7 @@ class TestCharm(TestCase):
                         "SERVER_ALIAS": "superset-k8s",
                         "APPLICATION_PORT": 8088,
                         "WEBSERVER_TIMEOUT": 180,
+                        "ALLOW_ADHOC_SUBQUERY": False,
                     },
                     "on-check-failure": {"up": "ignore"},
                 }
@@ -216,6 +217,7 @@ class TestCharm(TestCase):
                         "SERVER_ALIAS": "superset-k8s",
                         "APPLICATION_PORT": 8088,
                         "WEBSERVER_TIMEOUT": 180,
+                        "ALLOW_ADHOC_SUBQUERY": False,
                     },
                     "on-check-failure": {"up": "ignore"},
                 },
