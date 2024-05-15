@@ -1,3 +1,6 @@
+[![Charmhub Badge](https://charmhub.io/superset-k8s/badge.svg)](https://charmhub.io/superset-k8s)
+[![Release Edge](https://github.com/canonical/superset-k8s-operator/actions/workflows/test_and_publish_charm.yaml/badge.svg)](https://github.com/canonical/superset-k8s-operator/actions/workflows/test_and_publish_charm.yaml)
+
 # superset-k8s-charm
 Apache Superset™ is an open-source modern data exploration and visualization platform.
 Superset is fast, lightweight, intuitive, and loaded with options that make it easy for users of all skill sets to explore and visualize their data.
