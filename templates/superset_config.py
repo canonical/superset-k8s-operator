@@ -73,11 +73,18 @@ RESULTS_BACKEND = RedisCache(
 )
 
 TALISMAN_ENABLED = True
+
+image_allow_list = ["'self'", "data:"]
+image_domains = os.getenv("ALLOW_IMAGE_DOMAINS")
+
+if image_domains:
+    image_allow_list.extend(domain.strip() for domain in image_domains.split(','))
+
 TALISMAN_CONFIG = {
      "force_https": False,
      "content_security_policy": {
         "default-src": ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-        "img-src": ["'self'", "data:"],
+        "img-src": image_allow_list,
         "worker-src": ["'self'", "blob:"],
         "connect-src": ["'self'", "https://api.mapbox.com", "https://events.mapbox.com"],
         "object-src": "'none'",

@@ -37,6 +37,7 @@ class FunctionType(str, Enum):
 class CharmConfig(BaseConfigModel):
     """Manager for the structured configuration."""
 
+    allow_image_domains: Optional[str]
     external_hostname: str
     tls_secret_name: str
     superset_secret_key: Optional[str]

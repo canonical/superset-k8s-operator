@@ -315,6 +315,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         self._validate_self_registration_role()
 
         env = {
+            "ALLOW_IMAGE_DOMAINS": self.config["allow-image-domains"],
             "SUPERSET_SECRET_KEY": self._state.superset_secret_key,
             "ADMIN_PASSWORD": self.config["admin-password"],
             "CHARM_FUNCTION": self.config["charm-function"].value,
