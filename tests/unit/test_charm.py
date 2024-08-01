@@ -84,6 +84,7 @@ class TestCharm(TestCase):
                     "command": "/app/k8s/k8s-bootstrap.sh",
                     "startup": "enabled",
                     "environment": {
+                        "ALLOW_IMAGE_DOMAINS": None,
                         "SUPERSET_SECRET_KEY": "example-pass",
                         "ADMIN_USER": "unique-user",
                         "ADMIN_PASSWORD": "admin",
@@ -167,6 +168,7 @@ class TestCharm(TestCase):
                 "http-proxy": "proxy:1234",
                 "https-proxy": "proxy:1234",
                 "no-proxy": ".canonical.com",
+                "allow-image-domains": "assets.ubuntu.com",
             }
         )
 
@@ -179,6 +181,7 @@ class TestCharm(TestCase):
                     "command": "/app/k8s/k8s-bootstrap.sh",
                     "startup": "enabled",
                     "environment": {
+                        "ALLOW_IMAGE_DOMAINS": "assets.ubuntu.com",
                         "SUPERSET_SECRET_KEY": "example-pass",
                         "ADMIN_PASSWORD": "secure-pass",
                         "ADMIN_USER": "unique-user",

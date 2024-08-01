@@ -7,6 +7,10 @@
 # See https://juju.is/docs/config for guidance.
 
 options:
+  allow-image-domains: 
+    description: |
+        Comma separated list of domains from which to allow images according to the CSP.
+    type: string
   external-hostname:
     description: |
         The DNS listing used for external connections. 
