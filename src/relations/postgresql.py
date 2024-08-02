@@ -5,7 +5,10 @@
 
 import logging
 
-from charms.data_platform_libs.v0.data_interfaces import DatabaseCreatedEvent
+from charms.data_platform_libs.v0.data_interfaces import (
+    DatabaseCreatedEvent,
+    DatabaseRequires,
+)
 from ops import framework
 
 from log import log_event_handler
@@ -24,6 +27,12 @@ class Database(framework.Object):
         """
         super().__init__(charm, "database")
         self.charm = charm
+        self.charm.postgresql_db = DatabaseRequires(
+            self.charm,
+            relation_name="postgresql_db",
+            database_name="superset",
+            extra_user_roles="admin",
+        )
         self.framework.observe(
             charm.postgresql_db.on.database_created, self._on_database_changed
         )

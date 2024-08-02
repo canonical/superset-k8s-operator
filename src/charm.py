@@ -12,16 +12,14 @@ https://discourse.charmhub.io/t/4208
 
 import logging
 
-from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
 from charms.data_platform_libs.v0.data_models import TypedCharmBase
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
 from charms.loki_k8s.v0.loki_push_api import LogProxyConsumer
 from charms.nginx_ingress_integrator.v0.nginx_route import require_nginx_route
 from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointProvider
-from charms.redis_k8s.v0.redis import RedisRelationCharmEvents, RedisRequires
+from charms.redis_k8s.v0.redis import RedisRelationCharmEvents
 from ops import pebble
 from ops.charm import ConfigChangedEvent, PebbleReadyEvent
-from ops.framework import StoredState
 from ops.main import main
 from ops.model import (
     ActiveStatus,
@@ -60,14 +58,11 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         _state: used to store data that is persisted across invocations.
         external_hostname: DNS listing used for external connections.
         on: redis relation events from redis_k8s library
-        _stored: charm stored state
         config_type: the charm structured config
     """
 
     config_type = CharmConfig
-
     on = RedisRelationCharmEvents()
-    _stored = StoredState()
 
     @property
     def external_hostname(self):
@@ -85,18 +80,10 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         self._state = State(self.app, lambda: self.model.get_relation("peer"))
 
         # Handle postgresql relation
-        self.postgresql_db = DatabaseRequires(
-            self,
-            relation_name="postgresql_db",
-            database_name="superset",
-            extra_user_roles="admin",
-        )
         self.database = Database(self)
 
         # Handle redis relation
-        self._stored.set_default(redis_relation={})
-        self.redis = RedisRequires(self, self._stored)
-        self.redis_relation = Redis(self)
+        self.redis_handler = Redis(self)
 
         # Handle basic charm lifecycle
         self.framework.observe(self.on.install, self._on_install)
