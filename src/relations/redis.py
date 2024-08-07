@@ -5,9 +5,8 @@
 
 import logging
 
-from charms.redis_k8s.v0.redis import RedisRelationCharmEvents
+from charms.redis_k8s.v0.redis import RedisRequires
 from ops import framework
-from ops.framework import StoredState
 
 from log import log_event_handler
 
@@ -15,15 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 class Redis(framework.Object):
-    """Client for superset:redis relation.
-
-    Attrs:
-        on: redis relation events from redis_k8s library
-        _stored: charm stored state
-    """
-
-    on = RedisRelationCharmEvents()
-    _stored = StoredState()
+    """Client for superset:redis relation."""
 
     def __init__(self, charm):
         """Construct.
@@ -33,6 +24,7 @@ class Redis(framework.Object):
         """
         super().__init__(charm, "redis")
         self.charm = charm
+        self.charm.redis = RedisRequires(charm)
         self.framework.observe(
             charm.on.redis_relation_updated, self._on_redis_relation_changed
         )
@@ -63,9 +55,7 @@ class Redis(framework.Object):
             redis_port: port of redis service
             redis_relation: bool for if redis has been related
         """
-        rel = {}
-        if self.charm._stored.redis_relation:
-            rel = next(iter(self.charm._stored.redis_relation.values()))
+        rel = self.charm.redis.relation_data or {}
         redis_hostname = rel.get("hostname")
         redis_port = rel.get("port")
         redis_relation = bool(rel)
