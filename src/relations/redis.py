@@ -59,7 +59,9 @@ class Redis(framework.Object):
         relation = self.model.get_relation("redis")
         application_data = relation.data[relation.app] if relation else {}
 
-        redis_hostname = application_data.get("leader-host")
+        redis_hostname = application_data.get("leader-host") or unit_data.get(
+            "hostname"
+        )
         redis_port = unit_data.get("port")
         redis_relation = bool(unit_data)
         return redis_hostname, redis_port, redis_relation
