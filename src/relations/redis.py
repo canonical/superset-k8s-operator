@@ -55,8 +55,13 @@ class Redis(framework.Object):
             redis_port: port of redis service
             redis_relation: bool for if redis has been related
         """
-        rel = self.charm.redis.relation_data or {}
-        redis_hostname = rel.get("hostname")
-        redis_port = rel.get("port")
-        redis_relation = bool(rel)
+        unit_data = self.charm.redis.relation_data or {}
+        relation = self.model.get_relation("redis")
+        application_data = relation.data[relation.app] if relation else {}
+
+        redis_hostname = application_data.get("leader-host") or unit_data.get(
+            "hostname"
+        )
+        redis_port = unit_data.get("port")
+        redis_relation = bool(unit_data)
         return redis_hostname, redis_port, redis_relation
