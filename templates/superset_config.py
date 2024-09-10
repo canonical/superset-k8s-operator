@@ -88,7 +88,8 @@ TALISMAN_CONFIG = {
         "worker-src": ["'self'", "blob:"],
         "connect-src": ["'self'", "https://api.mapbox.com", "https://events.mapbox.com"],
         "object-src": "'none'",
-     }
+     },
+     "session_cookie_secure": False,
 }
 
 SQLALCHEMY_POOL_SIZE = int(os.getenv("SQLALCHEMY_POOL_SIZE"))
