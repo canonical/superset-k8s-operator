@@ -125,12 +125,12 @@ async def restart_application(ops_test: OpsTest):
     await action.wait()
 
 
-async def api_authentication(ops_test, base):
+async def api_authentication(ops_test, base_url):
     """Authenticate with the Superset API and set session tokens.
 
     Args:
         ops_test: PyTest object.
-        base: Base Superset URL.
+        base_url: Superset URL.
 
     Returns:
         session: The Requests session.
@@ -139,7 +139,7 @@ async def api_authentication(ops_test, base):
 
     # Get access token
     auth_response = session.post(
-        base + "/api/v1/security/login", json=API_AUTH_PAYLOAD, timeout=30
+        base_url + "/api/v1/security/login", json=API_AUTH_PAYLOAD, timeout=30
     )
     access_token = auth_response.json().get("access_token")
 
@@ -152,7 +152,7 @@ async def api_authentication(ops_test, base):
     )
 
     # Get CSRF token
-    csrf_url = f"{base}/api/v1/security/csrf_token/"
+    csrf_url = f"{base_url}/api/v1/security/csrf_token/"
     csrf_response = session.get(csrf_url)
     csrf_response.raise_for_status()
     csrf_token = csrf_response.json().get("result")
@@ -166,34 +166,32 @@ async def api_authentication(ops_test, base):
     return session
 
 
-async def get_chart_count(ops_test, base, session):
+async def get_chart_count(ops_test: OpsTest, url, session):
     """Count number of Superset charts.
 
     Args:
         ops_test: PyTest object.
-        base: Superset base URL.
+        url: Superset URL.
         session: Request session with headers.
 
     Returns:
-        The count of Superset charts.
+        Count of Superset charts.
     """
-    chart_response = session.get(base + "/api/v1/chart/", timeout=30)
+    chart_response = session.get(url + "/api/v1/chart/", timeout=30)
     charts = chart_response.json()
     return charts["count"]
 
 
-async def delete_chart(ops_test, base, session):
+async def delete_chart(ops_test: OpsTest, url, session):
     """Delete chart example chart `13`.
 
     Args:
         ops_test: PyTest object.
-        base: Superset base URL.
+        url: Superset URL.
         session: Request session with headers.
     """
-    url = f"{base}/api/v1/chart/13"
-
     try:
-        response = session.delete(url)
+        response = session.delete(url + "/api/v1/chart/13", timeout=30)
     except Exception as e:
         logger.error(f"Error deleting chart caused by: {e}")
 
