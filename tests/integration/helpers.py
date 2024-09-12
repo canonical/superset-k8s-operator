@@ -167,7 +167,7 @@ async def api_authentication(ops_test, base_url):
 
 
 async def get_chart_count(ops_test: OpsTest, url, session):
-    """Count number of Superset charts.
+    """Count Superset charts.
 
     Args:
         ops_test: PyTest object.
