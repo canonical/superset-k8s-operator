@@ -128,6 +128,7 @@ class TestCharm(TestCase):
                         "WEBSERVER_TIMEOUT": 180,
                         "STATSD_PORT": 9125,
                         "LOG_FILE": "/var/log/superset.log",
+                        "CACHE_WARMUP": False,
                     },
                     "on-check-failure": {"up": "ignore"},
                 }
@@ -225,6 +226,7 @@ class TestCharm(TestCase):
                         "WEBSERVER_TIMEOUT": 180,
                         "STATSD_PORT": 9125,
                         "LOG_FILE": "/var/log/superset.log",
+                        "CACHE_WARMUP": False,
                     },
                     "on-check-failure": {"up": "ignore"},
                 },

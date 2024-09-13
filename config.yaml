@@ -201,3 +201,7 @@ options:
     description: The time in seconds the server can maintain a database connection.
     default: 180
     type: int
+  cache-warmup:
+    description: Boolean representing if the cache warm-up functionality should be enabled.
+    default: False
+    type: boolean

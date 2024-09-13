@@ -88,12 +88,33 @@ TALISMAN_CONFIG = {
         "worker-src": ["'self'", "blob:"],
         "connect-src": ["'self'", "https://api.mapbox.com", "https://events.mapbox.com"],
         "object-src": "'none'",
-     }
+     },
+     "session_cookie_secure": False,
 }
 
 SQLALCHEMY_POOL_SIZE = int(os.getenv("SQLALCHEMY_POOL_SIZE"))
 SQLALCHEMY_POOL_TIMEOUT = int(os.getenv("SQLALCHEMY_POOL_TIMEOUT"))
 SQLALCHEMY_MAX_OVERFLOW = int(os.getenv("SQLALCHEMY_MAX_OVERFLOW"))
+
+beat_schedule_config = {
+        "reports.prune_log": {
+            "task": "reports.prune_log",
+            "schedule": crontab(minute=0, hour=0),
+        },
+    }
+
+if os.getenv("CACHE_WARMUP", "").lower() != "false":
+    beat_schedule_config.update({"cache-warmup-daily": {
+            "task": "cache-warmup",
+            "schedule": crontab(minute="1", hour="7"),  # UTC @daily
+            "kwargs": {
+                "strategy_name": "top_n_dashboards",
+                "top_n": 10,
+                "since": "7 days ago",
+            },
+        },
+    }
+    )
 
 # Celery cache warm-up
 class CeleryConfig(object):
@@ -115,21 +136,7 @@ class CeleryConfig(object):
             "rate_limit": "100/s",
         },
     }
-    beat_schedule = {
-        "reports.prune_log": {
-            "task": "reports.prune_log",
-            "schedule": crontab(minute=0, hour=0),
-        },
-        "cache-warmup-daily": {
-            "task": "cache-warmup",
-            "schedule": crontab(minute="1", hour="7"),  # UTC @daily
-            "kwargs": {
-                "strategy_name": "top_n_dashboards",
-                "top_n": 10,
-                "since": "7 days ago",
-            },
-        },
-    }
+    beat_schedule = beat_schedule_config
 
 
 CELERY_CONFIG = CeleryConfig

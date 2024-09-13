@@ -19,9 +19,9 @@ jobs:
       - name: Setup operator environment
         uses: charmed-kubernetes/actions-operator@main
         with:
-          juju-channel: 3.1/stable
+          juju-channel: 3.4/stable
           provider: microk8s
-          microk8s-addons: "ingress storage dns rbac registry"
-          channel: 1.25-strict/stable
+          microk8s-addons:  "dns ingress rbac storage metallb:10.15.119.2-10.15.119.4 registry"
+          channel: 1.28-strict/stable
       - name: Run integration tests
         run: tox -e ${{ matrix.tox-environments }}

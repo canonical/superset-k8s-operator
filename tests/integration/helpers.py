@@ -125,54 +125,73 @@ async def restart_application(ops_test: OpsTest):
     await action.wait()
 
 
-async def get_access_token(ops_test: OpsTest, base_url):
-    """Get access token of the `admin` user.
+async def api_authentication(ops_test, base_url):
+    """Authenticate with the Superset API and set session tokens.
 
     Args:
         ops_test: PyTest object.
         base_url: Superset URL.
 
     Returns:
-        headers: Request headers with access token.
+        session: The Requests session.
     """
-    response = requests.post(
+    session = requests.Session()
+
+    # Get access token
+    auth_response = session.post(
         base_url + "/api/v1/security/login", json=API_AUTH_PAYLOAD, timeout=30
     )
-    access_token = response.json()
-    headers = {"Authorization": "Bearer " + access_token["access_token"]}
-    return headers
+    access_token = auth_response.json().get("access_token")
+
+    # Add token to session headers for all subsequent requests
+    session.headers.update(
+        {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        }
+    )
+
+    # Get CSRF token
+    csrf_url = f"{base_url}/api/v1/security/csrf_token/"
+    csrf_response = session.get(csrf_url)
+    csrf_response.raise_for_status()
+    csrf_token = csrf_response.json().get("result")
+
+    session.headers.update(
+        {
+            "Referer": csrf_url,
+            "X-CSRF-Token": csrf_token,
+        }
+    )
+    return session
 
 
-async def get_chart_count(ops_test: OpsTest, url, headers):
+async def get_chart_count(ops_test: OpsTest, url, session):
     """Count Superset charts.
 
     Args:
         ops_test: PyTest object.
         url: Superset URL.
-        headers: Request headers with access token.
+        session: Request session with headers.
 
     Returns:
         Count of Superset charts.
     """
-    chart_response = requests.get(
-        url + "/api/v1/chart/", headers=headers, timeout=30
-    )
+    chart_response = session.get(url + "/api/v1/chart/", timeout=30)
     charts = chart_response.json()
     return charts["count"]
 
 
-async def delete_chart(ops_test: OpsTest, url, headers):
-    """Delete chart example chart `131`.
+async def delete_chart(ops_test: OpsTest, url, session):
+    """Delete chart example chart `13`.
 
     Args:
         ops_test: PyTest object.
         url: Superset URL.
-        headers: Request headers with access token.
+        session: Request session with headers.
     """
     try:
-        response = requests.delete(
-            url + "/api/v1/chart/131", headers=headers, timeout=30
-        )
+        response = session.delete(url + "/api/v1/chart/13", timeout=30)
     except Exception as e:
         logger.error(f"Error deleting chart caused by: {e}")
 

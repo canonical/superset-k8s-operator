@@ -11,8 +11,8 @@ import requests
 from conftest import deploy  # noqa: F401, pylint: disable=W0611
 from helpers import (
     UI_NAME,
+    api_authentication,
     delete_chart,
-    get_access_token,
     get_chart_count,
     get_unit_url,
     restart_application,
@@ -47,11 +47,11 @@ class TestDeployment:
         url = await get_unit_url(
             ops_test, application=UI_NAME, unit=0, port=8088
         )
-        headers = await get_access_token(ops_test, url)
+        session = await api_authentication(ops_test, url)
 
         # Delete a chart
-        original_charts = await get_chart_count(ops_test, url, headers)
-        await delete_chart(ops_test, url, headers)
+        original_charts = await get_chart_count(ops_test, url, session)
+        await delete_chart(ops_test, url, session)
 
         await simulate_crash(ops_test)
 
@@ -59,7 +59,8 @@ class TestDeployment:
         url = await get_unit_url(
             ops_test, application=UI_NAME, unit=0, port=8088
         )
-        chart_count = await get_chart_count(ops_test, url, headers)
+        session = await api_authentication(ops_test, url)
+        chart_count = await get_chart_count(ops_test, url, session)
 
         # Validate chart remains deleted
         logger.info("Validating state remains unchanged")

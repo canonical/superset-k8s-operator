@@ -353,6 +353,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "WEBSERVER_TIMEOUT": self.config["webserver-timeout"],
             "STATSD_PORT": STATSD_PORT,
             "LOG_FILE": LOG_FILE,
+            "CACHE_WARMUP": self.config["cache-warmup"],
         }
         return env
 

@@ -43,6 +43,7 @@ class CharmConfig(BaseConfigModel):
     superset_secret_key: Optional[str]
     admin_password: str
     charm_function: FunctionType
+    cache_warmup: bool
     alerts_attach_reports: bool
     dashboard_cross_filters: bool
     dashboard_rbac: bool
