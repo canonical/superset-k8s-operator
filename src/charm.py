@@ -131,7 +131,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             service_hostname=self.external_hostname,
             service_name=self.app.name,
             service_port=APPLICATION_PORT,
-            tls_secret_name=self.config["tls-secret-name"],
+            tls_secret_name=self.config["tls-secret-name"] or "",
             backend_protocol="HTTP",
         )
 
