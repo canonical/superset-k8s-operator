@@ -39,7 +39,7 @@ class CharmConfig(BaseConfigModel):
 
     allow_image_domains: Optional[str]
     external_hostname: str
-    tls_secret_name: str
+    tls_secret_name: Optional[str]
     superset_secret_key: Optional[str]
     admin_password: str
     charm_function: FunctionType
