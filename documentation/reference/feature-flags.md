@@ -12,7 +12,7 @@ Charmed Superset supports the following feature flags:
 | ENABLE_TEMPLATE_PROCESSING  | true          | Enables processing of templates within SQL queries for dynamic generation.  |
 | GLOBAL_ASYNC_QUERIES        | false         | Allows queries to run asynchronously across multiple instances globally.    |
 
-You can enable, True, and/or disable, False, these flags using the following command:
+You can enable, `True`, and/or disable, `False`, these flags using the following command:
 ```
 juju config superset-k8s-ui <flag-name>=<True/False>
 ```
