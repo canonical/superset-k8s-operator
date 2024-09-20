@@ -48,7 +48,7 @@ Superset relies on PostgreSQL for metadata storage. You can enable database back
 ## Integrate with our Observability Bundle
 For observability, Superset can be integrated with [Canonical Observability Stack](https://charmhub.io/topics/canonical-observability-stack). This integration allows you to monitor metrics, logs, and events from Superset, enabling proactive health checks and performance analysis. Prometheus, Grafana and Loki are included as part of this observability suite.
 
-To deploy cos-lite and expose its endpoints as offers, follow these steps:
+To deploy `cos-lite` and expose its endpoints as offers, follow these steps:
 
 ```bash
 # Deploy the cos-lite bundle
