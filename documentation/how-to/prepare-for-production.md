@@ -14,7 +14,7 @@ juju deploy superset-k8s --config charm-function=worker superset-k8s-worker
 juju relate superset-k8s-worker postgresql-k8s
 juju relate superset-k8s-worker redis-k8s
 ```
-Within the UI you can enable Asychronous Query Execution (`AGE`) at the database level.
+Within the UI you can enable Asynchronous Query Execution (`AGE`) at the database level.
 Edit the database and under the `Performance` tab check the `Asynchronous query execution`
 box.
 
