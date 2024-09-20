@@ -18,10 +18,8 @@ Warning: when you remove the models as shown, you will lose all the data in Post
 ## Next Steps
 Wondering what to do next, take a look at some suggestions below:
 
-- Scale Charmed Superset
-- Observe Charmed Superset with Cos-lite
-- Secure Charmed Superset with Google Oauth
-- Explore Apache Superset documentation
-- Join the Apache Superset Slack community
-- Report any problems you've encountered
-- Contribute to the code base
+- [Prepare for a production deployment of Charmed Superset](../how-to/prepare-for-production.md)
+- [Explore Apache Superset documentation](https://superset.apache.org/docs/intro)
+- [Join the Apache Superset Slack community](https://apache-superset.slack.com/)
+- [Report any problems you've encountered](https://github.com/canonical/superset-k8s-operator/issues)
+- [Contribute to the code base](https://github.com/canonical/superset-k8s-operator/blob/main/CONTRIBUTING.md)
