@@ -6,7 +6,7 @@ Please refer to this page for more information and the overview of the content.
 
 In this tutorial, we have successfully deployed Charmed Superset UI and created our first dashboard!
 
-## Removing Charmed Superset
+## Removing the Controller
 If you’re done with testing and would like to free up resources on your machine, just run the following command:
 
 ```

@@ -1,4 +1,4 @@
-# Creating a Dashboard with Charmed Superset
+# Creating a Dashboard
 
 This is part of the
 [Charmed Superset Tutorial]().
