@@ -1,11 +1,6 @@
-# Feature Flags Supported by Charmed Superset
+# Supported Feature Flags
 
-There are a number of features that can be enabled/disabled via the Superset charm:
-```
-juju config superset-k8s-ui <flag-name>=<True/False>
-```
-
-The below feature flags are currently supported:
+Charmed Superset supports the following feature flags:
 
 | Feature Flag               | Default Value | Description                                                                 |
 |----------------------------|---------------|-----------------------------------------------------------------------------|
@@ -17,5 +12,7 @@ The below feature flags are currently supported:
 | ENABLE_TEMPLATE_PROCESSING  | true          | Enables processing of templates within SQL queries for dynamic generation.  |
 | GLOBAL_ASYNC_QUERIES        | false         | Allows queries to run asynchronously across multiple instances globally.    |
 
-Additional feature flags are available which are not currently implemented.
-A complete list can be found [here](https://github.com/apache/superset/blob/master/RESOURCES/FEATURE_FLAGS.md), with descriptions [here](https://preset.io/blog/feature-flags-in-apache-superset-and-preset/).
+You can enable, True, and/or disable, False, these flags using the following command:
+```
+juju config superset-k8s-ui <flag-name>=<True/False>
+```
