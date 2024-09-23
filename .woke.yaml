@@ -5,3 +5,4 @@ ignore_files:
   - lib/charms/redis_k8s/v0/redis.py
   - documentation/reference/feature-flags.md
   - documentation/how-to/prepare-for-production.md
+  - documentation/how-to/enable-superset-security-features.md
