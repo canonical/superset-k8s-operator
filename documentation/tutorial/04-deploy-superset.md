@@ -1,32 +1,34 @@
-# Deploying Charmed Superset
+# Deploy Charmed Superset
 
-This is part of the
-[Charmed Superset Tutorial]().
-Please refer to this page for more information and the overview of the content.
+Now it's time to deploy Charmed Superset and add relations to supporting charms.
 
-Charmed Superset has 3 primary functions:
-1. Web server and UI
-2. Worker for handling asynchronous queries
-3. Beat scheduler for scheduling tasks
+Charmed Superset has three primary functions:
+1. Web server and UI.
+2. Worker for handling asynchronous queries.
+3. Beat scheduler for scheduling tasks.
 
-For the purposes of our tutorial we will only need the `Web server and UI`.
+This tutorial only focuses on the web server and UI.
 
-## Deploy Charmed Superset Server
-There are multiple channels of Charmed Superset we can deploy - these can be found on [Charmhub](https://charmhub.io/superset-k8s). If none is specified, `latest/stable` will be deployed.
+## Deploy Charmed Superset server
+There are multiple channels of Charmed Superset you can deploy. See [Charmhub](https://charmhub.io/superset-k8s) for more details. If none is specified, `latest/stable` is deployed.
 
 ```bash
 juju deploy superset-k8s
 ```
 
 ## Add PostgreSQL and Redis relations
-A charm relation is an integration between applications which passes necessary configurations to automate the integration. We'll now add relations between Charmed Superset and Charmed PostgreSQL and Charmed Redis as follows:
+A charm relation is an integration between applications which passes necessary configurations to automate the integration. You can add relations between Charmed Superset, Charmed PostgreSQL and Charmed Redis as follows:
 
 ```bash
 juju relate superset-k8s postgresql-k8s
 juju relate superset-k8s redis-k8s
 ```
 
-You should eventually (approx 5 minutes) see a `juju status --relations` which matches the below. Note that all applications and units are in an active state and relations exist between our charmed superset applications and postgresql and redis applications.
+[note]
+This relation addition may take up to 5 minutes to complete.
+[\note]
+
+You should now see a `juju status --relations` which matches the below. Note that all applications and units are in an active state and relations exist between our Charmed Superset applications and PostgreSQL and Redis applications.
 
 ```
 Model           Controller           Cloud/Region        Version  SLA          Timestamp
@@ -53,7 +55,5 @@ superset-k8s:peer              superset-k8s:peer                  superset      
 
 ```
 
-Congratulations you have deployed Charmed Superset!
-
-> **See next:
-> [Creating a Dashboard]()**
+**See next:
+[Create a Dashboard](05-create-a-dashboard.md)**

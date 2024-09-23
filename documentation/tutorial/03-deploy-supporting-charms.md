@@ -1,20 +1,15 @@
-# Deploy Supporting Charms
+# Deploy supporting charms
 
-This is part of the
-[Charmed Superset Tutorial]().
-Please refer to this page for more information and the overview of the content.
+You'll now deploy PostgreSQL and Redis charms, which Superset requires to function.
 
-## Deploying a Database
-Charmed Superset relies on an external Charmed PostgreSQL database for storing application metadata such as users, dashboard definitions and logs.
-
+## Deploy a Database
+Charmed Superset relies on an external [Charmed PostgreSQL](https://charmhub.io/postgresql-k8s) database for storing application metadata such as users, dashboard definitions and logs. Deploy it as follows:
 
 ```bash
-# Deploy Charmed PostgreSQL
 juju deploy postgresql-k8s --trust
-# >>> Deployed "postgresql-k8s" from charm-hub charm "postgresql-k8s", revision 381 in channel 14/stable on ubuntu@22.04/stable
 
 ```
-You can check the deployment was successful by running `juju status`.
+You can check the deployment was successful by running `juju status`. You should expect an output like this:
 
 ```
 Model           Controller           Cloud/Region        Version  SLA          Timestamp
@@ -28,19 +23,17 @@ postgresql-k8s/0  waiting   allocating                  installing agent
 
 ```
 
-This may take some time (up to 10 minutes) to get to an `active` status. In the meantime we can move on..
+[note]
+The database deployment may take some time, up to 10 minutes, to complete. After that, all Juju components should be in `active` status. 
+[/note]
 
-## Deploying a Cache and Message Queue
-Charmed Superset relies on an external Charmed Redis deployment, which acts as both a cache and message queue for Superset Celery workers.
+## Deploy a cache and message queue
+Charmed Superset relies on an external [Charmed Redis](https://charmhub.io/redis-k8s) deployment, which acts as both a cache and message queue for Superset Celery workers. Deploy it as follows:
 
-We'll deploy this now:
 ```bash
-# Deploy Charmed PostgreSQL
 juju deploy redis-k8s --channel=edge
-# >>> Deployed "redis-k8s" from charm-hub charm "redis-k8s", revision 36 in channel latest/edge on ubuntu@22.04/stable
-
 ```
-You can check the deployment has been successful by running `juju status --watch 2s` and taking note of the `redis-k8s` application and `redis-k8s/0` unit. Once all units reach an `Active` status we can proceed.
+Check the deployment with `juju status --watch 2s`, with focus on the `redis-k8s` application and `redis-k8s/0` unit. The deployment is completed once all units reach the `active` status. 
 
 ```
 Model           Controller           Cloud/Region        Version  SLA          Timestamp
@@ -55,5 +48,5 @@ postgresql-k8s/0*  active    idle   10.1.255.10         Primary
 redis-k8s/0*       active    idle   10.1.255.21    
 ```
 
-> **See next:
-> [Deploying Charmed Superset]()**
+**See next:
+[Deploy Charmed Superset](04-deploy-superset.md)**
