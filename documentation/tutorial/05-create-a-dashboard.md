@@ -1,6 +1,6 @@
 # Create a dashboard
 
-You'll now load example data, access the UI for the first time and create a dashboard.
+This part of the tutorial focuses on accessing the User Interface (UI) and creating a dashboard.
 
 ## Add example data
 In order to create a dashboard you first need some data. Charmed Superset comes with the option to import test data for experimentation via a configuration parameter. You can do so as follows:
@@ -30,7 +30,7 @@ superset-k8s/0*         active       idle   10.1.255.5          Status check: UP
 ```
 
 ## Access the UI
-You can now access the user interface (UI) via the `superset-k8s/0` address, port`8088`. You can do this by opening a browser to `<unit-ip>:8088`, in this example `10.1.255.5:8088`, and logging-in with the username/password `admin/admin`.
+You can now access the UI via the `superset-k8s/0` address, port 8088. You can do this by opening a browser to `<unit-ip>:8088`, in this example `10.1.255.5:8088`, and logging-in with the username/password `admin/admin`.
 
 ![Welcome to Superset](../media/superset-welcome.png)
 

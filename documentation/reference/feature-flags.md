@@ -1,9 +1,9 @@
-# Supported Feature Flags
+# Supported feature flags
 
 Charmed Superset supports the following feature flags:
 
-| Feature Flag               | Default Value | Description                                                                 |
-|----------------------------|---------------|-----------------------------------------------------------------------------|
+| Feature flag                | Default value | Description                                                                 |
+|-----------------------------|---------------|-----------------------------------------------------------------------------|
 | DASHBOARD_CROSS_FILTERS     | true          | Enables the ability to apply cross-filtering on dashboard charts.           |
 | DASHBOARD_RBAC              | true          | Enables role-based access control (RBAC) for dashboards.                    |
 | EMBEDDABLE_CHARTS           | true          | Allows charts to be embedded in external websites or applications.          |
