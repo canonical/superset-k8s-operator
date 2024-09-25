@@ -1,6 +1,6 @@
 # Deploy Charmed Superset
 
-Now it's time to deploy Charmed Superset and add relations to supporting charms.
+This part of the tutorial focuses on deploying Charmed Superset and adding relations to supporting charms.
 
 Charmed Superset has three primary functions:
 1. Web server and User Interface (UI).

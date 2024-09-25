@@ -1,6 +1,7 @@
-# How to optimize your deployment performance
+# Optimise your deployment performance
+This guide describes steps you can take to optimize the performance of your superset deployment.
 
-### Enable asynchronous querying
+## Enable asynchronous querying
 To enable asynchronous querying, you need to deploy Charmed Superset Workers. These workers handle long-running queries asynchronously, allowing the User Interface (UI) to remain responsive. You can do this as follows:
 ```bash
 juju deploy superset-k8s --config charm-function=worker superset-k8s-worker
@@ -19,7 +20,7 @@ box.
 This is recommended for all production databases to relieve load on the UI. 
 [/note]
 
-### Enable beat scheduling
+## Enable beat scheduling
 Superset’s scheduling system relies on a single instance of the [beat scheduler](https://superset.apache.org/docs/configuration/alerts-reports/). This scheduler handles periodic jobs like caching or data refreshes. Only one instance should be deployed to avoid conflicting schedules. This can be deployed as follows:
 ```bash
 juju deploy superset-k8s --config charm-function=beat superset-k8s-beat
@@ -30,7 +31,7 @@ juju relate superset-k8s-beat postgresql-k8s
 juju relate superset-k8s-beat redis-k8s
 ```
 
-### Scaling applications
+## Scaling applications
 Charmed Superset supports independent scaling of the web server and workers. The web server and workers can be scaled horizontally to handle more load, while the Beat scheduler should remain singular. Use the juju `scale-application` command to adjust the number of instances of each service as needed.
 
 ```bash

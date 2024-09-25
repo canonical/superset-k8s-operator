@@ -1,4 +1,4 @@
-# Compatible Charm Revisions and Resources
+# Compatible Charm revisions and resources
 
 Deploying charms from the `latest/stable` channel *should* guarantee 
 compatibility between charm revision and resource.
@@ -7,7 +7,7 @@ However, if you are deploying earlier revisions of the charm,
 use the table below as a reference for compatibility.
 
 
-| Revision | Resource Revision | Resource Version |
+| Revision | Resource revision | Resource version |
 |----------|-------------------|------------------|
 | 34       | 18                | 3.1.3            |
 | 33       | 18                | 3.1.3            |

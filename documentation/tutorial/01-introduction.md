@@ -15,9 +15,9 @@ Charmed Superset delivers automated operations management from day zero to day n
 
 ## Get Started
 
-1. [Set up your environment](02-environment-setup.md)
-2. [Deploy supporting charms](03-deploy-supporting-charms.md)
-3. [Deploy Charmed Superset](04-deploy-superset.md)
-4. [Create a dashboard](05-creating-a-dashboard.md)
-5. [Cleanup](06-cleanup.md)
+1. [Set up your environment](02-environment-setup.md).
+2. [Deploy supporting charms](03-deploy-supporting-charms.md).
+3. [Deploy Charmed Superset](04-deploy-superset.md).
+4. [Create a dashboard](05-creating-a-dashboard.md).
+5. [Cleanup](06-cleanup.md).
 

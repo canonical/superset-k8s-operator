@@ -1,6 +1,6 @@
 # Deploy supporting charms
 
-You'll now deploy PostgreSQL and Redis charms, which Superset requires to function.
+This part of the tutorial focuses on deploying PostgreSQL and Redis charms, which Superset requires to function.
 
 ## Deploy a Database
 Charmed Superset relies on an external [Charmed PostgreSQL](https://charmhub.io/postgresql-k8s) database for storing application metadata such as users, dashboard definitions and logs. Deploy it as follows:
@@ -33,7 +33,7 @@ Charmed Superset relies on an external [Charmed Redis](https://charmhub.io/redis
 ```bash
 juju deploy redis-k8s --channel=edge
 ```
-Check the deployment with `juju status --watch 2s`, with focus on the `redis-k8s` application and `redis-k8s/0` unit. The deployment is completed once all units reach the `active` status. 
+Check the deployment with `juju status --watch 2s`, with focus on the `redis-k8s` application and `redis-k8s/0` unit. The deployment is completed once all units reach the `active` status:
 
 ```
 Model           Controller           Cloud/Region        Version  SLA          Timestamp
