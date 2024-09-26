@@ -10,7 +10,7 @@ juju destroy-controller -y --destroy-all-models --destroy-storage superset-contr
 
 [note]
 When you remove the models, all the data in PostgreSQL and any other applications inside the model are lost.
-[\note]
+[/note]
 
 ## Next Steps
 - [Integrate Canonical Observability Stack](../how-to/observe-superset-metrics.md)

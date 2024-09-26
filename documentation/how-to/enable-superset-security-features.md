@@ -42,7 +42,7 @@ juju relate superset-k8s nginx-ingress-integrator
 ```
 [note]
 If you have a production-grade certificate, skip to step 3.
-[\note]
+[/note]
 
 Validate your ingress has been created with the TLS certificates:
 ```bash
