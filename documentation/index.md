@@ -2,9 +2,9 @@ Charmed Superset is an open-source, production-ready data exploration and visual
 
 Superset can replace or augment proprietary business intelligence tools. It integrates with a variety of data sources and provides a powerful SQL editor for advanced querying as well as a low-code interface for building charts and dashboards.
 
-Charmed Superset meets the needs of providing data insights in a repeatable, governable and flexible manner. Contributing to higher data literacy and data driven business decisions.
+Charmed Superset provides data insights in a repeatable, governable and flexible manner, contributing to higher data literacy and data-driven business decisions.
 
-It is intended for data practitioners who require advanced visualization without the complexity of deployment and on going management of the service.
+It is intended for data practitioners who require advanced visualization without the complexity of deployment and on-going service management.
 
 ## In This Documentation
 
@@ -20,6 +20,6 @@ Charmed Superset is a member of the Ubuntu family. It’s an open source
 project that warmly welcomes community projects, contributions, suggestions,
 fixes and constructive feedback.
 
-- [Read our Code of Conduct](https://ubuntu.com/community/code-of-conduct)
-- [Join the Discourse forum](https://discourse.charmhub.io/tag/temporal)
-- [Contribute and report bugs](https://github.com/canonical/temporal-k8s-operator)
+- [Read our Code of Conduct](https://ubuntu.com/community/code-of-conduct).
+- [Join the Discourse forum](https://discourse.charmhub.io/tag/trino).
+- [Contribute and report bugs](https://github.com/canonical/trino-k8s-operator).
