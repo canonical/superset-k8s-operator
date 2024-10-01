@@ -25,7 +25,7 @@ juju relate superset-k8s redis-k8s
 ```
 
 [note]
-This relation addition may take up to 5 minutes to complete.
+This relation addition is successful when all units reach an `active` status, approximately 5 minutes to complete.
 [\note]
 
 When running `juju status --relations`, you should expect an output like the following:

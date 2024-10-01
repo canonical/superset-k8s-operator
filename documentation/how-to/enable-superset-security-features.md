@@ -13,7 +13,7 @@ juju deploy nginx-ingress-integrator --trust
 ### Using K8s secrets
 You can use a self-signed or production-grade TLS certificate stored in a Kubernetes secret. The secret is then associated with the ingress to encrypt traffic between clients and the Superset User Interface (UI).
 
-For self-signed certificates you can do the following:s
+For self-signed certificates you can do the following:
 
 1. First generate a private key using `openssl` and a certificate signing request using they key you just created. Replace `<YOUR_HOSTNAME>` with an appropriate hostname such as `superset-k8s.com`:
 

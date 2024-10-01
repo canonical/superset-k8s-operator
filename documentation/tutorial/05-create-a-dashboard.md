@@ -9,7 +9,7 @@ juju config superset-k8s load-examples=True
 ```
 
 [note]
-This may take some time, up to 5 minutes.
+This may take some time, approximately 5 minutes.
 [\note]
 
 Once completed, `juju status` shows the `superset-k8s/0` unit with `Message`: `Status check: UP`.

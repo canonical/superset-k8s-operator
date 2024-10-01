@@ -26,7 +26,7 @@ juju relate superset-k8s admin/cos.prometheus
 ```
 At this point, your working observability setup is ready. To login to the User Interface (UI), you need the admin password and Grafana application IP. You can retrieve those as follows:
 ```bash
-juju run grafana/0 -m cos get-admin-password --wait 1m
+juju run grafana/0 -m cos get-admin-password
 juju status
 ```
 The Grafana UI can be found on the application IP address, port 3000. Pre-built dashboards are included under `Superset Metrics`.

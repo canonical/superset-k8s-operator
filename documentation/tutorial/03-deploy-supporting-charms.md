@@ -24,7 +24,7 @@ postgresql-k8s/0  waiting   allocating                  installing agent
 ```
 
 [note]
-The database deployment may take some time, up to 10 minutes, to complete. After that, all Juju components should be in `active` status. 
+The database deployment may take some time, approximately 10 minutes, to complete. After that, all Juju components should be in `active` status.
 [/note]
 
 ## Deploy a cache and message queue

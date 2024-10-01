@@ -1,5 +1,5 @@
 # Optimise your deployment performance
-This guide describes steps you can take to optimize the performance of your superset deployment.
+This guide describes steps you can take to optimize the performance of your Superset deployment.
 
 ## Enable asynchronous querying
 To enable asynchronous querying, you need to deploy Charmed Superset Workers. These workers handle long-running queries asynchronously, allowing the User Interface (UI) to remain responsive. You can do this as follows:
@@ -12,7 +12,7 @@ In order to be functional the Charmed Superset Worker requires relations with th
 juju relate superset-k8s-worker postgresql-k8s
 juju relate superset-k8s-worker redis-k8s
 ```
-Using the UI, you can enable Asynchronous Query Execution (`AGE`) at the database level.
+Using the UI, you can enable Asynchronous Query Execution (`AQE`) at the database level.
 To do so, edit the database and under `Performance`, check the `Asynchronous query execution`
 box.
 
