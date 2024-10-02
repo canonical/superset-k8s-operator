@@ -3,3 +3,6 @@ ignore_files:
   # whitelist.
   - lib/charms/nginx_ingress_integrator/v0/nginx_route.py
   - lib/charms/redis_k8s/v0/redis.py
+  - documentation/reference/feature-flags.md
+  - documentation/how-to/prepare-for-production.md
+  - documentation/how-to/enable-superset-security-features.md

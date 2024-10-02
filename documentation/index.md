@@ -1,5 +1,3 @@
-[![Charmhub Badge](https://charmhub.io/superset-k8s/badge.svg)](https://charmhub.io/superset-k8s)
-
 Charmed Superset is an open-source, production-ready data exploration and visualisation platform based on [Apache Superset<sup>TM</sup>](https://superset.apache.org/).
 
 Superset can replace or augment proprietary business intelligence tools. It integrates with a variety of data sources and provides a powerful SQL editor for advanced querying as well as a low-code interface for building charts and dashboards.
