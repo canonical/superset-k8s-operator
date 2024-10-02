@@ -1,5 +1,5 @@
 # Enable security features
-This guide describes the implementation of security features such as encryption, authentication and HTML sanitization.
+This guide describes the implementation of security features such as encryption, authentication and HTML sanitisation.
 
 ## Terminate TLS at ingress
 Superset can terminate Transport Layer Security (TLS) at the ingress by leveraging the [Nginx Ingress Integrator Charm](https://charmhub.io/nginx-ingress-integrator).
@@ -102,11 +102,11 @@ To change the role that is applied on self-registration, simply pass the role vi
 juju config superset-k8s self-registration-role=Alpha
 ```
 
-## Configuring HTML sanitization
-Superset supports the sanitization of user-generated HTML content to prevent cross-site scripting (XSS)attacks. This ensures that any embedded HTML in dashboards or reports is safely displayed without executing malicious scripts. This is enabled in Charmed Superset by default.
+## Configuring HTML sanitisation
+Superset supports the sanitisation of user-generated HTML content to prevent cross-site scripting (XSS)attacks. This ensures that any embedded HTML in dashboards or reports is safely displayed without executing malicious scripts. This is enabled in Charmed Superset by default.
 
 [note]
-Charmed Superset enables by default the sanitiation of HTML content.
+Charmed Superset enables by default the sanitisation of HTML content.
 [\note]
 Some functionality, such as the CSS capabilities provided by the Handlebars plugin, requires the ability to render HTML elements and attributes such as `style` and `class`.
 

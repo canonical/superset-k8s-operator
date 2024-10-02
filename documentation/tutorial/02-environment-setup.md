@@ -42,13 +42,13 @@ Since the Juju package is strictly confined, you also need to manually create a 
 ```bash
 mkdir -p ~/.local/share
 ```
-Juju recognises a MicroK8s cloud automatically, as you can see by running 'juju clouds':
+Juju recognises a MicroK8s cloud automatically, as you can see by running `juju clouds`:
 ```bash
 # >>> Cloud      Regions  Default    Type  Credentials  Source    Description
 # >>> localhost  1        localhost  lxd   0            built-in  LXD Container Hypervisor
 # >>> microk8s   1        localhost  k8s   1            built-in  A Kubernetes Cluster
 ```
-If for any reason your MicroK8s is not recognised, register it manually using 'juju add-k8s microk8s'.
+If for any reason MicroK8s is not recognised, register it manually using `juju add-k8s microk8s`.
 
 Next, install a Juju controller into your MicroK8s cloud. For this example, the controller is named "superset-controller":
 
@@ -56,11 +56,11 @@ Next, install a Juju controller into your MicroK8s cloud. For this example, the 
 juju bootstrap microk8s superset-controller
 ```
 
-Finally, create a workspace, or 'model', on this controller. For this example, the workspace is named "superset-model". Juju will create a Kubernetes namespace "superset-model":
+Finally, create a model on this controller. For this example, the model is named "superset-model". Juju will create a Kubernetes namespace "superset-model":
 ```bash
 juju add-model superset-model
 ```
-After this, you should see something similar to the below when running the `juju status` command:
+After this, you should see something similar to the below when running `juju status`:
 ```bash
 # >>> Model           Controller           Cloud/Region        Version  SLA          Timestamp
 # >>> superset-model  superset-controller  microk8s/localhost  3.5.3    unsupported  16:05:03+01:00
@@ -69,4 +69,4 @@ After this, you should see something similar to the below when running the `juju
 ```
 
 **See next:
-[Deploy supporting charms](02-environment-setup.md)**
+[Deploy supporting charms](https://discourse.charmhub.io/t/deploy-supporting-charms/15643)**

@@ -46,4 +46,4 @@ A dashboard is made up of at least one chart. You have pre-loaded some data incl
 ![Welcome to Superset](../media/superset-dashboard.png)
 
 **See next:
-[Cleanup & Next Steps](06-cleanup.md)**
+[Cleanup](https://discourse.charmhub.io/t/cleanup/15646)**

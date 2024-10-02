@@ -25,12 +25,12 @@ juju relate superset-k8s redis-k8s
 ```
 
 [note]
-This relation addition is successful when all units reach an `active` status, approximately 5 minutes to complete.
-[\note]
+This relation addition takes approximately 5 minutes to complete.
+[/note]
 
 When running `juju status --relations`, you should expect an output like the following:
 
-```
+```bash
 Model           Controller           Cloud/Region        Version  SLA          Timestamp
 superset-model  superset-controller  microk8s/localhost  3.5.3    unsupported  11:00:56+01:00
 
@@ -54,7 +54,7 @@ redis-k8s:redis-peers          redis-k8s:redis-peers              redis-peers   
 superset-k8s:peer              superset-k8s:peer                  superset           peer     
 
 ```
-Note that all applications and units are in an active state and relations exist between our Charmed Superset applications and PostgreSQL and Redis applications.
+Note that all applications and units are in active state and relations exist between our Charmed Superset applications and PostgreSQL and Redis applications.
 
 **See next:
-[Create a Dashboard](05-create-a-dashboard.md)**
+[Create a Dashboard](https://discourse.charmhub.io/t/create-a-dashboard/15645)**
