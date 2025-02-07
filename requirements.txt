@@ -1,4 +1,4 @@
-ops >= 2.2.0
+ops >= 2.16.0
 pydantic==1.10.12
 sqlalchemy<2.0
 cosl==0.0.54
