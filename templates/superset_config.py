@@ -62,7 +62,8 @@ EXPLORE_FORM_DATA_CACHE_CONFIG = {
 DATA_CACHE_CONFIG = {
     "CACHE_TYPE": "SupersetMetastoreCache",
     "CACHE_KEY_PREFIX": "superset_results",
-    "CACHE_DEFAULT_TIMEOUT": 86400, # 24 hours
+    # "CACHE_DEFAULT_TIMEOUT": 86400, # 24 hours
+    "CACHE_DEFAULT_TIMEOUT": -1, # disabling cache because it bypasses Ranger policies
     "CACHE_REDIS_URL": f"redis://{os.getenv('REDIS_HOST')}:{os.getenv('REDIS_PORT')}/3",
 }
 
