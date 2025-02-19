@@ -112,7 +112,7 @@ options:
   feature-flags:
     description: |
        A comma-separated list of feature defined in https://github.com/apache/superset/blob/master/RESOURCES/FEATURE_FLAGS.md.
-       To disable features enabled by default, proceed them by a ! symbol. E.g: ENABLED_FEATURE,!DISABLED_FEATURE.
+       To disable features enabled by default, precede them with a ! symbol. E.g: ENABLED_FEATURE,!DISABLED_FEATURE.
     type: string
     default: "ALERT_REPORTS,ALERTS_ATTACH_REPORTS,ALLOW_ADHOC_SUBQUERY,CACHE_IMPERSONATION,DASHBOARD_CROSS_FILTERS,DASHBOARD_RBAC,ENABLE_TEMPLATE_PROCESSING,EMBEDDABLE_CHARTS,ESTIMATE_QUERY_COST,!GLOBAL_ASYNC_QUERIES,SCHEDULED_QUERIES"
   global-async-queries-jwt:
@@ -159,6 +159,3 @@ options:
     description: Boolean representing if the cache warm-up functionality should be enabled.
     default: False
     type: boolean
-
-
-
