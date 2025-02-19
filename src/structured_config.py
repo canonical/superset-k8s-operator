@@ -5,10 +5,12 @@
 """Structured configuration for the Superset charm."""
 import logging
 from enum import Enum
-from typing import Optional
+from typing import Dict, Optional
 
 from charms.data_platform_libs.v0.data_models import BaseConfigModel
 from pydantic import validator
+
+from utils import get_supported_feature_flags
 
 logger = logging.getLogger(__name__)
 
@@ -44,14 +46,6 @@ class CharmConfig(BaseConfigModel):
     admin_password: str
     charm_function: FunctionType
     cache_warmup: bool
-    alerts_attach_reports: bool
-    dashboard_cross_filters: bool
-    dashboard_rbac: bool
-    embeddable_charts: bool
-    scheduled_queries: bool
-    estimate_query_cost: bool
-    enable_template_processing: bool
-    alert_reports: bool
     sqlalchemy_pool_size: int
     sqlalchemy_pool_timeout: int
     sqlalchemy_max_overflow: int
@@ -66,7 +60,6 @@ class CharmConfig(BaseConfigModel):
     load_examples: bool
     html_sanitization: bool
     html_sanitization_schema_extensions: Optional[str]
-    global_async_queries: bool
     global_async_queries_jwt: Optional[str]
     global_async_queries_polling_delay: int
     sentry_dsn: Optional[str]
@@ -76,6 +69,7 @@ class CharmConfig(BaseConfigModel):
     sentry_sample_rate: Optional[str]
     server_alias: str
     webserver_timeout: int
+    feature_flags: str
 
     @validator("*", pre=True)
     @classmethod
@@ -207,3 +201,32 @@ class CharmConfig(BaseConfigModel):
         if 60 <= int_value <= 300:
             return int_value
         raise ValueError("Value out of range.")
+
+    @validator("feature_flags")
+    @classmethod
+    def feature_flags_validator(cls, value: str) -> Dict[str, bool]:
+        """Check validity of `feature_flags` field.
+
+        Args:
+            value: feature flags value
+
+        Returns:
+            Dict[str, bool]: dictionary of enabled/disabled feature flags
+
+        Raises:
+            ValueError: in case the flag is not supported
+        """
+        supported_flags = get_supported_feature_flags()
+        unsupported_flags = []
+        ret = {}
+        flags = value.split(",")
+        for f in flags:
+            name = f.strip(" !").upper()
+            if name not in supported_flags:
+                unsupported_flags.append(name)
+            enabled = not f.strip().startswith("!")
+            ret[name] = enabled
+
+        if unsupported_flags:
+            raise ValueError(f"{unsupported_flags} flags are not supported.")
+        return ret

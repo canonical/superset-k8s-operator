@@ -144,20 +144,48 @@ WEBDRIVER_BASEURL = f"http://{SERVER_ALIAS}:{APPLICATION_PORT}/"
 
 SUPERSET_WEBSERVER_TIMEOUT = int(os.getenv("WEBSERVER_TIMEOUT"))
 
-FEATURE_FLAGS = {
-    flag_name: os.getenv(flag_name, "").lower() != "false"
-    for flag_name in [
+SUPPORTED_FEATURE_FLAGS = [
+        # TESTING
+        "ALERT_REPORTS",
+        "ALLOW_FULL_CSV_EXPORT",
+        "CACHE_IMPERSONATION",
+        "CONFIRM_DASHBOARD_DIFF",
+        "DASHBOARD_VIRTUALIZATION",
+        "DRILL_BY",
+        "DRILL_TO_DETAIL",
+        "DYNAMIC_PLUGINS",
+        "ENABLE_JAVASCRIPT_CONTROLS",
+        "ESTIMATE_QUERY_COST",
+        "GENERIC_CHART_AXES",
+        "GLOBAL_ASYNC_QUERIES",
+        "HORIZONTAL_FILTER_BAR",
+        "PLAYWRIGHT_REPORTS_AND_THUMBNAILS",
+        "RLS_IN_SQLLAB",
+        "SSH_TUNNELING",
+        "USE_ANALAGOUS_COLORS",
+
+        # STABLE
         "ALERTS_ATTACH_REPORTS",
+        "ALLOW_ADHOC_SUBQUERY",
         "DASHBOARD_CROSS_FILTERS",
         "DASHBOARD_RBAC",
+        "DATAPANEL_CLOSED_BY_DEFAULT",
+        "DISABLE_LEGACY_DATASOURCE_EDITOR",
+        "DRUID_JOINS",
         "EMBEDDABLE_CHARTS",
-        "SCHEDULED_QUERIES",
-        "ESTIMATE_QUERY_COST",
+        "EMBEDDED_SUPERSET",
         "ENABLE_TEMPLATE_PROCESSING",
-        "ALERT_REPORTS",
-        "GLOBAL_ASYNC_QUERIES",
-        "ALLOW_ADHOC_SUBQUERY",
+        "ESCAPE_MARKDOWN_HTML",
+        "LISTVIEWS_DEFAULT_CARD_VIEW",
+        "SCHEDULED_QUERIES",
+        "SQLLAB_BACKEND_PERSISTENCE",
+        "SQL_VALIDATORS_BY_ENGINE",
+        "THUMBNAILS",
     ]
+
+FEATURE_FLAGS = {
+    flag_name: os.getenv(flag_name, "").lower() != "false"
+    for flag_name in SUPPORTED_FEATURE_FLAGS
 }
 
 # Asynchronous queries

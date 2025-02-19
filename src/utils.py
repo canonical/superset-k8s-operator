@@ -6,8 +6,10 @@
 
 import logging
 import os
+import re
 import secrets
 import string
+from pathlib import Path
 
 from sqlalchemy import create_engine
 from sqlalchemy.exc import SQLAlchemyError
@@ -96,3 +98,27 @@ def query_metadata_database(uri, sql):
     except SQLAlchemyError as e:
         logger.exception("Error accessing database: %s", str(e))
         return []
+
+
+def get_supported_feature_flags():
+    """Get supported feature flags based on the superset config file.
+
+    Return:
+        List of supported feature flags.
+    """
+    cfg_path = (
+        Path(__file__).parent.parent / "templates" / "superset_config.py"
+    )
+    with open(cfg_path, "r") as file:
+        content = file.read()
+    match = re.search(
+        r"SUPPORTED_FEATURE_FLAGS\s*=\s*\[\s*(.*?)\s*]", content, re.DOTALL
+    )
+    list_content = match.group(1)
+    cleaned_content = re.sub(r"#.*?\n", "", list_content)
+    supported_flags = [
+        item.strip(' "\n')
+        for item in cleaned_content.split(",")
+        if item.strip(' "\n')
+    ]
+    return supported_flags
