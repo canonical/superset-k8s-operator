@@ -184,8 +184,9 @@ SUPPORTED_FEATURE_FLAGS = [
     ]
 
 FEATURE_FLAGS = {
-    flag_name: os.getenv(flag_name, "").lower() != "false"
+    flag_name: os.getenv(flag_name, "").lower() == "true"
     for flag_name in SUPPORTED_FEATURE_FLAGS
+    if os.getenv(flag_name, "")
 }
 
 # Asynchronous queries
