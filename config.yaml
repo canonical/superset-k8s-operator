@@ -114,7 +114,6 @@ options:
        A comma-separated list of feature defined in https://github.com/apache/superset/blob/HEAD/RESOURCES/FEATURE_FLAGS.md.
        To disable features enabled by default, precede them with a ! symbol. E.g: ENABLED_FEATURE,!DISABLED_FEATURE.
     type: string
-    default: "ALERT_REPORTS,ALERTS_ATTACH_REPORTS,ALLOW_ADHOC_SUBQUERY,CACHE_IMPERSONATION,DASHBOARD_CROSS_FILTERS,DASHBOARD_RBAC,ENABLE_TEMPLATE_PROCESSING,EMBEDDABLE_CHARTS,ESTIMATE_QUERY_COST,!GLOBAL_ASYNC_QUERIES,SCHEDULED_QUERIES"
   global-async-queries-jwt:
     description: |
       jwt for communication with redis database for async querying

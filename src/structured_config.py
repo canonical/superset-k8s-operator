@@ -69,7 +69,7 @@ class CharmConfig(BaseConfigModel):
     sentry_sample_rate: Optional[str]
     server_alias: str
     webserver_timeout: int
-    feature_flags: str
+    feature_flags: Optional[str]
 
     @validator("*", pre=True)
     @classmethod
@@ -216,10 +216,10 @@ class CharmConfig(BaseConfigModel):
         Raises:
             ValueError: in case the flag is not supported
         """
+        ret = {}
         supported_flags = get_supported_feature_flags()
         unsupported_flags = []
-        ret = {}
-        flags = value.split(",")
+        flags = value.split(",") if value else []
         for f in flags:
             name = f.strip(" !").upper()
             if name not in supported_flags:

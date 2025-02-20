@@ -344,8 +344,8 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "LOG_FILE": LOG_FILE,
             "CACHE_WARMUP": self.config["cache-warmup"],
         }
-
-        env.update(self.config["feature-flags"])
+        if self.config["feature-flags"]:
+            env.update(self.config["feature-flags"])
 
         return env
 
