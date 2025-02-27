@@ -8,7 +8,7 @@ import logging
 
 import pytest
 import pytest_asyncio
-from helpers import (
+from integration.helpers import (
     METADATA,
     POSTGRES_NAME,
     REDIS_NAME,
