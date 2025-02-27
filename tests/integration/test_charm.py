@@ -8,7 +8,7 @@ import logging
 
 import pytest
 import requests
-from helpers import (
+from integration.helpers import (
     UI_NAME,
     api_authentication,
     delete_chart,
