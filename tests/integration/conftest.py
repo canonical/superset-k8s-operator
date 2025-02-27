@@ -8,7 +8,7 @@ import logging
 
 import pytest
 import pytest_asyncio
-from helpers import (
+from integration.helpers import (
     BASE_DIR,
     CHARM_FUNCTIONS,
     METADATA,

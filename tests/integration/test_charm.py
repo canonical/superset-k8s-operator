@@ -8,7 +8,6 @@ import logging
 
 import pytest
 import requests
-from conftest import deploy  # noqa: F401, pylint: disable=W0611
 from helpers import (
     UI_NAME,
     api_authentication,
@@ -18,6 +17,7 @@ from helpers import (
     restart_application,
     simulate_crash,
 )
+from integration.conftest import deploy  # noqa: F401, pylint: disable=W0611
 from pytest_operator.plugin import OpsTest
 
 logger = logging.getLogger(__name__)

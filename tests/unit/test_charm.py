@@ -161,7 +161,7 @@ class TestCharm(TestCase):
                 "https-proxy": "proxy:1234",
                 "no-proxy": ".canonical.com",
                 "allow-image-domains": "assets.ubuntu.com",
-                "feature-flags": "ALLOW_ADHOC_SUBQUERY, !GLOBAL_ASYNC_QUERIES"
+                "feature-flags": "ALLOW_ADHOC_SUBQUERY, !GLOBAL_ASYNC_QUERIES",
             }
         )
 

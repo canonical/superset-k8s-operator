@@ -9,7 +9,7 @@ import logging
 import pytest
 import pytest_asyncio
 import requests
-from helpers import (
+from integration.helpers import (
     APP_NAME,
     METADATA,
     POSTGRES_NAME,
