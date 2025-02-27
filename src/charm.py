@@ -309,16 +309,6 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "SQL_ALCHEMY_URI": self._state.sql_alchemy_uri,
             "REDIS_HOST": self._state.redis_host,
             "REDIS_PORT": self._state.redis_port,
-            "ALERTS_ATTACH_REPORTS": self.config["alerts-attach-reports"],
-            "DASHBOARD_CROSS_FILTERS": self.config["dashboard-cross-filters"],
-            "DASHBOARD_RBAC": self.config["dashboard-rbac"],
-            "EMBEDDABLE_CHARTS": self.config["embeddable-charts"],
-            "SCHEDULED_QUERIES": self.config["scheduled-queries"],
-            "ESTIMATE_QUERY_COST": self.config["estimate-query-cost"],
-            "ENABLE_TEMPLATE_PROCESSING": self.config[
-                "enable-template-processing"
-            ],
-            "ALERT_REPORTS": self.config["alert-reports"],
             "SQLALCHEMY_POOL_SIZE": self.config["sqlalchemy-pool-size"],
             "SQLALCHEMY_POOL_TIMEOUT": self.config["sqlalchemy-pool-timeout"],
             "SQLALCHEMY_MAX_OVERFLOW": self.config["sqlalchemy-max-overflow"],
@@ -336,7 +326,6 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "HTML_SANITIZATION_SCHEMA_EXTENSIONS": self.config[
                 "html-sanitization-schema-extensions"
             ],
-            "GLOBAL_ASYNC_QUERIES": self.config["global-async-queries"],
             "GLOBAL_ASYNC_QUERIES_JWT": self.config[
                 "global-async-queries-jwt"
             ],
@@ -355,6 +344,9 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "LOG_FILE": LOG_FILE,
             "CACHE_WARMUP": self.config["cache-warmup"],
         }
+        if self.config["feature-flags"]:
+            env.update(self.config["feature-flags"])
+
         return env
 
     def _update(self, event):
