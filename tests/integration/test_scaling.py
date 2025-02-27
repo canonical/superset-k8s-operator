@@ -32,7 +32,7 @@ async def deploy(ops_test: OpsTest):
     """Deploy the app."""
     asyncio.gather(
         ops_test.model.deploy(POSTGRES_NAME, channel="14", trust=True),
-        ops_test.model.deploy(REDIS_NAME, channel="edge", trust=True),
+        ops_test.model.deploy(REDIS_NAME, channel="edge", revision=38, trust=True),
     )
 
     async with ops_test.fast_forward():
