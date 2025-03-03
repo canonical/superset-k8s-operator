@@ -39,53 +39,6 @@ options:
         Allowed options are: 'app-gunicorn', 'app', 'worker', 'beat'
     default: app-gunicorn
     type: string
-  alerts-attach-reports:
-    description: |
-        Determines whether to attach reports to alerts.
-    default: True
-    type: boolean
-  dashboard-cross-filters:
-    description: |
-        Enables the use of cross-filters on dashboards,
-        allowing users to interactively filter data 
-        across multiple visualizations.
-    default: True
-    type: boolean
-  dashboard-rbac:
-    description: |
-        Enables Role-Based Access Control (RBAC) for dashboards,
-        providing fine-grained control over who can view and modify
-        specific dashboards.
-    default: True
-    type: boolean
-  embeddable-charts:
-    description: |
-        Allows embedding of charts into external applications or websites.
-    default: True
-    type: boolean
-  scheduled-queries:
-    description: |
-        Enables the scheduling of queries to run automatically 
-        at specified intervals.
-    default: True
-    type: boolean
-  estimate-query-cost:
-    description: |
-        Provides an estimate of the query execution cost before running it,
-        helping users understand the potential resource consumption.
-    default: True
-    type: boolean
-  enable-template-processing:
-    description: |
-        Enables the processing of templates within queries 
-        or dashboard elements.
-    default: True
-    type: boolean
-  alert-reports:
-    description: |
-        Allows the creation of alert rules based on data in reports.
-    default: True
-    type: boolean
   sqlalchemy-pool-size:
     description: |
         Specifies the maximum number of database connections
@@ -156,11 +109,11 @@ options:
     description: |
       Use this configuration to extend the HTML sanitization schema.
     type: string
-  global-async-queries:
+  feature-flags:
     description: |
-      Enable asynchronous querying for charts and dashboard.
-    type: boolean
-    default: False
+       A comma-separated list of feature defined in https://github.com/apache/superset/blob/HEAD/RESOURCES/FEATURE_FLAGS.md.
+       To disable features enabled by default, precede them with a ! symbol. E.g: ENABLED_FEATURE,!DISABLED_FEATURE.
+    type: string
   global-async-queries-jwt:
     description: |
       jwt for communication with redis database for async querying

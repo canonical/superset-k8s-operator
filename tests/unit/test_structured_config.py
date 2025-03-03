@@ -50,6 +50,40 @@ def test_product_related_values(_harness) -> None:
     check_valid_values(_harness, "charm-function", accepted_values)
 
 
+def test_config_feature_flags(_harness) -> None:
+    """Test feature flags configuration."""
+    _harness.update_config(
+        {"feature-flags": "ALERTS_ATTACH_REPORTS, ALLOW_ADHOC_SUBQUERY"}
+    )
+    assert _harness.charm.config["feature-flags"] == {
+        "ALERTS_ATTACH_REPORTS": True,
+        "ALLOW_ADHOC_SUBQUERY": True,
+    }
+
+    _harness.update_config(
+        {"feature-flags": "ALERTS_ATTACH_REPORTS, !ALLOW_ADHOC_SUBQUERY"}
+    )
+    assert _harness.charm.config["feature-flags"] == {
+        "ALERTS_ATTACH_REPORTS": True,
+        "ALLOW_ADHOC_SUBQUERY": False,
+    }
+
+    _harness.update_config(
+        {"feature-flags": "alerts_attach_reports,!allow_adhoc_subquery"}
+    )
+    assert _harness.charm.config["feature-flags"] == {
+        "ALERTS_ATTACH_REPORTS": True,
+        "ALLOW_ADHOC_SUBQUERY": False,
+    }
+
+    _harness.update_config(
+        {"feature-flags": "ALERTS_ATTACH_REPORTS, !UNKNOWN"}
+    )
+    with pytest.raises(ValueError) as va:
+        _ = _harness.charm.config["feature-flags"]
+    assert "UNKNOWN" in str(va.value)
+
+
 def check_valid_values(_harness, field: str, accepted_values: list) -> None:
     """Check the correctness of the passed values for a field.
 

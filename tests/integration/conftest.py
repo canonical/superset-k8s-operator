@@ -8,7 +8,8 @@ import logging
 
 import pytest
 import pytest_asyncio
-from helpers import (
+from integration.helpers import (
+    BASE_DIR,
     CHARM_FUNCTIONS,
     METADATA,
     NGINX_NAME,
@@ -47,7 +48,7 @@ async def deploy(ops_test: OpsTest):
             timeout=200,
         )
 
-        charm = await ops_test.build_charm(".")
+        charm = await ops_test.build_charm(BASE_DIR)
         resources = {
             "superset-image": METADATA["resources"]["superset-image"][
                 "upstream-source"
