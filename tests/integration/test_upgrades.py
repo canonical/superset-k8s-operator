@@ -11,6 +11,7 @@ import pytest_asyncio
 import requests
 from integration.helpers import (
     APP_NAME,
+    BASE_DIR,
     METADATA,
     POSTGRES_NAME,
     REDIS_NAME,
@@ -53,7 +54,7 @@ class TestUpgrade:
 
     async def test_upgrade(self, ops_test: OpsTest):
         """Builds the current charm and refreshes the current deployment."""
-        charm = await ops_test.build_charm(".")
+        charm = await ops_test.build_charm(BASE_DIR)
         resources = {
             "superset-image": METADATA["resources"]["superset-image"][
                 "upstream-source"

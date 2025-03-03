@@ -9,6 +9,7 @@ import logging
 import pytest
 import pytest_asyncio
 from integration.helpers import (
+    BASE_DIR,
     METADATA,
     POSTGRES_NAME,
     REDIS_NAME,
@@ -32,7 +33,7 @@ async def deploy(ops_test: OpsTest):
     """Deploy the app."""
     asyncio.gather(
         ops_test.model.deploy(POSTGRES_NAME, channel="14", trust=True),
-        ops_test.model.deploy(REDIS_NAME, channel="edge", revision=38, trust=True),
+        ops_test.model.deploy(REDIS_NAME, channel="edge", trust=True),
     )
 
     async with ops_test.fast_forward():
@@ -43,7 +44,7 @@ async def deploy(ops_test: OpsTest):
             timeout=2000,
         )
 
-        charm = await ops_test.build_charm(".")
+        charm = await ops_test.build_charm(BASE_DIR)
         resources = {
             "superset-image": METADATA["resources"]["superset-image"][
                 "upstream-source"
