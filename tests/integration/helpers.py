@@ -14,7 +14,8 @@ from pytest_operator.plugin import OpsTest
 
 logger = logging.getLogger(__name__)
 
-METADATA = yaml.safe_load(Path("./metadata.yaml").read_text())
+BASE_DIR = Path(__file__).parents[2]
+METADATA = yaml.safe_load(Path(f"{BASE_DIR}/metadata.yaml").read_text())
 NGINX_NAME = "nginx-ingress-integrator"
 POSTGRES_NAME = "postgresql-k8s"
 REDIS_NAME = "redis-k8s"
