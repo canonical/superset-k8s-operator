@@ -157,9 +157,6 @@ class TestCharm(TestCase):
         self.harness.update_config(
             {
                 "admin-password": "secure-pass",
-                "http-proxy": "proxy:1234",
-                "https-proxy": "proxy:1234",
-                "no-proxy": ".canonical.com",
                 "allow-image-domains": "assets.ubuntu.com",
                 "feature-flags": "ALLOW_ADHOC_SUBQUERY, !GLOBAL_ASYNC_QUERIES",
             }
@@ -191,9 +188,9 @@ class TestCharm(TestCase):
                         "OAUTH_DOMAIN": None,
                         "OAUTH_ADMIN_EMAIL": "admin@superset.com",
                         "SELF_REGISTRATION_ROLE": "Public",
-                        "HTTP_PROXY": "proxy:1234",
-                        "HTTPS_PROXY": "proxy:1234",
-                        "NO_PROXY": ".canonical.com",
+                        "HTTP_PROXY": None,
+                        "HTTPS_PROXY": None,
+                        "NO_PROXY": None,
                         "SUPERSET_LOAD_EXAMPLES": False,
                         "PYTHONPATH": "/app/pythonpath",
                         "HTML_SANITIZATION": True,

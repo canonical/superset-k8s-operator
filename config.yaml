@@ -82,18 +82,6 @@ options:
       This role must exist already in Superset and is case sensitive.
     type: string
     default: Public
-  http-proxy:
-    description: |
-      The HTTP_PROXY value.
-    type: string
-  https-proxy:
-    description: |
-      The HTTPS_PROXY value.
-    type: string
-  no-proxy:
-    description: |
-      A comma-separated list of host names that should not go through any proxy.
-    type: string
   load-examples:
     description: |
       Loads example data source with corresponding data sets and charts for testing.

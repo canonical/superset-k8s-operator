@@ -54,9 +54,6 @@ class CharmConfig(BaseConfigModel):
     google_client_id: Optional[str]
     google_client_secret: Optional[str]
     oauth_domain: Optional[str]
-    http_proxy: Optional[str]
-    https_proxy: Optional[str]
-    no_proxy: Optional[str]
     load_examples: bool
     html_sanitization: bool
     html_sanitization_schema_extensions: Optional[str]

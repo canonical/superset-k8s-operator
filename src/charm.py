@@ -11,6 +11,7 @@ https://discourse.charmhub.io/t/4208
 """
 
 import logging
+import os
 
 from charms.data_platform_libs.v0.data_models import TypedCharmBase
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
@@ -301,6 +302,10 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         self._handle_superset_secret()
         self._validate_self_registration_role()
 
+        http_proxy = os.environ.get("JUJU_CHARM_HTTP_PROXY")
+        https_proxy = os.environ.get("JUJU_CHARM_HTTPS_PROXY")
+        no_proxy = os.environ.get("JUJU_CHARM_NO_PROXY")
+
         env = {
             "ALLOW_IMAGE_DOMAINS": self.config["allow-image-domains"],
             "SUPERSET_SECRET_KEY": self._state.superset_secret_key,
@@ -317,9 +322,9 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "OAUTH_DOMAIN": self.config["oauth-domain"],
             "OAUTH_ADMIN_EMAIL": self.config["oauth-admin-email"],
             "SELF_REGISTRATION_ROLE": self.config["self-registration-role"],
-            "HTTP_PROXY": self.config["http-proxy"],
-            "HTTPS_PROXY": self.config["https-proxy"],
-            "NO_PROXY": self.config["no-proxy"],
+            "HTTP_PROXY": http_proxy,
+            "HTTPS_PROXY": https_proxy,
+            "NO_PROXY": no_proxy,
             "SUPERSET_LOAD_EXAMPLES": self.config["load-examples"],
             "PYTHONPATH": CONFIG_PATH,
             "HTML_SANITIZATION": self.config["html-sanitization"],
