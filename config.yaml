@@ -138,6 +138,38 @@ options:
     description: The alias the server charm has been deployed with if it differs from the default.
     default: superset-k8s
     type: string
+  smtp-host:
+    description: SMTP server host.
+    type: string
+  smtp-port:
+    description: SMTP server port.
+    default: 587
+    type: int
+  smtp-username:
+    description: Username for authenticating to the SMTP server.
+    default: superset
+    type: string
+  smtp-password:
+    description: Password for authenticating to the SMTP server.
+    type: string
+  smtp-ssl:
+    description: Indicates whether the connection should be encrypted from the beginning.
+    default: false
+    type: boolean
+  smtp-start-tls:
+    description: Indicates whether Superset intiates a TLS session with the server.
+    default: true
+    type: boolean
+  smtp-ssl-server-auth:
+    description: Indicates whether Superset accepts only trusted cetficiates from the SMTP server.
+    default: false
+    type: boolean
+  smtp-email:
+    description: Email address used for sending reports.
+    type: string
+  smtp-superset-url:
+    description: Superset URL used for the links in the report/alert email.
+    type: string
   webserver-timeout:
     description: The time in seconds the server can maintain a database connection.
     default: 180

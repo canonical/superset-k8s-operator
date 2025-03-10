@@ -64,6 +64,15 @@ class CharmConfig(BaseConfigModel):
     sentry_environment: Optional[str]
     sentry_redact_params: bool
     sentry_sample_rate: Optional[str]
+    smtp_host: Optional[str]
+    smtp_port: int
+    smtp_ssl: bool
+    smtp_start_tls: bool
+    smtp_ssl_server_auth: bool
+    smtp_username: Optional[str]
+    smtp_password: Optional[str]
+    smtp_email: Optional[str]
+    smtp_superset_url: Optional[str]
     server_alias: str
     webserver_timeout: int
     feature_flags: Optional[str]
