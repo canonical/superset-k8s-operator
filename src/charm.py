@@ -101,8 +101,8 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         self._require_nginx_route()
 
         # Loki
-        self.log_proxy = LogProxyConsumer(
-            self, log_files=[LOG_FILE], relation_name="log-proxy"
+        self._loki_logging = LogProxyConsumer(
+            self, log_files=[LOG_FILE], relation_name="logging"
         )
 
         # Grafana
@@ -366,6 +366,12 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         env = self._create_env()
         load_superset_files(container)
 
+        metrics_exporter_command = (
+            f"/usr/bin/celery-exporter --broker-url redis://{self._state.redis_host}:{self._state.redis_port}/4 --port {PROMETHEUS_METRICS_PORT}"
+            if self.config["charm-function"] == "worker"
+            else "/usr/bin/statsd_exporter"
+        )
+
         logger.info("planning %s execution", APP_NAME)
         pebble_layer = {
             "summary": f"{APP_NAME} layer",
@@ -379,15 +385,16 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
                     "environment": env,
                     "on-check-failure": {"up": "ignore"},
                 },
-                "prometheus-statsd-exporter": {
+                "metrics-exporter": {
                     "override": "replace",
-                    "summary": "statsd metrics exporter",
-                    "command": "/usr/bin/statsd_exporter",
+                    "summary": "metrics exporter",
+                    "command": metrics_exporter_command,
                     "startup": "enabled",
                     "after": [self.name],
                 },
             },
         }
+
         if self.config["charm-function"] in UI_FUNCTIONS:
             pebble_layer.update(
                 {
