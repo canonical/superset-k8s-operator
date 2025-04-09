@@ -1,0 +1,13 @@
+diff --git a/superset-frontend/src/dashboard/components/nativeFilters/FilterBar/FilterControls/FilterValue.tsx b/superset-frontend/src/dashboard/components/nativeFilters/FilterBar/FilterControls/FilterValue.tsx
+index f44a1a1df6..e859ec55a3 100644
+--- a/superset-frontend/src/dashboard/components/nativeFilters/FilterBar/FilterControls/FilterValue.tsx
++++ b/superset-frontend/src/dashboard/components/nativeFilters/FilterBar/FilterControls/FilterValue.tsx
+@@ -174,7 +174,7 @@ const FilterValue: React.FC<FilterControlProps> = ({
+       setIsRefreshing(true);
+       getChartDataRequest({
+         formData: newFormData,
+-        force: false,
++        force: shouldRefresh,
+         ownState: filterOwnState,
+       })
+         .then(({ response, json }) => {

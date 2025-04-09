@@ -1,0 +1,18 @@
+# Required dependencies missing from Superset requirements.txt
+Pillow==10.1.0
+jmespath==1.0.1
+
+# Optional dependencies for Database connectors
+psycopg2-binary==2.9.4
+Authlib==1.2.1
+elasticsearch-dbapi>=0.2.7,<0.3.0
+trino==0.327.0
+mysqlclient==2.1.1
+pyhive==0.7.0
+thrift==0.16.0
+sqlalchemy-redshift==0.8.1
+gspread==6.1.2
+
+# Monitoring
+sentry-sdk==0.10.2
+statsd==4.0.1
