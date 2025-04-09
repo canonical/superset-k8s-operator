@@ -19,7 +19,6 @@
 set -eo pipefail
 : "${CHARM_FUNCTION:=app-gunicorn}"
 
-FLASK_APP="superset"
 REQUIREMENTS_LOCAL="/app/k8s/requirements-local.txt"
 # If Cypress run – overwrite the password for admin and export env variables
 if [ "$CYPRESS_CONFIG" == "true" ]; then

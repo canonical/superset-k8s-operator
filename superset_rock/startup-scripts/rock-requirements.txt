@@ -1,5 +1,5 @@
 # Required dependencies missing from Superset requirements.txt
-Pillow==10.1.0
+Pillow==10.2.0
 jmespath==1.0.1
 
 # Optional dependencies for Database connectors

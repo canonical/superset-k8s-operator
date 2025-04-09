@@ -1,0 +1,4 @@
+CVE-2024-45337
+
+# Ignore GCP service account secrets in docs
+secret:CRITICAL::Google (gcp-service-account)::/app/docs/docs/databases/bigquery.mdx
