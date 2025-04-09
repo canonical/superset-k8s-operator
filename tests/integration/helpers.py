@@ -200,8 +200,8 @@ async def simulate_crash(ops_test: OpsTest, charm: str, charm_image: str):
 
     Args:
         ops_test: PyTest object.
-        charm: charm build.
-        charm_image: rock image to be used.
+        charm: charm path.
+        charm_image: path to rock image to be used.
     """
     # Destroy charm
     await ops_test.model.applications[UI_NAME].destroy(force=True)
