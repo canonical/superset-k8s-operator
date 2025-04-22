@@ -14,7 +14,7 @@ import logging
 
 from charms.data_platform_libs.v0.data_models import TypedCharmBase
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
-from charms.loki_k8s.v0.loki_push_api import LogProxyConsumer
+from charms.loki_k8s.v1.loki_push_api import LogProxyConsumer
 from charms.nginx_ingress_integrator.v0.nginx_route import require_nginx_route
 from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointProvider
 from charms.redis_k8s.v0.redis import RedisRelationCharmEvents
@@ -101,9 +101,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         self._require_nginx_route()
 
         # Loki
-        self._loki_logging = LogProxyConsumer(
-            self, log_files=[LOG_FILE], relation_name="logging"
-        )
+        self._log_forwarder = LogForwarder(self, relation_name="logging")
 
         # Grafana
         self._grafana_dashboards = GrafanaDashboardProvider(
