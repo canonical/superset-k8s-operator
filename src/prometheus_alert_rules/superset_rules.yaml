@@ -1,0 +1,37 @@
+# Copyright 2023 Canonical Ltd.
+# See LICENSE file for licensing details.
+#
+# Learn more at: https://juju.is/docs/sdk
+
+groups:
+
+- name: superset_k8s
+
+  rules:
+    - alert: SupersetDown
+      expr: 'sum(rate(superset_welcome[2m])) == 0'
+      for: 2m
+      labels:
+        severity: critical
+      annotations:
+        summary: All Superset instances are down
+        description: "All Superset instances are down\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+  
+      
+    - alert: SupersetHalfOrMoreDown
+      expr: '(sum(rate(superset_welcome[2m])) / clamp_min(count(superset_welcome) * max(rate(superset_welcome[2m])), 1/1000)) <= 0.5'
+      for: 2m
+      labels:
+        severity: high
+      annotations:
+        summary: Half or more of Superset instances are down
+        description: "Half or more of Superset instances are down\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+
+    - alert: WorkersDown
+      expr: 'sum(max(celery_worker_up) by (hostname)) == 0'
+      for: 2m
+      labels:
+        severity: critical
+      annotations:
+        summary: All Superset workers are down
+        description: "All Superset workers are down\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"

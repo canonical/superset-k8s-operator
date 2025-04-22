@@ -242,9 +242,9 @@ class TestCharm(TestCase):
         # The plan is generated after pebble is ready.
         want_plan = {
             "services": {
-                "prometheus-statsd-exporter": {
+                "metrics-exporter": {
                     "override": "replace",
-                    "summary": "statsd metrics exporter",
+                    "summary": "metrics exporter",
                     "command": "/usr/bin/statsd_exporter",
                     "startup": "enabled",
                     "after": ["superset"],
@@ -253,8 +253,8 @@ class TestCharm(TestCase):
         }
         got_plan = harness.get_container_pebble_plan("superset").to_dict()
         self.assertEqual(
-            got_plan["services"]["prometheus-statsd-exporter"],
-            want_plan["services"]["prometheus-statsd-exporter"],
+            got_plan["services"]["metrics-exporter"],
+            want_plan["services"]["metrics-exporter"],
         )
 
     def test_ingress(self):
