@@ -16,8 +16,7 @@ groups:
       annotations:
         summary: All Superset instances are down
         description: "All Superset instances are down\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
-  
-      
+        
     - alert: SupersetHalfOrMoreDown
       expr: '(sum(rate(superset_welcome[2m])) / clamp_min(count(superset_welcome) * max(rate(superset_welcome[2m])), 1/1000)) <= 0.5'
       for: 2m
