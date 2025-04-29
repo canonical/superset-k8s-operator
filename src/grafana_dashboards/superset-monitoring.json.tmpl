@@ -965,7 +965,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "P0DC3F85ACCA0B4BD"
+            "uid": "${lokids}"
           },
           "gridPos": {
             "h": 7,
@@ -988,7 +988,7 @@
             {
               "datasource": {
                 "type": "loki",
-                "uid": "P0DC3F85ACCA0B4BD"
+                "uid": "${lokids}"
               },
               "editorMode": "code",
               "expr": "{juju_application=~\".*superset.*ui.*\", juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_unit=~\"$juju_unit\"} |= ``",
@@ -1002,7 +1002,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "P0DC3F85ACCA0B4BD"
+            "uid": "${lokids}"
           },
           "gridPos": {
             "h": 7,
@@ -1025,7 +1025,7 @@
             {
               "datasource": {
                 "type": "loki",
-                "uid": "P0DC3F85ACCA0B4BD"
+                "uid": "${lokids}"
               },
               "editorMode": "code",
               "expr": "{juju_application=~\".*superset.*worker.*\", juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_unit=~\"$juju_unit\"} |= ``",
@@ -1039,7 +1039,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "P0DC3F85ACCA0B4BD"
+            "uid": "${lokids}"
           },
           "description": "",
           "gridPos": {
@@ -1063,7 +1063,7 @@
             {
               "datasource": {
                 "type": "loki",
-                "uid": "P0DC3F85ACCA0B4BD"
+                "uid": "${lokids}"
               },
               "editorMode": "code",
               "expr": "{juju_application=~\".*superset.*beat.*\", juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_unit=~\"$juju_unit\"} |= ``",
