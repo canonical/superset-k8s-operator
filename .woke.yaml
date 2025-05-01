@@ -6,3 +6,6 @@ ignore_files:
   - documentation/reference/feature-flags.md
   - documentation/how-to/prepare-for-production.md
   - documentation/how-to/enable-superset-security-features.md
+rules:
+  # Ignore "master" - the database relation event received from the library.
+  - name: master

@@ -38,7 +38,9 @@ class TestDeployment:
         response = requests.get(url, timeout=300, verify=False)  # nosec
         assert response.status_code == 200
 
-    async def test_charm_crash(self, ops_test: OpsTest):
+    async def test_charm_crash(
+        self, ops_test: OpsTest, charm: str, charm_image: str
+    ):
         """Test backup and restore functionality.
 
         This should validate that the Superset charm itself is stateless
@@ -53,7 +55,7 @@ class TestDeployment:
         original_charts = await get_chart_count(ops_test, url, session)
         await delete_chart(ops_test, url, session)
 
-        await simulate_crash(ops_test)
+        await simulate_crash(ops_test, charm, charm_image)
 
         # Get chart count on re-deployment
         url = await get_unit_url(

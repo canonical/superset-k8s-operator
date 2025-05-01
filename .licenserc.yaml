@@ -35,4 +35,5 @@ header:
     - 'trivy.yaml'
     - 'lib/**'
     - 'templates/*'
+    - 'superset_rock/startup-scripts/**'
   comment: on-failure

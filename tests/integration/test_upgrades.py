@@ -11,8 +11,6 @@ import pytest_asyncio
 import requests
 from integration.helpers import (
     APP_NAME,
-    BASE_DIR,
-    METADATA,
     POSTGRES_NAME,
     REDIS_NAME,
     SUPERSET_SECRET_KEY,
@@ -52,14 +50,11 @@ async def deploy(ops_test: OpsTest):
 class TestUpgrade:
     """Integration test for Superset charm upgrade from previous release."""
 
-    async def test_upgrade(self, ops_test: OpsTest):
+    async def test_upgrade(
+        self, ops_test: OpsTest, charm: str, charm_image: str
+    ):
         """Builds the current charm and refreshes the current deployment."""
-        charm = await ops_test.build_charm(BASE_DIR)
-        resources = {
-            "superset-image": METADATA["resources"]["superset-image"][
-                "upstream-source"
-            ]
-        }
+        resources = {"superset-image": charm_image}
 
         await ops_test.model.applications[APP_NAME].refresh(
             path=str(charm), resources=resources
