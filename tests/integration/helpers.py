@@ -5,17 +5,13 @@
 """Charm integration test helpers."""
 
 import logging
-from pathlib import Path
 
 import requests
-import yaml
 from celery import Celery
 from pytest_operator.plugin import OpsTest
 
 logger = logging.getLogger(__name__)
 
-BASE_DIR = Path(__file__).parents[2]
-METADATA = yaml.safe_load(Path(f"{BASE_DIR}/metadata.yaml").read_text())
 NGINX_NAME = "nginx-ingress-integrator"
 POSTGRES_NAME = "postgresql-k8s"
 REDIS_NAME = "redis-k8s"
@@ -199,11 +195,13 @@ async def delete_chart(ops_test: OpsTest, url, session):
     assert response.status_code == 200
 
 
-async def simulate_crash(ops_test: OpsTest):
+async def simulate_crash(ops_test: OpsTest, charm: str, charm_image: str):
     """Simulate the crash of the Superset charm.
 
     Args:
         ops_test: PyTest object.
+        charm: charm path.
+        charm_image: path to rock image to be used.
     """
     # Destroy charm
     await ops_test.model.applications[UI_NAME].destroy(force=True)
@@ -212,11 +210,8 @@ async def simulate_crash(ops_test: OpsTest):
     )
 
     # Deploy charms again
-    charm = await ops_test.build_charm(".")
     resources = {
-        "superset-image": METADATA["resources"]["superset-image"][
-            "upstream-source"
-        ]
+        "superset-image": charm_image,
     }
     await deploy_and_relate_superset_charm(
         ops_test, UI_NAME, UI_CONFIG, charm, resources

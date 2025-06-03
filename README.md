@@ -1,4 +1,5 @@
 [![Charmhub Badge](https://charmhub.io/superset-k8s/badge.svg)](https://charmhub.io/superset-k8s)
+[![Release Edge](https://github.com/canonical/superset-k8s-operator/actions/workflows/publish_charm.yaml/badge.svg)](https://github.com/canonical/superset-k8s-operator/actions/workflows/publish_charm.yaml)
 
 Charmed Superset is an open-source, production-ready data exploration and visualisation platform based on [Apache Superset<sup>TM</sup>](https://superset.apache.org/).
 

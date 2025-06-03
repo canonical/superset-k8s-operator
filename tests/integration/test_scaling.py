@@ -9,8 +9,6 @@ import logging
 import pytest
 import pytest_asyncio
 from integration.helpers import (
-    BASE_DIR,
-    METADATA,
     POSTGRES_NAME,
     REDIS_NAME,
     SCALABLE_SERVICES,
@@ -29,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 @pytest.mark.skip_if_deployed
 @pytest_asyncio.fixture(name="deploy-scale", scope="module")
-async def deploy(ops_test: OpsTest):
+async def deploy(ops_test: OpsTest, charm: str, charm_image: str):
     """Deploy the app."""
     asyncio.gather(
         ops_test.model.deploy(POSTGRES_NAME, channel="14", trust=True),
@@ -44,11 +42,8 @@ async def deploy(ops_test: OpsTest):
             timeout=2000,
         )
 
-        charm = await ops_test.build_charm(BASE_DIR)
         resources = {
-            "superset-image": METADATA["resources"]["superset-image"][
-                "upstream-source"
-            ]
+            "superset-image": charm_image,
         }
         # Iterate through UI and worker charms
         for function, alias in SCALABLE_SERVICES.items():

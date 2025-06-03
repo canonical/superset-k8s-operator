@@ -1,0 +1,201 @@
+# Copyright 2023 Canonical Ltd.
+# See LICENSE file for licensing details.
+---
+# https://github.com/apache/superset/blob/master/Dockerfile
+name: superset
+base: ubuntu@22.04
+version: 3.1.3-22.04-edge
+summary: Charmed Superset ROCK OCI
+description: |
+  Superset is a business intelligence tool that is fast, lightweight,
+  intuitive, and loaded with options that make it easy for users
+  to explore and visualize their data.
+license: Apache-2.0
+
+services:
+  superset-ui:
+    override: replace
+    summary: "superset-ui service"
+    startup: disabled
+    command: "/app/k8s/k8s-bootstrap.sh"
+    environment:
+      CHARM_FUNCTION: "app-gunicorn"
+      SUPERSET_SECRET_KEY: "supersetR0cks!"
+      ADMIN_PASSWORD: "admin"
+      SUPERSET_LOAD_EXAMPLES: "true"
+  statsd-exporter:
+    override: replace
+    summary: "statsd metrics exporter"
+    startup: disabled
+    command: "/usr/bin/statsd_exporter"
+
+platforms:
+  amd64:
+
+# Please refer to
+# https://discourse.ubuntu.com/t/unifying-user-identity-across-snaps-and-rocks/36469
+# for more information about shared user.
+# The UID 584792 corresponds to _daemon_ user.
+run_user: _daemon_
+
+parts:
+  patches:
+    plugin: dump
+    source: ./patches
+    organize:
+      fix-filter-force-update.patch: patches/fix-filter-force-update.patch
+    stage:
+      - patches/fix-filter-force-update.patch
+    prime:
+      - "-*"
+
+  superset:
+    after: [dependencies]
+    plugin: python
+    source: https://downloads.apache.org/superset/3.1.3/apache-superset-3.1.3-source.tar.gz  # yamllint disable-line
+    source-checksum: sha512/5c35ae761d25fdbd3e1c1dc17d0354b1dd23d98d9c863da7d61b013d59cdb4337cd9e93f8a5b105b657e5d33fa823e138281e8f475dcd20fa0d473e56a00ea7e  # yamllint disable-line
+    source-type: tar
+    build-packages:
+      - build-essential
+    stage-packages:
+      - python3.10-venv
+
+  local-files:
+    plugin: dump
+    source: ./startup-scripts
+    organize:
+      run-server.sh: app/k8s/run-server.sh
+      k8s-init.sh: app/k8s/k8s-init.sh
+      k8s-bootstrap.sh: app/k8s/k8s-bootstrap.sh
+      rock-requirements.txt: requirements/rock.txt
+    stage:
+      - app/k8s/run-server.sh
+      - app/k8s/k8s-init.sh
+      - app/k8s/k8s-bootstrap.sh
+      - requirements/rock.txt
+    permissions:
+      - path: app/k8s
+        owner: 584792
+        group: 584792
+        mode: "755"
+      - path: requirements
+        owner: 584792
+        group: 584792
+        mode: "755"
+
+  frontend:
+    after: [patches]
+    plugin: nil
+    source: https://downloads.apache.org/superset/3.1.3/apache-superset-3.1.3-source.tar.gz  # yamllint disable-line
+    source-checksum: sha512/5c35ae761d25fdbd3e1c1dc17d0354b1dd23d98d9c863da7d61b013d59cdb4337cd9e93f8a5b105b657e5d33fa823e138281e8f475dcd20fa0d473e56a00ea7e  # yamllint disable-line
+    source-type: tar
+    build-packages:
+      - git
+    build-snaps:
+      - node/14/stable
+    override-build: |
+      git apply --ignore-whitespace ${CRAFT_STAGE}/patches/*.patch
+
+      # Prepare for asset creation
+      cd superset-frontend
+
+      npm i --save-dev @types/underscore \
+        @types/urijs \
+        @types/mapbox__geojson-extent
+
+      npm install @loaders.gl/core \
+        @loaders.gl/loader-utils \
+        @react-spring/web
+
+      npm install dom-to-image \
+        currencyformatter.js --save
+
+      # Install frontend dependencies and build assets
+      npm ci
+      npm run build -- --output-path=${CRAFT_PART_INSTALL}/assets
+    organize:
+      assets: lib/python3.10/site-packages/superset/static/assets
+    stage:
+      - lib/python3.10/site-packages/superset/static/assets
+    permissions:
+      - path: lib/python3.10/site-packages/superset/static/assets
+        owner: 584792
+        group: 584792
+        mode: "755"
+
+  dependencies:
+    after: [local-files]
+    plugin: python
+    source: https://downloads.apache.org/superset/3.1.3/apache-superset-3.1.3-source.tar.gz  # yamllint disable-line
+    source-checksum: sha512/5c35ae761d25fdbd3e1c1dc17d0354b1dd23d98d9c863da7d61b013d59cdb4337cd9e93f8a5b105b657e5d33fa823e138281e8f475dcd20fa0d473e56a00ea7e  # yamllint disable-line
+    source-type: tar
+    build-packages:
+      - build-essential
+      - pkg-config
+      - libmysqlclient-dev
+    stage-packages:
+      - python3.10-venv
+    override-build: |
+      # Install Superset requirements
+      pip install --upgrade setuptools pip \
+        -r requirements/base.txt \
+          --target=/${CRAFT_PART_INSTALL}/dist \
+        -r ${CRAFT_STAGE}/requirements/rock.txt \
+          --target=/${CRAFT_PART_INSTALL}/dist
+
+      # Copy current directory files to app
+      cp -r . ${CRAFT_PART_INSTALL}/app
+
+      # Copy webfront images to expected dir
+      cd ${CRAFT_PART_INSTALL}/dist/flask_appbuilder/static/appbuilder/
+      cp -r css/webfonts/ webfonts/
+
+    organize:
+      dist: usr/local/lib/python3.10/dist-packages
+    stage:
+      - app
+      - usr/local/lib/python3.10/dist-packages
+    permissions:
+      - path: usr/local/lib/python3.10/dist-packages
+        owner: 584792
+        group: 584792
+        mode: "755"
+
+  prometheus-statsd-exporter:
+    plugin: dump
+    source: https://github.com/prometheus/statsd_exporter/releases/download/v0.26.1/statsd_exporter-0.26.1.linux-amd64.tar.gz # yamllint disable-line
+    source-checksum: sha256/36b33a04531cf871cf8c9c5d667e3c0ca59c07b4ba496bd6cd066bec4f25cc0d # yamllint disable-line
+    source-type: tar
+    organize:
+      statsd_exporter: bin/statsd_exporter
+    stage:
+      - bin/statsd_exporter
+    permissions:
+      - path: bin/statsd_exporter
+        owner: 584792
+        group: 584792
+        mode: "755"
+
+  prometheus-celery-exporter:
+    plugin: dump
+    source: https://github.com/canonical/celery-exporter/releases/download/celery-exporter-chart-0.8.0/celery-exporter # yamllint disable-line
+    source-type: file
+    organize:
+      celery-exporter: bin/celery-exporter
+    stage:
+      - bin/celery-exporter
+    permissions:
+      - path: bin/celery-exporter
+        owner: 584792
+        group: 584792
+        mode: "755"
+
+  overlay-pkgs:
+    after: [superset]
+    plugin: nil
+    overlay-packages:
+      - ca-certificates
+      - vim
+    stage-packages:
+      - libecpg-dev
+      - libmysqlclient-dev
