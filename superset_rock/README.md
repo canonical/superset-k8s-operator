@@ -7,17 +7,20 @@ For more information on ROCKs, visit the [rockcraft Github](https://github.com/c
 ## Building the ROCK
 The steps outlined below are based on the assumption that you are building the ROCK with the latest LTS of Ubuntu.  
 If you are using another version of Ubuntu or another operating system, the process may be different. 
-To avoid any issue with other operating systems you can simply build the image with [multipass](https://multipass.run/):
+To avoid any issue with other operating systems you can simply build the image with [Multipass](https://multipass.run/):
+
 ```bash
 sudo snap install multipass
 multipass launch -n rock-dev -m 8g -c 2 -d 20G
 multipass shell rock-dev
 ```
 ### Clone Repository
+
 ```bash
 git clone https://github.com/canonical/superset-k8s-operator.git
 cd superset_rock
 ```
+
 ### Installing & Configuring Prerequisites
 ```bash
 sudo snap install rockcraft --edge --classic
@@ -42,7 +45,7 @@ sudo skopeo --insecure-policy copy oci-archive:charmed-superset-rock_2.1.0-22.04
 docker run -d --name superset-ui-services -p 8088:8088 charmed-superset-rock:2.1.0 --args superset-ui -g 'daemon off:' \; start superset-ui
 ```
 ### Login
-To access Superset, now exit the multipass instance run `multipass list` for the below output.
+To access Superset, now exit the Multipass instance run `multipass list` for the below output.
 ```
 Name                    State             IPv4             Image
 rock-dev                Running           10.137.215.60    Ubuntu 22.04 LTS
@@ -54,7 +57,7 @@ Further information on connecting data sources and creating dashboards can be fo
 
 ## Using Makefile
 
-`make dev` will create the multipass image, clone the repo, install and configure the prerequisites.
+`make dev` will create the Multipass image, clone the repo, install and configure the prerequisites.
 `make build` will pack the rock for you
 `make install` will build the oci image and run it
 `make clean` will remove build artifacts and enable you to rebuild
