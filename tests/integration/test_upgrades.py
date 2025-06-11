@@ -36,7 +36,10 @@ async def deploy(ops_test: OpsTest):
         raise_on_blocked=False,
         timeout=2000,
     )
-    superset_config = {"superset-secret-key": SUPERSET_SECRET_KEY}
+    superset_config = {
+        "superset-secret-key": SUPERSET_SECRET_KEY,
+        "load-examples": True,
+    }
     await ops_test.model.deploy(
         APP_NAME,
         channel="edge",
