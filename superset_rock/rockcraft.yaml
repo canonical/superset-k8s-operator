@@ -4,7 +4,7 @@
 # https://github.com/apache/superset/blob/master/Dockerfile
 name: superset
 base: ubuntu@22.04
-version: 3.1.3-22.04-edge
+version: 4.1.2-22.04-edge
 summary: Charmed Superset ROCK OCI
 description: |
   Superset is a business intelligence tool that is fast, lightweight,
@@ -39,21 +39,21 @@ platforms:
 run_user: _daemon_
 
 parts:
-  patches:
-    plugin: dump
-    source: ./patches
-    organize:
-      fix-filter-force-update.patch: patches/fix-filter-force-update.patch
-    stage:
-      - patches/fix-filter-force-update.patch
-    prime:
-      - "-*"
+  # patches:
+  #   plugin: dump
+  #   source: ./patches
+  #   organize:
+  #     fix-filter-force-update.patch: patches/fix-filter-force-update.patch
+  #   stage:
+  #     - patches/fix-filter-force-update.patch
+  #   prime:
+  #     - "-*"
 
   superset:
     after: [dependencies]
     plugin: python
-    source: https://downloads.apache.org/superset/3.1.3/apache-superset-3.1.3-source.tar.gz  # yamllint disable-line
-    source-checksum: sha512/5c35ae761d25fdbd3e1c1dc17d0354b1dd23d98d9c863da7d61b013d59cdb4337cd9e93f8a5b105b657e5d33fa823e138281e8f475dcd20fa0d473e56a00ea7e  # yamllint disable-line
+    source: https://downloads.apache.org/superset/4.1.2/apache-superset-4.1.2-source.tar.gz  # yamllint disable-line
+    source-checksum: sha512/ec8654b8f93de3e625f0eef6eaf9d9181e43e2380504ef5c57943525a71478cc0bd4b44cfbbdee504a4acf70d845bc0f46d0add667fd855d1eb35a20fff41c7a  # yamllint disable-line
     source-type: tar
     build-packages:
       - build-essential
@@ -84,17 +84,17 @@ parts:
         mode: "755"
 
   frontend:
-    after: [patches]
+    # after: [patches]
     plugin: nil
-    source: https://downloads.apache.org/superset/3.1.3/apache-superset-3.1.3-source.tar.gz  # yamllint disable-line
-    source-checksum: sha512/5c35ae761d25fdbd3e1c1dc17d0354b1dd23d98d9c863da7d61b013d59cdb4337cd9e93f8a5b105b657e5d33fa823e138281e8f475dcd20fa0d473e56a00ea7e  # yamllint disable-line
+    source: https://downloads.apache.org/superset/4.1.2/apache-superset-4.1.2-source.tar.gz  # yamllint disable-line
+    source-checksum: sha512/ec8654b8f93de3e625f0eef6eaf9d9181e43e2380504ef5c57943525a71478cc0bd4b44cfbbdee504a4acf70d845bc0f46d0add667fd855d1eb35a20fff41c7a  # yamllint disable-line
     source-type: tar
     build-packages:
       - git
     build-snaps:
-      - node/14/stable
+      - node/18/stable
     override-build: |
-      git apply --ignore-whitespace ${CRAFT_STAGE}/patches/*.patch
+      # git apply --ignore-whitespace ${CRAFT_STAGE}/patches/*.patch
 
       # Prepare for asset creation
       cd superset-frontend
@@ -126,8 +126,8 @@ parts:
   dependencies:
     after: [local-files]
     plugin: python
-    source: https://downloads.apache.org/superset/3.1.3/apache-superset-3.1.3-source.tar.gz  # yamllint disable-line
-    source-checksum: sha512/5c35ae761d25fdbd3e1c1dc17d0354b1dd23d98d9c863da7d61b013d59cdb4337cd9e93f8a5b105b657e5d33fa823e138281e8f475dcd20fa0d473e56a00ea7e  # yamllint disable-line
+    source: https://downloads.apache.org/superset/4.1.2/apache-superset-4.1.2-source.tar.gz  # yamllint disable-line
+    source-checksum: sha512/ec8654b8f93de3e625f0eef6eaf9d9181e43e2380504ef5c57943525a71478cc0bd4b44cfbbdee504a4acf70d845bc0f46d0add667fd855d1eb35a20fff41c7a  # yamllint disable-line
     source-type: tar
     build-packages:
       - build-essential
