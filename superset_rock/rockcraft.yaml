@@ -39,16 +39,6 @@ platforms:
 run_user: _daemon_
 
 parts:
-  # patches:
-  #   plugin: dump
-  #   source: ./patches
-  #   organize:
-  #     fix-filter-force-update.patch: patches/fix-filter-force-update.patch
-  #   stage:
-  #     - patches/fix-filter-force-update.patch
-  #   prime:
-  #     - "-*"
-
   superset:
     after: [dependencies]
     plugin: python
@@ -84,7 +74,6 @@ parts:
         mode: "755"
 
   frontend:
-    # after: [patches]
     plugin: nil
     source: https://downloads.apache.org/superset/4.1.2/apache-superset-4.1.2-source.tar.gz  # yamllint disable-line
     source-checksum: sha512/ec8654b8f93de3e625f0eef6eaf9d9181e43e2380504ef5c57943525a71478cc0bd4b44cfbbdee504a4acf70d845bc0f46d0add667fd855d1eb35a20fff41c7a  # yamllint disable-line
@@ -94,8 +83,6 @@ parts:
     build-snaps:
       - node/18/stable
     override-build: |
-      # git apply --ignore-whitespace ${CRAFT_STAGE}/patches/*.patch
-
       # Prepare for asset creation
       cd superset-frontend
 
