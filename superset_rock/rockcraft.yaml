@@ -80,6 +80,7 @@ parts:
     source-type: tar
     build-packages:
       - git
+      - zstd
     build-snaps:
       - node/18/stable
     override-build: |
