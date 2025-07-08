@@ -61,7 +61,9 @@ class Database(framework.Object):
 
         dbconn = self._get_db_info()
         if dbconn is None:
-            raise ValueError("database relation not ready")
+            logger.info("no database connection info found, deferring event")
+            event.defer()
+            return
 
         host = dbconn["host"]
         port = dbconn["port"]
