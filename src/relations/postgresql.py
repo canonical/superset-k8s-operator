@@ -40,6 +40,9 @@ class Database(framework.Object):
             charm.postgresql_db.on.endpoints_changed, self._on_database_changed
         )
         self.framework.observe(
+            charm.on.postgresql_db_relation_changed, self._on_database_changed
+        )
+        self.framework.observe(
             charm.on.postgresql_db_relation_broken,
             self._on_database_relation_broken,
         )

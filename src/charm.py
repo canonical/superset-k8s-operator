@@ -38,6 +38,7 @@ from literals import (
     PROMETHEUS_METRICS_PORT,
     SQL_AB_ROLE,
     STATSD_PORT,
+    SUPERSET_VERSION,
     UI_FUNCTIONS,
 )
 from log import log_event_handler
@@ -196,6 +197,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
                 self.unit.status = MaintenanceStatus("Status check: DOWN")
                 return
 
+        self.unit.set_workload_version(f"v{SUPERSET_VERSION}")
         self.unit.status = ActiveStatus("Status check: UP")
 
     def _validate_pebble_plan(self, container):

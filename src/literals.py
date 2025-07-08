@@ -5,6 +5,7 @@
 """Literals used by the Superset K8s charm."""
 
 APPLICATION_PORT = 8088
+SUPERSET_VERSION = "5.0.0"
 APP_NAME = "superset"
 CONFIG_FILES = [
     "superset_config.py",
