@@ -1,2 +1,1 @@
-# Ignore GCP service account secrets in docs
-gcp-service-account
+CVE-2024-45337
