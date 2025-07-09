@@ -151,8 +151,8 @@ parts:
 
   prometheus-statsd-exporter:
     plugin: dump
-    source: https://github.com/prometheus/statsd_exporter/releases/download/v0.26.1/statsd_exporter-0.26.1.linux-amd64.tar.gz # yamllint disable-line
-    source-checksum: sha256/36b33a04531cf871cf8c9c5d667e3c0ca59c07b4ba496bd6cd066bec4f25cc0d # yamllint disable-line
+    source: https://github.com/prometheus/statsd_exporter/releases/download/v0.28.0/statsd_exporter-0.28.0.linux-amd64.tar.gz # yamllint disable-line
+    source-checksum: sha256/6951081e3115669e4353975f897dda1cefddef5a5d16addc908485d9be16b72b # yamllint disable-line
     source-type: tar
     organize:
       statsd_exporter: bin/statsd_exporter
