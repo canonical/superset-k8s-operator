@@ -7,6 +7,7 @@ from sentry_interceptor import redact_params
 from superset.stats_logger import StatsdStatsLogger
 import sentry_sdk
 import yaml
+from src.literals import REDIS_KEY_PREFIX
 
 
 APPLICATION_PORT = os.getenv("APPLICATION_PORT")
@@ -209,8 +210,8 @@ GLOBAL_ASYNC_QUERIES_JWT_SECRET = os.getenv("GLOBAL_ASYNC_QUERIES_JWT")
 GLOBAL_ASYNC_QUERIES_CACHE_BACKEND = RedisCache(
     host=os.getenv("REDIS_HOST"),
     port=int(os.getenv("REDIS_PORT")),
-    key_prefix="superset_results",
-    default_timeout=300,
+    key_prefix=REDIS_KEY_PREFIX,
+    default_timeout=int(os.getenv("REDIS_TIMEOUT", 300)),
 )
 GLOBAL_ASYNC_QUERIES_POLLING_DELAY = os.getenv("GLOBAL_ASYNC_QUERIES_POLLING_DELAY")
 SECRET_KEY = os.getenv("SUPERSET_SECRET_KEY")

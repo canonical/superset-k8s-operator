@@ -105,6 +105,9 @@ class Database(framework.Object):
             len(self.charm.postgresql_db.relations) == 0
             or not self.charm.postgresql_db.is_resource_created()
         ):
+            logger.debug(
+                "no postgresql_db relation found or resource not created"
+            )
             return None
 
         db_relation_id = self.charm.postgresql_db.relations[0].id
@@ -112,8 +115,14 @@ class Database(framework.Object):
             db_relation_id, None
         )
         if not relation_data:
+            logger.debug(
+                "no relation data found for relation %s", db_relation_id
+            )
             return None
 
+        logger.debug(
+            "postgresql_db endpoints: %s", relation_data.get("endpoints")
+        )
         host, port = relation_data.get("endpoints").split(",")[0].split(":")
         logger.info("database host: %s, port: %s", host, port)
         return {

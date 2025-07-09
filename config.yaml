@@ -158,3 +158,7 @@ options:
     description: Boolean representing if the cache warm-up functionality should be enabled.
     default: False
     type: boolean
+  redis-timeout:
+    description: The time in seconds cached data will remain valid in Redis.
+    default: 300
+    type: int

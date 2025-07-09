@@ -343,6 +343,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "STATSD_PORT": STATSD_PORT,
             "LOG_FILE": LOG_FILE,
             "CACHE_WARMUP": self.config["cache-warmup"],
+            "REDIS_TIMEOUT": self.config["redis-timeout"],
         }
         if self.config["feature-flags"]:
             env.update(self.config["feature-flags"])
