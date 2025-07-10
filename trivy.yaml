@@ -1,4 +1,4 @@
 timeout: 20m
-ignore-file: .github/.trivyignore
+ignore-file: ./.trivyignore
 skip-files:
   - /app/docs/docs/configuration/databases.mdx
