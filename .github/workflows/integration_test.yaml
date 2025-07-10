@@ -19,4 +19,3 @@ jobs:
       self-hosted-runner: false
       microk8s-addons: "dns ingress rbac storage metallb:10.15.119.2-10.15.119.4 registry"
       trivy-severity-config: CRITICAL
-      trivy-image-config: .github/trivy.yaml
