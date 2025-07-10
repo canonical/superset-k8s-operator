@@ -9,6 +9,7 @@ use the table below as a reference for compatibility.
 
 | Revision | Resource revision | Resource version |
 |----------|-------------------|------------------|
+| 40       | 21                | 3.1.3            |
 | 34       | 18                | 3.1.3            |
 | 33       | 18                | 3.1.3            |
 | 32       | 15                | 3.1.3            |

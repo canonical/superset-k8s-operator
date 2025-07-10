@@ -4,13 +4,13 @@
 """Define the Superset server Postgresql relation."""
 
 import logging
+from typing import Dict, Optional
 
-from charms.data_platform_libs.v0.data_interfaces import (
-    DatabaseCreatedEvent,
-    DatabaseRequires,
-)
+from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
 from ops import framework
+from ops.charm import RelationEvent
 
+from literals import DB_NAME
 from log import log_event_handler
 
 logger = logging.getLogger(__name__)
@@ -30,7 +30,7 @@ class Database(framework.Object):
         self.charm.postgresql_db = DatabaseRequires(
             self.charm,
             relation_name="postgresql_db",
-            database_name="superset",
+            database_name=DB_NAME,
             extra_user_roles="admin",
         )
         self.framework.observe(
@@ -40,12 +40,15 @@ class Database(framework.Object):
             charm.postgresql_db.on.endpoints_changed, self._on_database_changed
         )
         self.framework.observe(
+            charm.on.postgresql_db_relation_changed, self._on_database_changed
+        )
+        self.framework.observe(
             charm.on.postgresql_db_relation_broken,
             self._on_database_relation_broken,
         )
 
     @log_event_handler(logger)
-    def _on_database_changed(self, event: DatabaseCreatedEvent) -> None:
+    def _on_database_changed(self, event: RelationEvent) -> None:
         """Handle database changed event.
 
         Args:
@@ -54,13 +57,19 @@ class Database(framework.Object):
         if not self.charm.unit.is_leader():
             return
 
-        if not event.endpoints:
+        logger.info("handling %s change event", event.relation.name)
+
+        dbconn = self._get_db_info()
+        if dbconn is None:
+            logger.info("no database connection info found, deferring event")
+            event.defer()
             return
 
-        host, port = event.endpoints.split(",", 1)[0].split(":")
-        user = event.username
-        password = event.password
-        db_name = event.database
+        host = dbconn["host"]
+        port = dbconn["port"]
+        user = dbconn["user"]
+        password = dbconn["password"]
+        db_name = DB_NAME
 
         sqlalchemy_url = (
             f"postgresql://{user}:{password}@{host}:{port}/{db_name}"
@@ -89,3 +98,36 @@ class Database(framework.Object):
         self.charm._state.postgresql_relation = False
 
         self.charm._update(event)
+
+    def _get_db_info(self) -> Optional[Dict]:
+        """Get database connection info by reading relation data."""
+        if (
+            len(self.charm.postgresql_db.relations) == 0
+            or not self.charm.postgresql_db.is_resource_created()
+        ):
+            logger.debug(
+                "no postgresql_db relation found or resource not created"
+            )
+            return None
+
+        db_relation_id = self.charm.postgresql_db.relations[0].id
+        relation_data = self.charm.postgresql_db.fetch_relation_data().get(
+            db_relation_id, None
+        )
+        if not relation_data:
+            logger.debug(
+                "no relation data found for relation %s", db_relation_id
+            )
+            return None
+
+        logger.debug(
+            "postgresql_db endpoints: %s", relation_data.get("endpoints")
+        )
+        host, port = relation_data.get("endpoints").split(",")[0].split(":")
+        logger.info("database host: %s, port: %s", host, port)
+        return {
+            "host": host,
+            "port": port,
+            "password": relation_data.get("password"),
+            "user": relation_data.get("username"),
+        }

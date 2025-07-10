@@ -4,7 +4,7 @@
 # https://github.com/apache/superset/blob/master/Dockerfile
 name: superset
 base: ubuntu@22.04
-version: 3.1.3-22.04-edge
+version: 5.0.0-22.04-edge
 summary: Charmed Superset ROCK OCI
 description: |
   Superset is a business intelligence tool that is fast, lightweight,
@@ -39,21 +39,11 @@ platforms:
 run_user: _daemon_
 
 parts:
-  patches:
-    plugin: dump
-    source: ./patches
-    organize:
-      fix-filter-force-update.patch: patches/fix-filter-force-update.patch
-    stage:
-      - patches/fix-filter-force-update.patch
-    prime:
-      - "-*"
-
   superset:
     after: [dependencies]
     plugin: python
-    source: https://downloads.apache.org/superset/3.1.3/apache-superset-3.1.3-source.tar.gz  # yamllint disable-line
-    source-checksum: sha512/5c35ae761d25fdbd3e1c1dc17d0354b1dd23d98d9c863da7d61b013d59cdb4337cd9e93f8a5b105b657e5d33fa823e138281e8f475dcd20fa0d473e56a00ea7e  # yamllint disable-line
+    source: https://downloads.apache.org/superset/5.0.0/apache-superset-5.0.0-source.tar.gz  # yamllint disable-line
+    source-checksum: sha512/84e9fab04eb33286b46c5d8ff8e49ae3ebd480dca2173c7119e36e74d49e7e213f06885ad6aaef8f4ad47d9b5635a6a80659f82d91f6f3021d045a9750d4e140  # yamllint disable-line
     source-type: tar
     build-packages:
       - build-essential
@@ -84,18 +74,16 @@ parts:
         mode: "755"
 
   frontend:
-    after: [patches]
     plugin: nil
-    source: https://downloads.apache.org/superset/3.1.3/apache-superset-3.1.3-source.tar.gz  # yamllint disable-line
-    source-checksum: sha512/5c35ae761d25fdbd3e1c1dc17d0354b1dd23d98d9c863da7d61b013d59cdb4337cd9e93f8a5b105b657e5d33fa823e138281e8f475dcd20fa0d473e56a00ea7e  # yamllint disable-line
+    source: https://downloads.apache.org/superset/5.0.0/apache-superset-5.0.0-source.tar.gz  # yamllint disable-line
+    source-checksum: sha512/84e9fab04eb33286b46c5d8ff8e49ae3ebd480dca2173c7119e36e74d49e7e213f06885ad6aaef8f4ad47d9b5635a6a80659f82d91f6f3021d045a9750d4e140  # yamllint disable-line
     source-type: tar
     build-packages:
       - git
+      - zstd
     build-snaps:
-      - node/14/stable
+      - node/18/stable
     override-build: |
-      git apply --ignore-whitespace ${CRAFT_STAGE}/patches/*.patch
-
       # Prepare for asset creation
       cd superset-frontend
 
@@ -126,8 +114,8 @@ parts:
   dependencies:
     after: [local-files]
     plugin: python
-    source: https://downloads.apache.org/superset/3.1.3/apache-superset-3.1.3-source.tar.gz  # yamllint disable-line
-    source-checksum: sha512/5c35ae761d25fdbd3e1c1dc17d0354b1dd23d98d9c863da7d61b013d59cdb4337cd9e93f8a5b105b657e5d33fa823e138281e8f475dcd20fa0d473e56a00ea7e  # yamllint disable-line
+    source: https://downloads.apache.org/superset/5.0.0/apache-superset-5.0.0-source.tar.gz  # yamllint disable-line
+    source-checksum: sha512/84e9fab04eb33286b46c5d8ff8e49ae3ebd480dca2173c7119e36e74d49e7e213f06885ad6aaef8f4ad47d9b5635a6a80659f82d91f6f3021d045a9750d4e140  # yamllint disable-line
     source-type: tar
     build-packages:
       - build-essential
@@ -163,8 +151,8 @@ parts:
 
   prometheus-statsd-exporter:
     plugin: dump
-    source: https://github.com/prometheus/statsd_exporter/releases/download/v0.26.1/statsd_exporter-0.26.1.linux-amd64.tar.gz # yamllint disable-line
-    source-checksum: sha256/36b33a04531cf871cf8c9c5d667e3c0ca59c07b4ba496bd6cd066bec4f25cc0d # yamllint disable-line
+    source: https://github.com/prometheus/statsd_exporter/releases/download/v0.28.0/statsd_exporter-0.28.0.linux-amd64.tar.gz # yamllint disable-line
+    source-checksum: sha256/6951081e3115669e4353975f897dda1cefddef5a5d16addc908485d9be16b72b # yamllint disable-line
     source-type: tar
     organize:
       statsd_exporter: bin/statsd_exporter

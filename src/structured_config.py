@@ -70,6 +70,7 @@ class CharmConfig(BaseConfigModel):
     server_alias: str
     webserver_timeout: int
     feature_flags: Optional[str]
+    redis_timeout: int
 
     @validator("*", pre=True)
     @classmethod
