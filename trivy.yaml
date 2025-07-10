@@ -1,4 +1,2 @@
-timeout: 20m
-ignore-file: ./.trivyignore
 skip-files:
   - /app/docs/docs/configuration/databases.mdx
