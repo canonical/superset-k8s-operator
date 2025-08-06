@@ -18,7 +18,7 @@ from charms.loki_k8s.v1.loki_push_api import LogForwarder
 from charms.nginx_ingress_integrator.v0.nginx_route import require_nginx_route
 from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointProvider
 from charms.redis_k8s.v0.redis import RedisRelationCharmEvents
-from ops import pebble
+from ops import pebble, ModelError, SecretNotFoundError
 from ops.charm import ConfigChangedEvent, PebbleReadyEvent
 from ops.main import main
 from ops.model import (
@@ -176,6 +176,15 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         self._update(event)
 
     @log_event_handler(logger)
+    def _on_secret_changed(self, event):
+        """Handle secret changes.
+        
+        Args:
+            event: The event triggered when the secret changed.
+        """
+        self._update(event)
+
+    @log_event_handler(logger)
     def _on_update_status(self, event):
         """Handle `update-status` events.
 
@@ -292,6 +301,52 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             superset_secret = self._state.secret_key or random_string(32)
         self._state.superset_secret_key = superset_secret
 
+    def _handle_smtp_secret(self):
+        """Set SMTP variables in _state."""
+        if not self.unit.is_leader():
+            return
+
+        if not self.config["smtp_secret_id"]:
+            return
+        
+        secret_id = self.config["smtp_secret_id"]
+
+        try:
+            secret = self.model.get_secret(secret_id)
+            content = secret.get_content(refresh=True)
+        except SecretNotFoundError:
+            raise ValueError(f"SMTP secret with ID '{secret_id}' cannot be found.")
+        except ModelError:
+            raise ValueError(f"SMTP secret with ID '{secret_id}' cannot be accessed.")
+        
+        try:
+            required_keys = {
+                "host",
+                "port",
+                "username",
+                "password",
+                "email",
+                "ssl",
+                "start-tls",
+                "ssl-server-auth",
+                "superset-internal-url",
+                # TODO (mertalpt): Do we just take this from `external_hostname`?
+                "superset-external-url",
+            }
+
+            for key in required_keys:
+                assert key in content
+
+            # TODO (mertalpt): This will fire a lot of peer relation events.
+            for key in required_keys:
+                formatted_key = f"smtp_{key.replace("-", "_")}"
+                self._state[formatted_key] = content[key]
+
+            # Optional configurations
+            self._state["smtp_email_subject_prefix"] = content.get("email-subject-prefix", "[Superset] ")
+        except AssertionError:
+            raise ValueError(f"SMTP secret with ID '{secret_id}' has improper schema.")
+
     def _create_env(self):
         """Create state values from config to be used as environment variables.
 
@@ -300,6 +355,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         """
         self._handle_superset_secret()
         self._validate_self_registration_role()
+        self._handle_smtp_secret()
 
         env = {
             "ALLOW_IMAGE_DOMAINS": self.config["allow-image-domains"],
@@ -344,6 +400,17 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "LOG_FILE": LOG_FILE,
             "CACHE_WARMUP": self.config["cache-warmup"],
             "REDIS_TIMEOUT": self.config["redis-timeout"],
+            "SMTP_HOST": self._state.smtp_host,
+            "SMTP_PORT": self._state.smtp_port,
+            "SMTP_USERNAME": self._state.smtp_username,
+            "SMTP_PASSWORD": self._state.smtp_password,
+            "SMTP_EMAIL": self._state.smtp_email,
+            "SMTP_EMAIL_SUBJECT_PREFIX": self._state.smtp_email_subject_prefix,
+            "SMTP_SUPERSET_INTERNAL_URL": self._state.smtp_internal_superset_url,
+            "SMTP_SUPERSET_EXTERNAL_URL": self._state.smtp_external_superset_url,
+            "SMTP_SSL": self._state.smtp_ssl,
+            "SMTP_STARTTLS": self._state.smtp_start_tls,
+            "SMTP_SSL_SERVER_AUTH": self._state.smtp_ssl_server_auth,
         }
         if self.config["feature-flags"]:
             env.update(self.config["feature-flags"])

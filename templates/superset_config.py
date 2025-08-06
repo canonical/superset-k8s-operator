@@ -116,6 +116,13 @@ if os.getenv("CACHE_WARMUP", "").lower() != "false":
     }
     )
 
+if os.getenv("ALERT_REPORTS", "").lower() == "true":
+    beat_schedule_config.update({"reports.scheduler": {
+        "task": "reports.scheduler",
+        "schedule": crontab(minute="*", hour="*"),
+        },
+    })
+
 # Celery cache warm-up
 class CeleryConfig(object):
     broker_url = (
@@ -269,3 +276,28 @@ if all(os.getenv(var) for var in required_auth_vars):
 HTTP_PROXY = os.getenv("HTTP_PROXY")
 HTTPS_PROXY = os.getenv("HTTPS_PROXY")
 NO_PROXY = os.getenv("NO_PROXY")
+
+# https://superset.apache.org/docs/configuration/alerts-reports/
+SMTP_HOST = os.getenv("SMTP_HOST")
+SMTP_PORT = int(os.getenv("SMTP_PORT"))
+SMTP_STARTTLS = os.getenv("SMTP_STARTTLS").lower() == "true"
+SMTP_SSL_SERVER_AUTH = os.getenv("SMTP_SSL_SERVER_AUTH").lower() == "true"
+SMTP_SSL = os.getenv("SMTP_SSL").lower() == "true"
+SMTP_USER = os.getenv("SMTP_USERNAME")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
+SMTP_MAIL_FROM = os.getenv("SMTP_EMAIL")
+EMAIL_REPORTS_SUBJECT_PREFIX = os.getenv("SMTP_EMAIL_SUBJECT_PREFIX")
+ALERT_REPORTS_NOTIFICATION_DRY_RUN = False
+
+WEBDRIVER_TYPE = "firefox"
+WEBDRIVER_OPTION_ARGS = [
+    "--headless",
+    "--disable-gpu",
+    "--disable-dev-shm-usage",
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-extensions",
+]
+
+WEBDRIVER_BASEURL = os.getenv("SMTP_INTERNAL_SUPERSET_URL")
+WEBDRIVER_BASEURL_USER_FRIENDLY = os.getenv("SMTP_EXTERNAL_SUPERSET_URL")
