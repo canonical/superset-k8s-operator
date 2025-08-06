@@ -32,6 +32,15 @@ services:
 platforms:
   amd64:
 
+package-repositories:
+  - type: apt
+    key-server: https://packages.mozilla.org/apt/repo-signing-key.gpg
+    key-id: 35BAA0B33E9EB396F59CA838C0BA5CE6DC6315A3
+    url: https://packages.mozilla.org/apt
+    priority: always
+    components: [main]
+    suites: [mozilla]
+
 # Please refer to
 # https://discourse.ubuntu.com/t/unifying-user-identity-across-snaps-and-rocks/36469
 # for more information about shared user.
@@ -110,6 +119,38 @@ parts:
         owner: 584792
         group: 584792
         mode: "755"
+  
+  firefox:
+      plugin: nil
+      stage-packages:
+        - firefox
+
+  geckodriver:
+      plugin: nil
+      build-packages:
+        - tar
+        - wget
+      build-environment:
+        - GECKODRIVER_VERSION: '0.36.0'  # Update this when a new version is released
+      override-build: |
+        # Download geckodriver
+        mkdir -p geckodriver-download
+        cd geckodriver-download
+        wget -q "https://github.com/mozilla/geckodriver/releases/download/v${GECKODRIVER_VERSION}/geckodriver-v${GECKODRIVER_VERSION}-linux64.tar.gz"
+        tar -xzf geckodriver-v${GECKODRIVER_VERSION}-linux64.tar.gz
+        mkdir -p ${CRAFT_PART_INSTALL}/opt/firefox
+        install -m 755 geckodriver ${CRAFT_PART_INSTALL}/opt/firefox/geckodriver
+        cd ..
+        rm -rf geckodriver-download
+
+      organize:
+        opt/firefox/geckodriver: usr/bin/geckodriver
+
+      permissions:
+          - path: usr/bin/geckodriver
+            mode: "755"
+            owner: 584792
+            group: 584792
 
   dependencies:
     after: [local-files]
