@@ -18,7 +18,7 @@ from charms.loki_k8s.v1.loki_push_api import LogForwarder
 from charms.nginx_ingress_integrator.v0.nginx_route import require_nginx_route
 from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointProvider
 from charms.redis_k8s.v0.redis import RedisRelationCharmEvents
-from ops import pebble, ModelError, SecretNotFoundError
+from ops import ModelError, SecretNotFoundError, pebble
 from ops.charm import ConfigChangedEvent, PebbleReadyEvent
 from ops.main import main
 from ops.model import (
@@ -178,7 +178,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
     @log_event_handler(logger)
     def _on_secret_changed(self, event):
         """Handle secret changes.
-        
+
         Args:
             event: The event triggered when the secret changed.
         """
@@ -308,44 +308,48 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         if not self.config["smtp_secret_id"]:
             return
-        
+
         secret_id = self.config["smtp_secret_id"]
 
         try:
             secret = self.model.get_secret(secret_id)
             content = secret.get_content(refresh=True)
         except SecretNotFoundError:
-            raise ValueError(f"SMTP secret with ID '{secret_id}' cannot be found.")
+            raise ValueError(
+                f"SMTP secret with ID '{secret_id}' cannot be found."
+            ) from None
         except ModelError:
-            raise ValueError(f"SMTP secret with ID '{secret_id}' cannot be accessed.")
-        
-        try:
-            required_keys = {
-                "host",
-                "port",
-                "username",
-                "password",
-                "email",
-                "ssl",
-                "start-tls",
-                "ssl-server-auth",
-                "superset-internal-url",
-                # TODO (mertalpt): Do we just take this from `external_hostname`?
-                "superset-external-url",
-            }
+            raise ValueError(
+                f"SMTP secret with ID '{secret_id}' cannot be accessed."
+            ) from None
 
-            for key in required_keys:
-                assert key in content
+        required_keys = {
+            "host",
+            "port",
+            "username",
+            "password",
+            "email",
+            "ssl",
+            "start-tls",
+            "ssl-server-auth",
+            "superset-internal-url",
+            "superset-external-url",
+        }
 
-            # TODO (mertalpt): This will fire a lot of peer relation events.
-            for key in required_keys:
-                formatted_key = f"smtp_{key.replace("-", "_")}"
-                self._state[formatted_key] = content[key]
+        for key in required_keys:
+            if key not in content:
+                raise ValueError(
+                    f"SMTP secret with ID '{secret_id}' has improper schema."
+                )
 
-            # Optional configurations
-            self._state["smtp_email_subject_prefix"] = content.get("email-subject-prefix", "[Superset] ")
-        except AssertionError:
-            raise ValueError(f"SMTP secret with ID '{secret_id}' has improper schema.")
+        for key in required_keys:
+            formatted_key = f"smtp_{key.replace('-', '_')}"
+            self._state[formatted_key] = content[key]
+
+        # Optional configurations
+        self._state["smtp_email_subject_prefix"] = content.get(
+            "email-subject-prefix", "[Superset] "
+        )
 
     def _create_env(self):
         """Create state values from config to be used as environment variables.
