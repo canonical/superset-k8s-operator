@@ -97,6 +97,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         self.framework.observe(
             self.on.peer_relation_changed, self._on_peer_relation_changed
         )
+        self.framework.observe(self.on.secret_changed, self._on_secret_changed)
 
         # Handle Ingress
         self._require_nginx_route()
@@ -303,16 +304,15 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
     def _handle_smtp_secret(self):
         """Set SMTP variables in _state."""
-        if not self.unit.is_leader():
-            return
+        ret = {}
 
         if not self.config["smtp_secret_id"]:
-            return
+            return ret
 
         secret_id = self.config["smtp_secret_id"]
 
         try:
-            secret = self.model.get_secret(secret_id)
+            secret = self.model.get_secret(id=secret_id)
             content = secret.get_content(refresh=True)
         except SecretNotFoundError:
             raise ValueError(
@@ -330,9 +330,8 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "password",
             "email",
             "ssl",
-            "start-tls",
+            "starttls",
             "ssl-server-auth",
-            "superset-internal-url",
             "superset-external-url",
         }
 
@@ -343,13 +342,15 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
                 )
 
         for key in required_keys:
-            formatted_key = f"smtp_{key.replace('-', '_')}"
-            self._state[formatted_key] = content[key]
+            formatted_key = f"smtp_{key.replace('-', '_')}".upper()
+            ret[formatted_key] = content[key]
 
         # Optional configurations
-        self._state["smtp_email_subject_prefix"] = content.get(
+        ret["SMTP_EMAIL_SUBJECT_PREFIX"] = content.get(
             "email-subject-prefix", "[Superset] "
         )
+
+        return ret
 
     def _create_env(self):
         """Create state values from config to be used as environment variables.
@@ -359,7 +360,6 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         """
         self._handle_superset_secret()
         self._validate_self_registration_role()
-        self._handle_smtp_secret()
 
         env = {
             "ALLOW_IMAGE_DOMAINS": self.config["allow-image-domains"],
@@ -404,20 +404,10 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "LOG_FILE": LOG_FILE,
             "CACHE_WARMUP": self.config["cache-warmup"],
             "REDIS_TIMEOUT": self.config["redis-timeout"],
-            "SMTP_HOST": self._state.smtp_host,
-            "SMTP_PORT": self._state.smtp_port,
-            "SMTP_USERNAME": self._state.smtp_username,
-            "SMTP_PASSWORD": self._state.smtp_password,
-            "SMTP_EMAIL": self._state.smtp_email,
-            "SMTP_EMAIL_SUBJECT_PREFIX": self._state.smtp_email_subject_prefix,
-            "SMTP_SUPERSET_INTERNAL_URL": self._state.smtp_internal_superset_url,
-            "SMTP_SUPERSET_EXTERNAL_URL": self._state.smtp_external_superset_url,
-            "SMTP_SSL": self._state.smtp_ssl,
-            "SMTP_STARTTLS": self._state.smtp_start_tls,
-            "SMTP_SSL_SERVER_AUTH": self._state.smtp_ssl_server_auth,
         }
         if self.config["feature-flags"]:
             env.update(self.config["feature-flags"])
+        env.update(self._handle_smtp_secret())
 
         return env
 
