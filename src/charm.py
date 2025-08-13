@@ -335,11 +335,15 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "superset-external-url",
         }
 
+        missing_keys = []
         for key in required_keys:
             if key not in content:
-                raise ValueError(
-                    f"SMTP secret with ID '{secret_id}' has improper schema."
-                )
+                missing_keys.append(key)
+
+        if missing_keys:
+            raise ValueError(
+                f"SMTP secret with ID '{secret_id}' has improper schema. Missing: {', '.join(missing_keys)}"
+            )
 
         for key in required_keys:
             formatted_key = f"smtp_{key.replace('-', '_')}".upper()

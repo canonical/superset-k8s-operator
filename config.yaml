@@ -163,5 +163,5 @@ options:
     default: 300
     type: int
   smtp-secret-id:
-    description: ID of the Juju secret for the SMTP credentials.
+    description: ID of the Juju secret for the SMTP credentials used to send emails.
     type: string
