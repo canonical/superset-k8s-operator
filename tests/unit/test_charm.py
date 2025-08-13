@@ -398,6 +398,156 @@ class TestCharm(TestCase):
                 {"self-registration-role": "InvalidRole"}
             )
 
+    def test_smtp_handling_without_secret(self):
+        """Test _handle_smtp_secret with no secret."""
+        harness = self.harness
+        simulate_lifecycle(harness)
+
+        plan = harness.get_container_pebble_plan("superset").to_dict()
+        environment = plan["services"]["superset"]["environment"]
+
+        keys = {
+            "SMTP_HOST",
+            "SMTP_PORT",
+            "SMTP_USERNAME",
+            "SMTP_PASSWORD",
+            "SMTP_EMAIL",
+            "SMTP_SSL",
+            "SMTP_STARTTLS",
+            "SMTP_SSL_SERVER_AUTH",
+            "SMTP_SUPERSET_EXTERNAL_URL",
+            "SMTP_EMAIL_SUBJECT_PREFIX",
+        }
+
+        self.assertTrue(all((k not in environment for k in keys)))
+
+    @mock.patch(
+        "charm.SupersetK8SCharm._validate_self_registration_role",
+        return_value=None,
+    )
+    def test_smtp_handling_with_secret(
+        self, mock_validate_self_registration_role
+    ):
+        """Test _handle_smtp_secret with an SMTP secret set."""
+        harness = self.harness
+        simulate_lifecycle(harness)
+
+        secret_contents = {
+            "host": "localhost",
+            "port": "1025",
+            "username": "admin",
+            "password": "testpassword",  # nosec
+            "email": "admin@example.com",
+            "ssl": "false",
+            "starttls": "false",
+            "ssl-server-auth": "false",
+            "superset-external-url": "superset.com",
+            "email-subject-prefix": "[Test] ",
+        }
+
+        secret_id = harness.add_user_secret(secret_contents)
+        harness.grant_secret(secret_id, "superset-k8s")
+        harness.update_config({"smtp-secret-id": secret_id})
+
+        plan = harness.get_container_pebble_plan("superset").to_dict()
+        environment = plan["services"]["superset"]["environment"]
+
+        want = {
+            "SMTP_HOST": secret_contents["host"],
+            "SMTP_PORT": secret_contents["port"],
+            "SMTP_USERNAME": secret_contents["username"],
+            "SMTP_PASSWORD": secret_contents["password"],
+            "SMTP_EMAIL": secret_contents["email"],
+            "SMTP_SSL": secret_contents["ssl"],
+            "SMTP_STARTTLS": secret_contents["starttls"],
+            "SMTP_SSL_SERVER_AUTH": secret_contents["ssl-server-auth"],
+            "SMTP_SUPERSET_EXTERNAL_URL": secret_contents[
+                "superset-external-url"
+            ],
+            "SMTP_EMAIL_SUBJECT_PREFIX": secret_contents[
+                "email-subject-prefix"
+            ],
+        }
+
+        self.assertTrue(
+            all(
+                (
+                    k in environment and v == environment[k]
+                    for k, v in want.items()
+                )
+            )
+        )
+
+    @mock.patch(
+        "charm.SupersetK8SCharm._validate_self_registration_role",
+        return_value=None,
+    )
+    def test_smtp_handling_with_inaccessible_secret(
+        self, mock_validate_self_registration_role
+    ):
+        """Test _handle_smtp_secret with an SMTP secret set to an inaccessible secret."""
+        harness = self.harness
+        simulate_lifecycle(harness)
+
+        secret_contents = {
+            "host": "localhost",
+            "port": "1025",
+            "username": "admin",
+            "password": "testpassword",  # nosec
+            "email": "admin@example.com",
+            "ssl": "false",
+            "starttls": "false",
+            "ssl-server-auth": "false",
+            "superset-external-url": "superset.com",
+            "email-subject-prefix": "[Test] ",
+        }
+
+        secret_id = harness.add_user_secret(secret_contents)
+        with self.assertRaises(ValueError):
+            harness.update_config({"smtp-secret-id": secret_id})
+
+    @mock.patch(
+        "charm.SupersetK8SCharm._validate_self_registration_role",
+        return_value=None,
+    )
+    def test_smtp_handling_with_improper_secret(
+        self, mock_validate_self_registration_role
+    ):
+        """Test _handle_smtp_secret with an SMTP secret set to invalid contents."""
+        harness = self.harness
+        simulate_lifecycle(harness)
+
+        secret_contents = {
+            "port": "1025",
+            "username": "admin",
+            "password": "testpassword",  # nosec
+            "email": "admin@example.com",
+            "ssl": "false",
+            "starttls": "false",
+            "ssl-server-auth": "false",
+            "superset-external-url": "superset.com",
+            "email-subject-prefix": "[Test] ",
+        }
+
+        secret_id = harness.add_user_secret(secret_contents)
+        harness.grant_secret(secret_id, "superset-k8s")
+        with self.assertRaises(ValueError):
+            harness.update_config({"smtp-secret-id": secret_id})
+
+    @mock.patch(
+        "charm.SupersetK8SCharm._validate_self_registration_role",
+        return_value=None,
+    )
+    def test_smtp_handling_with_missing_secret(
+        self, mock_validate_self_registration_role
+    ):
+        """Test _handle_smtp_secret with an SMTP secret ID set to a secret that does not exist."""
+        harness = self.harness
+        simulate_lifecycle(harness)
+
+        with self.assertRaises(ValueError):
+            harness.update_config({"smtp-secret-id": "i-dont-exist"})
+
 
 @mock.patch("charm.Redis._get_redis_relation_data")
 def simulate_lifecycle(harness, _get_redis_relation_data):

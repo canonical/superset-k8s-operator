@@ -18,7 +18,7 @@ from charms.loki_k8s.v1.loki_push_api import LogForwarder
 from charms.nginx_ingress_integrator.v0.nginx_route import require_nginx_route
 from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointProvider
 from charms.redis_k8s.v0.redis import RedisRelationCharmEvents
-from ops import pebble
+from ops import ModelError, SecretNotFoundError, pebble
 from ops.charm import ConfigChangedEvent, PebbleReadyEvent
 from ops.main import main
 from ops.model import (
@@ -97,6 +97,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         self.framework.observe(
             self.on.peer_relation_changed, self._on_peer_relation_changed
         )
+        self.framework.observe(self.on.secret_changed, self._on_secret_changed)
 
         # Handle Ingress
         self._require_nginx_route()
@@ -173,6 +174,15 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             return
 
         self.unit.status = WaitingStatus(f"configuring {APP_NAME}")
+        self._update(event)
+
+    @log_event_handler(logger)
+    def _on_secret_changed(self, event):
+        """Handle secret changes.
+
+        Args:
+            event: The event triggered when the secret changed.
+        """
         self._update(event)
 
     @log_event_handler(logger)
@@ -292,6 +302,60 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             superset_secret = self._state.secret_key or random_string(32)
         self._state.superset_secret_key = superset_secret
 
+    def _handle_smtp_secret(self):
+        """Set SMTP variables in _state."""
+        ret = {}
+
+        if not self.config["smtp_secret_id"]:
+            return ret
+
+        secret_id = self.config["smtp_secret_id"]
+
+        try:
+            secret = self.model.get_secret(id=secret_id)
+            content = secret.get_content(refresh=True)
+        except SecretNotFoundError:
+            raise ValueError(
+                f"SMTP secret with ID '{secret_id}' cannot be found."
+            ) from None
+        except ModelError:
+            raise ValueError(
+                f"SMTP secret with ID '{secret_id}' cannot be accessed."
+            ) from None
+
+        required_keys = {
+            "host",
+            "port",
+            "username",
+            "password",
+            "email",
+            "ssl",
+            "starttls",
+            "ssl-server-auth",
+            "superset-external-url",
+        }
+
+        missing_keys = []
+        for key in required_keys:
+            if key not in content:
+                missing_keys.append(key)
+
+        if missing_keys:
+            raise ValueError(
+                f"SMTP secret with ID '{secret_id}' has improper schema. Missing: {', '.join(missing_keys)}"
+            )
+
+        for key in required_keys:
+            formatted_key = f"smtp_{key.replace('-', '_')}".upper()
+            ret[formatted_key] = content[key]
+
+        # Optional configurations
+        ret["SMTP_EMAIL_SUBJECT_PREFIX"] = content.get(
+            "email-subject-prefix", "[Superset] "
+        )
+
+        return ret
+
     def _create_env(self):
         """Create state values from config to be used as environment variables.
 
@@ -347,6 +411,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         }
         if self.config["feature-flags"]:
             env.update(self.config["feature-flags"])
+        env.update(self._handle_smtp_secret())
 
         return env
 

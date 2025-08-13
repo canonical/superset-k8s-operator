@@ -162,3 +162,6 @@ options:
     description: The time in seconds cached data will remain valid in Redis.
     default: 300
     type: int
+  smtp-secret-id:
+    description: ID of the Juju secret for the SMTP credentials used to send emails.
+    type: string

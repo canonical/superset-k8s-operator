@@ -71,6 +71,7 @@ class CharmConfig(BaseConfigModel):
     webserver_timeout: int
     feature_flags: Optional[str]
     redis_timeout: int
+    smtp_secret_id: Optional[str]
 
     @validator("*", pre=True)
     @classmethod

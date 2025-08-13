@@ -11,6 +11,7 @@ Charmed Superset supports the following feature flags:
 | ESTIMATE_QUERY_COST         | True          | Provides an estimate of the query cost before execution.                    |
 | ENABLE_TEMPLATE_PROCESSING  | True          | Enables processing of templates within SQL queries for dynamic generation.  |
 | GLOBAL_ASYNC_QUERIES        | False         | Allows queries to run asynchronously across multiple instances globally.    |
+| ALERT_REPORTS               | False         | Enables emailing reports from dashboards on a schedule.                     |
 
 You can enable, `True`, and/or disable, `False`, these flags using the following command:
 ```
