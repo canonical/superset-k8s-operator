@@ -408,6 +408,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "LOG_FILE": LOG_FILE,
             "CACHE_WARMUP": self.config["cache-warmup"],
             "REDIS_TIMEOUT": self.config["redis-timeout"],
+            "DASHBOARD_SIZE_LIMIT": self.config["dashboard-size-limit"],
         }
         if self.config["feature-flags"]:
             env.update(self.config["feature-flags"])

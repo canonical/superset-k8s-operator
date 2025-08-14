@@ -165,3 +165,7 @@ options:
   smtp-secret-id:
     description: ID of the Juju secret for the SMTP credentials used to send emails.
     type: string
+  dashboard-size-limit:
+    description: Integer representing how many characters to allow in a dashboard definition.
+    default: 65535
+    type: int
