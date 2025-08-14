@@ -72,6 +72,7 @@ class CharmConfig(BaseConfigModel):
     feature_flags: Optional[str]
     redis_timeout: int
     smtp_secret_id: Optional[str]
+    dashboard_size_limit: int
 
     @validator("*", pre=True)
     @classmethod

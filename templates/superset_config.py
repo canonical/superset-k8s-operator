@@ -297,6 +297,10 @@ if all(os.getenv(var) for var in required_auth_vars):
     # For Google https redirect
     ENABLE_PROXY_FIX = True
 
+# Dashboard size limitation
+SUPERSET_DASHBOARD_POSITION_DATA_LIMIT = int(os.getenv("DASHBOARD_SIZE_LIMIT", 65535))
+
+# Proxy
 HTTP_PROXY = os.getenv("HTTP_PROXY")
 HTTPS_PROXY = os.getenv("HTTPS_PROXY")
 NO_PROXY = os.getenv("NO_PROXY")
