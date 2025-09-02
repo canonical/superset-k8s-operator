@@ -1,13 +1,12 @@
-name: Publish to edge
+name: Publish Charm
 
 on:
   push:
     branches:
       - main
+      - track/*
 
 jobs:
   publish:
     uses: canonical/operator-workflows/.github/workflows/publish_charm.yaml@main
     secrets: inherit
-    with:
-      channel: latest/edge
