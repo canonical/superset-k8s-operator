@@ -16,5 +16,4 @@ jobs:
     with:
       origin-channel: ${{ github.event.inputs.origin-channel }}
       destination-channel: ${{ github.event.inputs.destination-channel }}
-    secrets:
-      CHARMHUB_TOKEN: ${{ secrets.CHARMHUB_TOKEN }}
+    secrets: inherit
