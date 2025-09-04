@@ -8,5 +8,8 @@ on:
 
 jobs:
   publish:
+    # The workflow automatically detects which branch triggered it.
+    # If called from a merge on `main`, the charm is pushed to the `latest/edge` channel.
+    # If merged on a `track/X` branch, the revision is pushed to `X/edge` on Charmhub.
     uses: canonical/operator-workflows/.github/workflows/publish_charm.yaml@main
     secrets: inherit
