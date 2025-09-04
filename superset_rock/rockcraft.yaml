@@ -59,6 +59,10 @@ parts:
     stage-packages:
       - python3.12-venv
 
+    override-stage: |
+      craftctl default
+      sed -i '1s|^#!/bin/python3$|#!/bin/python3.12|' ${CRAFT_STAGE}/bin/superset
+
   local-files:
     plugin: dump
     source: ./startup-scripts
@@ -168,9 +172,9 @@ parts:
       # Install Superset requirements
       pip install --upgrade setuptools pip \
         -r requirements/base.txt \
-          --target=/${CRAFT_PART_INSTALL}/dist \
+          --target=${CRAFT_PART_INSTALL}/dist \
         -r ${CRAFT_STAGE}/requirements/rock.txt \
-          --target=/${CRAFT_PART_INSTALL}/dist
+          --target=${CRAFT_PART_INSTALL}/dist
 
       # Copy current directory files to app
       cp -r . ${CRAFT_PART_INSTALL}/app
@@ -224,7 +228,6 @@ parts:
     plugin: nil
     overlay-packages:
       - ca-certificates
-      - vim
     stage-packages:
       - libecpg-dev
       - libmysqlclient-dev
