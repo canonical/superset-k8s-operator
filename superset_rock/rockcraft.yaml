@@ -62,6 +62,8 @@ parts:
     override-stage: |
       craftctl default
       sed -i '1s|^#!/bin/python3$|#!/bin/python3.12|' ${CRAFT_STAGE}/bin/superset
+      sed -i '1s|^#!/bin/python3$|#!/bin/python3.12|' ${CRAFT_STAGE}/bin/celery
+      sed -i '1s|^#!/bin/python3$|#!/bin/python3.12|' ${CRAFT_STAGE}/bin/flask
 
   local-files:
     plugin: dump
