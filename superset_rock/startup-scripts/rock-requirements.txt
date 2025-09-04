@@ -1,9 +1,8 @@
 # Required dependencies missing from Superset requirements.txt
-Pillow==10.2.0
 jmespath==1.0.1
 
 # Optional dependencies for Database connectors
-psycopg2-binary==2.9.4
+psycopg2-binary==2.9.10
 Authlib==1.2.1
 elasticsearch-dbapi>=0.2.7,<0.3.0
 trino==0.327.0
