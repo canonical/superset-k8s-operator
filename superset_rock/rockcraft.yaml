@@ -59,11 +59,9 @@ parts:
     stage-packages:
       - python3.12-venv
 
-    override-stage: |
+    override-prime: |
       craftctl default
-      sed -i '1s|^#!/bin/python3$|#!/bin/python3.12|' ${CRAFT_STAGE}/bin/superset
-      sed -i '1s|^#!/bin/python3$|#!/bin/python3.12|' ${CRAFT_STAGE}/bin/celery
-      sed -i '1s|^#!/bin/python3$|#!/bin/python3.12|' ${CRAFT_STAGE}/bin/flask
+      ln -s /usr/bin/python3.12 $CRAFT_PRIME/usr/bin/python3
 
   local-files:
     plugin: dump
