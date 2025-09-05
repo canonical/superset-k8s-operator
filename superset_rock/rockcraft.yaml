@@ -91,7 +91,7 @@ parts:
       - git
       - zstd
     build-snaps:
-      - node/24/stable
+      - node/20/stable
     override-build: |
       # Prepare for asset creation
       cd superset-frontend
