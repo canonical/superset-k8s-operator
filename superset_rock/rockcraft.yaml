@@ -4,7 +4,7 @@
 # https://github.com/apache/superset/blob/master/Dockerfile
 name: superset
 base: ubuntu@22.04
-version: 5.0.0-22.04-edge
+version: 6.0.0rc1-22.04-edge
 summary: Charmed Superset ROCK OCI
 description: |
   Superset is a business intelligence tool that is fast, lightweight,
@@ -51,8 +51,8 @@ parts:
   superset:
     after: [dependencies]
     plugin: python
-    source: https://downloads.apache.org/superset/5.0.0/apache-superset-5.0.0-source.tar.gz  # yamllint disable-line
-    source-checksum: sha512/84e9fab04eb33286b46c5d8ff8e49ae3ebd480dca2173c7119e36e74d49e7e213f06885ad6aaef8f4ad47d9b5635a6a80659f82d91f6f3021d045a9750d4e140  # yamllint disable-line
+    source: https://github.com/apache/superset/archive/refs/tags/6.0.0rc1.tar.gz  # yamllint disable-line
+    source-checksum: sha512/14e0c59fe933fa7ed079530415d903efee7048766185fb5a6369570dd8bea0070af1b9e1ebddfd6c0b4a3799d58cd2a84e368f48f4ed25de8e0f0393322fc522  # yamllint disable-line
     source-type: tar
     build-packages:
       - build-essential
@@ -84,14 +84,14 @@ parts:
 
   frontend:
     plugin: nil
-    source: https://downloads.apache.org/superset/5.0.0/apache-superset-5.0.0-source.tar.gz  # yamllint disable-line
-    source-checksum: sha512/84e9fab04eb33286b46c5d8ff8e49ae3ebd480dca2173c7119e36e74d49e7e213f06885ad6aaef8f4ad47d9b5635a6a80659f82d91f6f3021d045a9750d4e140  # yamllint disable-line
+    source: https://github.com/apache/superset/archive/refs/tags/6.0.0rc1.tar.gz  # yamllint disable-line
+    source-checksum: sha512/14e0c59fe933fa7ed079530415d903efee7048766185fb5a6369570dd8bea0070af1b9e1ebddfd6c0b4a3799d58cd2a84e368f48f4ed25de8e0f0393322fc522  # yamllint disable-line
     source-type: tar
     build-packages:
       - git
       - zstd
     build-snaps:
-      - node/18/stable
+      - node/20/stable
     override-build: |
       # Prepare for asset creation
       cd superset-frontend
@@ -155,8 +155,8 @@ parts:
   dependencies:
     after: [local-files]
     plugin: python
-    source: https://downloads.apache.org/superset/5.0.0/apache-superset-5.0.0-source.tar.gz  # yamllint disable-line
-    source-checksum: sha512/84e9fab04eb33286b46c5d8ff8e49ae3ebd480dca2173c7119e36e74d49e7e213f06885ad6aaef8f4ad47d9b5635a6a80659f82d91f6f3021d045a9750d4e140  # yamllint disable-line
+    source: https://github.com/apache/superset/archive/refs/tags/6.0.0rc1.tar.gz  # yamllint disable-line
+    source-checksum: sha512/14e0c59fe933fa7ed079530415d903efee7048766185fb5a6369570dd8bea0070af1b9e1ebddfd6c0b4a3799d58cd2a84e368f48f4ed25de8e0f0393322fc522  # yamllint disable-line
     source-type: tar
     build-packages:
       - build-essential
@@ -168,9 +168,9 @@ parts:
       # Install Superset requirements
       pip install --upgrade setuptools pip \
         -r requirements/base.txt \
-          --target=/${CRAFT_PART_INSTALL}/dist \
+          --target=${CRAFT_PART_INSTALL}/dist \
         -r ${CRAFT_STAGE}/requirements/rock.txt \
-          --target=/${CRAFT_PART_INSTALL}/dist
+          --target=${CRAFT_PART_INSTALL}/dist
 
       # Copy current directory files to app
       cp -r . ${CRAFT_PART_INSTALL}/app
@@ -224,7 +224,6 @@ parts:
     plugin: nil
     overlay-packages:
       - ca-certificates
-      - vim
     stage-packages:
       - libecpg-dev
       - libmysqlclient-dev
