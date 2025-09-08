@@ -13,5 +13,5 @@ sqlalchemy-redshift==0.8.1
 gspread==6.1.2
 
 # Monitoring
-sentry-sdk==0.10.2
+sentry-sdk==1.45.1
 statsd==4.0.1
