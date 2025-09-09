@@ -57,7 +57,7 @@ parts:
     build-packages:
       - build-essential
     stage-packages:
-      - python3.12-venv
+      - python3-venv
 
   local-files:
     plugin: dump
@@ -163,7 +163,7 @@ parts:
       - pkg-config
       - libmysqlclient-dev
     stage-packages:
-      - python3.12-venv
+      - python3-venv
     override-build: |
       # Install Superset requirements
       pip install --upgrade setuptools pip \
