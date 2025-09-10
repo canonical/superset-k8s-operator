@@ -227,3 +227,7 @@ parts:
     stage-packages:
       - libecpg-dev
       - libmysqlclient-dev
+
+    override-build: |-
+      mkdir -p $CRAFT_PART_INSTALL/etc/ssl/certs/
+      cp /etc/ssl/certs/ca-certificates.crt $CRAFT_PART_INSTALL/etc/ssl/certs/ca-certificates.crt
