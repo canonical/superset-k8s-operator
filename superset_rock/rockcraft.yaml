@@ -57,9 +57,12 @@ parts:
     build-packages:
       - build-essential
     stage-packages:
+      # we must explicitly use python3, otherwise the symlink won't be created and superset binary shebang cannot start
       - python3-venv
 
     stage:
+      # 'python3-venv' package comes with 'ca-certificates' as a dependency. If we don't exclude the files,
+      # it will crash on 'overlay-pkgs' due to conflicting file permissions as it cannot override them
       - -usr/lib/ssl/cert.pem
       - -usr/lib/ssl/certs
       - -usr/lib/ssl/openssl.cnf
