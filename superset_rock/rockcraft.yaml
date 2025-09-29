@@ -3,8 +3,8 @@
 ---
 # https://github.com/apache/superset/blob/master/Dockerfile
 name: superset
-base: ubuntu@22.04
-version: 6.0.0rc1-22.04-edge
+base: ubuntu@24.04
+version: 6.0.0rc1-24.04-edge
 summary: Charmed Superset ROCK OCI
 description: |
   Superset is a business intelligence tool that is fast, lightweight,
@@ -57,7 +57,17 @@ parts:
     build-packages:
       - build-essential
     stage-packages:
-      - python3.10-venv
+      # we must explicitly use python3, otherwise the symlink won't be created and superset binary shebang cannot start
+      - python3-venv
+
+    stage:
+      # 'python3-venv' package comes with 'ca-certificates' as a dependency. If we don't exclude the files,
+      # it will crash on 'overlay-pkgs' due to conflicting file permissions as it cannot override them
+      - -usr/lib/ssl/cert.pem
+      - -usr/lib/ssl/certs
+      - -usr/lib/ssl/openssl.cnf
+      - -usr/lib/ssl/private
+
 
   local-files:
     plugin: dump
@@ -111,15 +121,15 @@ parts:
       npm ci
       npm run build -- --output-path=${CRAFT_PART_INSTALL}/assets
     organize:
-      assets: lib/python3.10/site-packages/superset/static/assets
+      assets: lib/python3.12/site-packages/superset/static/assets
     stage:
-      - lib/python3.10/site-packages/superset/static/assets
+      - lib/python3.12/site-packages/superset/static/assets
     permissions:
-      - path: lib/python3.10/site-packages/superset/static/assets
+      - path: lib/python3.12/site-packages/superset/static/assets
         owner: 584792
         group: 584792
         mode: "755"
-  
+
   firefox:
       plugin: nil
       stage-packages:
@@ -163,7 +173,7 @@ parts:
       - pkg-config
       - libmysqlclient-dev
     stage-packages:
-      - python3.10-venv
+      - python3-venv
     override-build: |
       # Install Superset requirements
       pip install --upgrade setuptools pip \
@@ -180,12 +190,12 @@ parts:
       cp -r css/webfonts/ webfonts/
 
     organize:
-      dist: usr/local/lib/python3.10/dist-packages
+      dist: usr/local/lib/python3.12/dist-packages
     stage:
       - app
-      - usr/local/lib/python3.10/dist-packages
+      - usr/local/lib/python3.12/dist-packages
     permissions:
-      - path: usr/local/lib/python3.10/dist-packages
+      - path: usr/local/lib/python3.12/dist-packages
         owner: 584792
         group: 584792
         mode: "755"
