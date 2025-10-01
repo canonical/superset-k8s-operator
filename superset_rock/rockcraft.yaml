@@ -4,7 +4,7 @@
 # https://github.com/apache/superset/blob/master/Dockerfile
 name: superset
 base: ubuntu@24.04
-version: 6.0.0rc1-24.04-edge
+version: 6.0.0rc2-24.04-edge
 summary: Charmed Superset ROCK OCI
 description: |
   Superset is a business intelligence tool that is fast, lightweight,
@@ -51,8 +51,8 @@ parts:
   superset:
     after: [dependencies]
     plugin: python
-    source: https://github.com/apache/superset/archive/refs/tags/6.0.0rc1.tar.gz  # yamllint disable-line
-    source-checksum: sha512/14e0c59fe933fa7ed079530415d903efee7048766185fb5a6369570dd8bea0070af1b9e1ebddfd6c0b4a3799d58cd2a84e368f48f4ed25de8e0f0393322fc522  # yamllint disable-line
+    source: https://github.com/apache/superset/archive/refs/tags/6.0.0rc2.tar.gz  # yamllint disable-line
+    source-checksum: sha512/2fc0895adfec04c43fd1379c86674bc6fe493e3c32286cf204a624d48c48ff153faf3a622c036647788f4f89c3c31d76876054849f7081276f9f137de86f0e5e  # yamllint disable-line
     source-type: tar
     build-packages:
       - build-essential
@@ -94,8 +94,8 @@ parts:
 
   frontend:
     plugin: nil
-    source: https://github.com/apache/superset/archive/refs/tags/6.0.0rc1.tar.gz  # yamllint disable-line
-    source-checksum: sha512/14e0c59fe933fa7ed079530415d903efee7048766185fb5a6369570dd8bea0070af1b9e1ebddfd6c0b4a3799d58cd2a84e368f48f4ed25de8e0f0393322fc522  # yamllint disable-line
+    source: https://github.com/apache/superset/archive/refs/tags/6.0.0rc2.tar.gz  # yamllint disable-line
+    source-checksum: sha512/2fc0895adfec04c43fd1379c86674bc6fe493e3c32286cf204a624d48c48ff153faf3a622c036647788f4f89c3c31d76876054849f7081276f9f137de86f0e5e  # yamllint disable-line
     source-type: tar
     build-packages:
       - git
@@ -165,8 +165,8 @@ parts:
   dependencies:
     after: [local-files]
     plugin: python
-    source: https://github.com/apache/superset/archive/refs/tags/6.0.0rc1.tar.gz  # yamllint disable-line
-    source-checksum: sha512/14e0c59fe933fa7ed079530415d903efee7048766185fb5a6369570dd8bea0070af1b9e1ebddfd6c0b4a3799d58cd2a84e368f48f4ed25de8e0f0393322fc522  # yamllint disable-line
+    source: https://github.com/apache/superset/archive/refs/tags/6.0.0rc2.tar.gz  # yamllint disable-line
+    source-checksum: sha512/2fc0895adfec04c43fd1379c86674bc6fe493e3c32286cf204a624d48c48ff153faf3a622c036647788f4f89c3c31d76876054849f7081276f9f137de86f0e5e  # yamllint disable-line
     source-type: tar
     build-packages:
       - build-essential

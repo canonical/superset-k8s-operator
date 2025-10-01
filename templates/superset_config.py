@@ -175,7 +175,7 @@ WEBDRIVER_BASEURL = f"http://{SERVER_ALIAS}:{APPLICATION_PORT}/"
 
 SUPERSET_WEBSERVER_TIMEOUT = int(os.getenv("WEBSERVER_TIMEOUT"))
 
-# based on https://github.com/apache/superset/blob/6.0.0rc1/RESOURCES/FEATURE_FLAGS.md
+# based on https://github.com/apache/superset/blob/6.0.0rc2/RESOURCES/FEATURE_FLAGS.md
 SUPPORTED_FEATURE_FLAGS = [
     # In Development
     "ALERT_REPORT_TABS",
