@@ -6,7 +6,7 @@
 
 APPLICATION_PORT = 8088
 DB_NAME = "superset"
-SUPERSET_VERSION = "6.0.0rc1"
+SUPERSET_VERSION = "6.0.0rc2"
 REDIS_KEY_PREFIX = "superset_results"
 APP_NAME = "superset"
 CONFIG_FILES = [
