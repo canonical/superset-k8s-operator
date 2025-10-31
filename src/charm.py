@@ -410,6 +410,8 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "REDIS_TIMEOUT": self.config["redis-timeout"],
             "DASHBOARD_SIZE_LIMIT": self.config["dashboard-size-limit"],
         }
+        if self.config["max-content-length"]:
+            env["MAX_CONTENT_LENGTH"] = self.config["max-content-length"]
         if self.config["feature-flags"]:
             env.update(self.config["feature-flags"])
         env.update(self._handle_smtp_secret())

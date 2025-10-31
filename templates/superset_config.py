@@ -300,6 +300,10 @@ if all(os.getenv(var) for var in required_auth_vars):
 # Dashboard size limitation
 SUPERSET_DASHBOARD_POSITION_DATA_LIMIT = int(os.getenv("DASHBOARD_SIZE_LIMIT", 65535))
 
+# Number of bytes to allow in a request body
+# See: https://github.com/apache/superset/issues/26373
+MAX_CONTENT_LENGTH = int(os.getenv("MAX_CONTENT_LENGTH", 0)) or None
+
 # Proxy
 HTTP_PROXY = os.getenv("HTTP_PROXY")
 HTTPS_PROXY = os.getenv("HTTPS_PROXY")
