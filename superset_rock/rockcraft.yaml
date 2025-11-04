@@ -228,3 +228,20 @@ parts:
     stage-packages:
       - libecpg-dev
       - libmysqlclient-dev
+    stage:
+      - -usr/lib/python3.10/base64.py
+      - -usr/lib/python3.10/cProfile.py
+      - -usr/lib/python3.10/cgi.py
+      - -usr/lib/python3.10/encodings/rot_13.py
+      - -usr/lib/python3.10/pdb.py
+      - -usr/lib/python3.10/platform.py
+      - -usr/lib/python3.10/profile.py
+      - -usr/lib/python3.10/quopri.py
+      - -usr/lib/python3.10/sitecustomize.py
+      - -usr/lib/python3.10/smtpd.py
+      - -usr/lib/python3.10/smtplib.py
+      - -usr/lib/python3.10/tabnanny.py
+      - -usr/lib/python3.10/test/regrtest.py
+      - -usr/lib/python3.10/timeit.py
+      - -usr/lib/python3.10/uu.py
+      - -usr/lib/python3.10/webbrowser.py
