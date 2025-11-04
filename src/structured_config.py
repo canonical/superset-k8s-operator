@@ -206,6 +206,27 @@ class CharmConfig(BaseConfigModel):
             return int_value
         raise ValueError("Value out of range.")
 
+    @validator("max_content_length")
+    @classmethod
+    def max_content_length_validator(cls, value: str) -> Optional[int]:
+        """Check validity of `max_content_length` field.
+
+        Args:
+            value: max-content-length value
+
+        Returns:
+            int_value: integer for max-content-length configuration
+
+        Raises:
+            ValueError: in the case when the value is negative
+        """
+        if value is None:
+            return None
+        int_value = int(value)
+        if int_value >= 0:
+            return int_value
+        raise ValueError("Value must be non-negative.")
+
     @validator("feature_flags")
     @classmethod
     def feature_flags_validator(cls, value: str) -> Dict[str, bool]:
