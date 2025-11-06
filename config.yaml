@@ -169,3 +169,7 @@ options:
     description: Integer representing how many characters to allow in a dashboard definition.
     default: 65535
     type: int
+  max-content-length:
+    description: The limit for the number of bytes to allow in a request body as measured by the 'Content-Length' header.
+    default: 102400
+    type: int
