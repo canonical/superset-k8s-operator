@@ -59,8 +59,8 @@ parts:
     stage-packages:
       - python3.10-venv
     stage:
-      # 'python3.10-venv' package comes with 'ca-certificates' as a dependency. If we don't exclude the files,
-      # it will crash on 'overlay-pkgs' due to conflicting file permissions as it cannot override them
+      # Exclude files to be provided by `overlay-pkgs` to avoid a conflict
+      - -usr/lib/python3.10/*
       - -usr/lib/ssl/cert.pem
       - -usr/lib/ssl/certs
       - -usr/lib/ssl/openssl.cnf
@@ -191,6 +191,12 @@ parts:
     stage:
       - app
       - usr/local/lib/python3.10/dist-packages
+      # Exclude files to be provided by `overlay-pkgs` to avoid a conflict
+      - -usr/lib/python3.10/*
+      - -usr/lib/ssl/cert.pem
+      - -usr/lib/ssl/certs
+      - -usr/lib/ssl/openssl.cnf
+      - -usr/lib/ssl/private
     permissions:
       - path: usr/local/lib/python3.10/dist-packages
         owner: 584792
