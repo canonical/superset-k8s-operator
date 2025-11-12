@@ -3,7 +3,7 @@
 ---
 # https://github.com/apache/superset/blob/master/Dockerfile
 name: superset
-base: ubuntu@22.04
+base: ubuntu@24.04
 version: 5.0.0-22.04-edge
 summary: Charmed Superset ROCK OCI
 description: |
@@ -57,25 +57,12 @@ parts:
     build-packages:
       - build-essential
     stage-packages:
-      - python3.10-venv
+      # we must explicitly use python3, otherwise the symlink won't be created and superset binary shebang cannot start
+      - python3-venv
+
     stage:
-      # Exclude files to be provided by `overlay-pkgs` to avoid a conflict
-      - -usr/lib/python3.10/base64.py
-      - -usr/lib/python3.10/cProfile.py
-      - -usr/lib/python3.10/cgi.py
-      - -usr/lib/python3.10/encodings/rot_13.py
-      - -usr/lib/python3.10/pdb.py
-      - -usr/lib/python3.10/platform.py
-      - -usr/lib/python3.10/profile.py
-      - -usr/lib/python3.10/quopri.py
-      - -usr/lib/python3.10/sitecustomize.py
-      - -usr/lib/python3.10/smtpd.py
-      - -usr/lib/python3.10/smtplib.py
-      - -usr/lib/python3.10/tabnanny.py
-      - -usr/lib/python3.10/test/regrtest.py
-      - -usr/lib/python3.10/timeit.py
-      - -usr/lib/python3.10/uu.py
-      - -usr/lib/python3.10/webbrowser.py
+      # 'python3-venv' package comes with 'ca-certificates' as a dependency. If we don't exclude the files,
+      # it will crash on 'overlay-pkgs' due to conflicting file permissions as it cannot override them
       - -usr/lib/ssl/cert.pem
       - -usr/lib/ssl/certs
       - -usr/lib/ssl/openssl.cnf
@@ -113,7 +100,7 @@ parts:
       - git
       - zstd
     build-snaps:
-      - node/18/stable
+      - node/20/stable
     override-build: |
       # Prepare for asset creation
       cd superset-frontend
@@ -133,15 +120,15 @@ parts:
       npm ci
       npm run build -- --output-path=${CRAFT_PART_INSTALL}/assets
     organize:
-      assets: lib/python3.10/site-packages/superset/static/assets
+      assets: lib/python3.12/site-packages/superset/static/assets
     stage:
-      - lib/python3.10/site-packages/superset/static/assets
+      - lib/python3.12/site-packages/superset/static/assets
     permissions:
-      - path: lib/python3.10/site-packages/superset/static/assets
+      - path: lib/python3.12/site-packages/superset/static/assets
         owner: 584792
         group: 584792
         mode: "755"
-  
+
   firefox:
       plugin: nil
       stage-packages:
@@ -185,14 +172,14 @@ parts:
       - pkg-config
       - libmysqlclient-dev
     stage-packages:
-      - python3.10-venv
+      - python3-venv
     override-build: |
       # Install Superset requirements
       pip install --upgrade setuptools pip \
         -r requirements/base.txt \
-          --target=/${CRAFT_PART_INSTALL}/dist \
+          --target=${CRAFT_PART_INSTALL}/dist \
         -r ${CRAFT_STAGE}/requirements/rock.txt \
-          --target=/${CRAFT_PART_INSTALL}/dist
+          --target=${CRAFT_PART_INSTALL}/dist
 
       # Copy current directory files to app
       cp -r . ${CRAFT_PART_INSTALL}/app
@@ -202,12 +189,12 @@ parts:
       cp -r css/webfonts/ webfonts/
 
     organize:
-      dist: usr/local/lib/python3.10/dist-packages
+      dist: usr/local/lib/python3.12/dist-packages
     stage:
       - app
-      - usr/local/lib/python3.10/dist-packages
+      - usr/local/lib/python3.12/dist-packages
     permissions:
-      - path: usr/local/lib/python3.10/dist-packages
+      - path: usr/local/lib/python3.12/dist-packages
         owner: 584792
         group: 584792
         mode: "755"
@@ -246,7 +233,6 @@ parts:
     plugin: nil
     overlay-packages:
       - ca-certificates
-      - vim
     stage-packages:
       - libecpg-dev
       - libmysqlclient-dev
