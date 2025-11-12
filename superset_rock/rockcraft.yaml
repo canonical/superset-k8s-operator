@@ -4,7 +4,7 @@
 # https://github.com/apache/superset/blob/master/Dockerfile
 name: superset
 base: ubuntu@24.04
-version: 5.0.0-22.04-edge
+version: 5.0.0-24.04-edge
 summary: Charmed Superset ROCK OCI
 description: |
   Superset is a business intelligence tool that is fast, lightweight,
