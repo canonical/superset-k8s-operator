@@ -42,7 +42,7 @@ async def deploy(ops_test: OpsTest):
     }
     await ops_test.model.deploy(
         APP_NAME,
-        channel="edge",
+        channel="5/edge",
         config=superset_config,
     )
     await perform_superset_integrations(ops_test, APP_NAME)

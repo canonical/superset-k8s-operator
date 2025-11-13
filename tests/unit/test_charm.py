@@ -122,6 +122,7 @@ class TestCharm(TestCase):
                         "LOG_FILE": "/var/log/superset.log",
                         "CACHE_WARMUP": False,
                         "DASHBOARD_SIZE_LIMIT": 65535,
+                        "MAX_CONTENT_LENGTH": 102400,
                     },
                     "on-check-failure": {"up": "ignore"},
                 }
@@ -216,6 +217,7 @@ class TestCharm(TestCase):
                         "LOG_FILE": "/var/log/superset.log",
                         "CACHE_WARMUP": False,
                         "DASHBOARD_SIZE_LIMIT": 65535,
+                        "MAX_CONTENT_LENGTH": 102400,
                     },
                     "on-check-failure": {"up": "ignore"},
                 },
