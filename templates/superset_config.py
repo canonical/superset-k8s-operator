@@ -300,11 +300,26 @@ if all(os.getenv(var) for var in required_auth_vars):
 # Dashboard size limitation
 SUPERSET_DASHBOARD_POSITION_DATA_LIMIT = int(os.getenv("DASHBOARD_SIZE_LIMIT", 65535))
 
-# Number of bytes to allow in a request body
-# See: https://github.com/apache/superset/issues/26373
-MAX_CONTENT_LENGTH = int(os.getenv("MAX_CONTENT_LENGTH", 0)) or None
-
 # Proxy
 HTTP_PROXY = os.getenv("HTTP_PROXY")
 HTTPS_PROXY = os.getenv("HTTPS_PROXY")
 NO_PROXY = os.getenv("NO_PROXY")
+
+# Werkzeug configurations
+# Ref: https://werkzeug.palletsprojects.com/en/stable/request_data/#limiting-request-data
+# See: https://github.com/apache/superset/issues/26373
+MAX_CONTENT_LENGTH = int(v) if (v := os.getenv("MAX_CONTENT_LENGTH")) else None
+MAX_FORM_MEMORY_SIZE = int(v) if (v := os.getenv("MAX_FORM_MEMORY_SIZE")) else 500_000
+MAX_FORM_PARTS = int(v) if (v := os.getenv("MAX_FORM_PARTS")) else 1000
+
+def FLASK_APP_MUTATOR(app):
+    """Override the Flask app dynamically."""
+
+    # These values are hardcoded in Werkzeug
+    # So we force an override
+    class ConfiguredLimitRequest(app.request_class):
+        max_form_memory_size = MAX_FORM_MEMORY_SIZE
+        max_form_parts = MAX_FORM_PARTS
+
+    # Swap the default Request class with our configured one
+    app.request_class = ConfiguredLimitRequest
