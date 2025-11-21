@@ -303,13 +303,9 @@ SUPERSET_DASHBOARD_POSITION_DATA_LIMIT = int(os.getenv("DASHBOARD_SIZE_LIMIT", 6
 # Werkzeug configurations
 # Ref: https://werkzeug.palletsprojects.com/en/stable/request_data/#limiting-request-data
 # See: https://github.com/apache/superset/issues/26373
-MAX_CONTENT_LENGTH = os.getenv("MAX_CONTENT_LENGTH")
-MAX_FORM_MEMORY_SIZE = int(os.getenv("MAX_FORM_MEMORY_SIZE", 500 * 1024))
-MAX_FORM_PARTS = int(os.getenv("MAX_FORM_PARTS", 1000))
-
-# Default is `None` for unlimited, only cast to `int` if needed
-if MAX_CONTENT_LENGTH:
-    MAX_CONTENT_LENGTH = int(MAX_CONTENT_LENGTH)
+MAX_CONTENT_LENGTH = int(v) if (v := os.getenv("MAX_CONTENT_LENGTH")) else None
+MAX_FORM_MEMORY_SIZE = int(v) if (v := os.getenv("MAX_FORM_MEMORY_SIZE")) else 500 * 1024
+MAX_FORM_PARTS = int(v) if (v := os.getenv("MAX_FORM_PARTS")) else 1000
 
 # Proxy
 HTTP_PROXY = os.getenv("HTTP_PROXY")
