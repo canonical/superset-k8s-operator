@@ -200,7 +200,7 @@ juju remove-application superset-k8s-ui superset-k8s-beat superset-k8s-worker --
 
 The Apache Superset project uses [semantic versioning](https://semver.org/). This charmed operator is set up to utilize the same versioning. However, the [charmed operator](https://charmhub.io/superset-k8s) uses channels (`edge` and `stable`) to differentiate between major versions and risk levels (e.g. channel `5/stable` is used to deploy Superset 5, while `6/stable` is used to deploy Superset 6). Upgrades between major stable tracks should result in no breaking changes.
 
-On Github, the `main` branch corresponds to the the `latest/edge` channel on Charmhub. The `track/*` branches correspond to the `*/edge` channels on Charmhub. Depending on which channel you are targetting, you should make the changes on the relevant Github branch.
+On Github, the `main` branch corresponds to the the `latest/edge` channel on Charmhub. The `track/*` branches correspond to the `*/edge` channels on Charmhub. Depending on which channel you are targeting, you should make the changes on the relevant Github branch.
 
 The following are steps required to perform a major upgrade on the Superset charmed operator. For simplicity, we will assume we are upgrading Superset to `v6`.
 
