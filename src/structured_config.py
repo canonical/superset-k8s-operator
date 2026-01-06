@@ -73,6 +73,9 @@ class CharmConfig(BaseConfigModel):
     redis_timeout: int
     smtp_secret_id: Optional[str]
     dashboard_size_limit: int
+    max_content_length: Optional[int]
+    max_form_memory_size: Optional[int]
+    max_form_parts: Optional[int]
 
     @validator("*", pre=True)
     @classmethod
@@ -233,3 +236,30 @@ class CharmConfig(BaseConfigModel):
         if unsupported_flags:
             raise ValueError(f"{unsupported_flags} flags are not supported.")
         return ret
+
+    @validator(
+        "dashboard_size_limit",
+        "max_content_length",
+        "max_form_memory_size",
+        "max_form_parts",
+    )
+    @classmethod
+    def non_negative_number_validator(cls, value: str) -> Optional[int]:
+        """Check validity of a passed number for non-negativity.
+
+        Args:
+            value: passed value
+
+        Returns:
+            Integer if value is non-negative
+            None if value is None
+
+        Raises:
+            ValueError: in the case when the value is a negative number
+        """
+        if value is None:
+            return None
+        int_value = int(value)
+        if int_value >= 0:
+            return int_value
+        raise ValueError("Value must be non-negative.")

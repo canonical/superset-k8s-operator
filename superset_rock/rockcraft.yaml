@@ -68,7 +68,6 @@ parts:
       - -usr/lib/ssl/openssl.cnf
       - -usr/lib/ssl/private
 
-
   local-files:
     plugin: dump
     source: ./startup-scripts

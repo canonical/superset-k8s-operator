@@ -169,3 +169,12 @@ options:
     description: Integer representing how many characters to allow in a dashboard definition.
     default: 65535
     type: int
+  max-content-length:
+    description: Werkzeug limit for the number of bytes to allow in a request body as measured by the 'Content-Length' header.
+    type: int
+  max-form-memory-size:
+    description: Werkzeug limit for the number of bytes to allow in a single part of a multipart form.
+    type: int
+  max-form-parts:
+    description: Werkzeug limit for the number of parts to allow in a multipart form.
+    type: int
