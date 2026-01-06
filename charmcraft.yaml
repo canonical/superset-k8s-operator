@@ -13,6 +13,7 @@ parts:
       - cargo
     charm-binary-python-packages:
       - psycopg2-binary
+      - pydantic-core
 bases:
   - build-on:
     - name: ubuntu
