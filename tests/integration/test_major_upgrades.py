@@ -49,7 +49,7 @@ async def deploy(ops_test: OpsTest):
 
 
 @pytest.mark.abort_on_fail
-@pytest.mark.usefixtures("deploy-upgrade")
+@pytest.mark.usefixtures("deploy-major-upgrade")
 class TestUpgrade:
     """Integration test for Superset charm upgrade from previous major release."""
 
