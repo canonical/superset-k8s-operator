@@ -1,10 +1,14 @@
 # Compatible Charm revisions and resources
 
-Deploying charms from the `latest/stable` channel *should* guarantee 
-compatibility between charm revision and resource.
+Deploying charms from the `*/stable` channels *should* guarantee 
+compatibility between charm revision and resource. For example, you may deploy the charm from the `5/stable` channel to deploy Superset v5, and upgrade to the `6/stable` channel to upgrade to Superset v6 by running:
+
+```
+juju refresh superset-k8s --channel=6/stable
+```
 
 However, if you are deploying earlier revisions of the charm,
-use the table below as a reference for compatibility.
+use the table below as a reference for compatibility when using the `latest/stable` channel.
 
 
 | Revision | Resource revision | Resource version |
