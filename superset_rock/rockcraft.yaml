@@ -4,7 +4,7 @@
 # https://github.com/apache/superset/blob/master/Dockerfile
 name: superset
 base: ubuntu@24.04
-version: 6.0.0rc2-24.04-edge
+version: 6.0.0-24.04-edge
 summary: Charmed Superset ROCK OCI
 description: |
   Superset is a business intelligence tool that is fast, lightweight,
@@ -51,8 +51,8 @@ parts:
   superset:
     after: [dependencies]
     plugin: python
-    source: https://github.com/apache/superset/archive/refs/tags/6.0.0rc2.tar.gz  # yamllint disable-line
-    source-checksum: sha512/2fc0895adfec04c43fd1379c86674bc6fe493e3c32286cf204a624d48c48ff153faf3a622c036647788f4f89c3c31d76876054849f7081276f9f137de86f0e5e  # yamllint disable-line
+    source: https://github.com/apache/superset/archive/refs/tags/6.0.0.tar.gz  # yamllint disable-line
+    source-checksum: sha512/99a5b09ff6f214cc4b3462f3c61f93994bf436ca7dfeb70a2ff763dcff585ba3bbfb7c568a5191ba180139777bf82b61e01cdfb605da29733d1b463b51dcb589  # yamllint disable-line
     source-type: tar
     build-packages:
       - build-essential
@@ -67,7 +67,6 @@ parts:
       - -usr/lib/ssl/certs
       - -usr/lib/ssl/openssl.cnf
       - -usr/lib/ssl/private
-
 
   local-files:
     plugin: dump
@@ -94,8 +93,8 @@ parts:
 
   frontend:
     plugin: nil
-    source: https://github.com/apache/superset/archive/refs/tags/6.0.0rc2.tar.gz  # yamllint disable-line
-    source-checksum: sha512/2fc0895adfec04c43fd1379c86674bc6fe493e3c32286cf204a624d48c48ff153faf3a622c036647788f4f89c3c31d76876054849f7081276f9f137de86f0e5e  # yamllint disable-line
+    source: https://github.com/apache/superset/archive/refs/tags/6.0.0.tar.gz  # yamllint disable-line
+    source-checksum: sha512/99a5b09ff6f214cc4b3462f3c61f93994bf436ca7dfeb70a2ff763dcff585ba3bbfb7c568a5191ba180139777bf82b61e01cdfb605da29733d1b463b51dcb589  # yamllint disable-line
     source-type: tar
     build-packages:
       - git
@@ -165,8 +164,8 @@ parts:
   dependencies:
     after: [local-files]
     plugin: python
-    source: https://github.com/apache/superset/archive/refs/tags/6.0.0rc2.tar.gz  # yamllint disable-line
-    source-checksum: sha512/2fc0895adfec04c43fd1379c86674bc6fe493e3c32286cf204a624d48c48ff153faf3a622c036647788f4f89c3c31d76876054849f7081276f9f137de86f0e5e  # yamllint disable-line
+    source: https://github.com/apache/superset/archive/refs/tags/6.0.0.tar.gz  # yamllint disable-line
+    source-checksum: sha512/99a5b09ff6f214cc4b3462f3c61f93994bf436ca7dfeb70a2ff763dcff585ba3bbfb7c568a5191ba180139777bf82b61e01cdfb605da29733d1b463b51dcb589  # yamllint disable-line
     source-type: tar
     build-packages:
       - build-essential
@@ -201,12 +200,22 @@ parts:
         mode: "755"
 
   prometheus-statsd-exporter:
-    plugin: dump
-    source: https://github.com/prometheus/statsd_exporter/releases/download/v0.28.0/statsd_exporter-0.28.0.linux-amd64.tar.gz # yamllint disable-line
-    source-checksum: sha256/6951081e3115669e4353975f897dda1cefddef5a5d16addc908485d9be16b72b # yamllint disable-line
-    source-type: tar
-    organize:
-      statsd_exporter: bin/statsd_exporter
+    plugin: go
+    source: https://github.com/prometheus/statsd_exporter.git
+    source-tag: v0.28.0
+    build-snaps:
+      - go/latest/stable   # or whichever you standardize on
+    override-build: |
+      set -eux
+
+      cd "${CRAFT_PART_SRC}"
+
+      # Force the fixed dependency (CVE-2024-45337 fixed in v0.31.0)
+      go mod edit -require=golang.org/x/crypto@v0.31.0
+      go mod tidy
+
+      export CGO_ENABLED=0
+      go build -trimpath -ldflags="-s -w" -o "${CRAFT_PART_INSTALL}/bin/statsd_exporter" .
     stage:
       - bin/statsd_exporter
     permissions:

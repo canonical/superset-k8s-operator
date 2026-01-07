@@ -409,6 +409,9 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "CACHE_WARMUP": self.config["cache-warmup"],
             "REDIS_TIMEOUT": self.config["redis-timeout"],
             "DASHBOARD_SIZE_LIMIT": self.config["dashboard-size-limit"],
+            "MAX_CONTENT_LENGTH": self.config["max-content-length"],
+            "MAX_FORM_MEMORY_SIZE": self.config["max-form-memory-size"],
+            "MAX_FORM_PARTS": self.config["max-form-parts"],
         }
         if self.config["feature-flags"]:
             env.update(self.config["feature-flags"])

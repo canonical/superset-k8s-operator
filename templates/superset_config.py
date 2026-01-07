@@ -175,7 +175,7 @@ WEBDRIVER_BASEURL = f"http://{SERVER_ALIAS}:{APPLICATION_PORT}/"
 
 SUPERSET_WEBSERVER_TIMEOUT = int(os.getenv("WEBSERVER_TIMEOUT"))
 
-# based on https://github.com/apache/superset/blob/6.0.0rc2/RESOURCES/FEATURE_FLAGS.md
+# based on https://github.com/apache/superset/blob/6.0.0/RESOURCES/FEATURE_FLAGS.md
 SUPPORTED_FEATURE_FLAGS = [
     # In Development
     "ALERT_REPORT_TABS",
@@ -193,6 +193,7 @@ SUPPORTED_FEATURE_FLAGS = [
     "CONFIRM_DASHBOARD_DIFF",
     "DATE_FORMAT_IN_EMAIL_SUBJECT",
     "DYNAMIC_PLUGINS",
+    "ENABLE_SUPERSET_META_DB",
     "ESTIMATE_QUERY_COST",
     "GLOBAL_ASYNC_QUERIES",
     "IMPERSONATE_WITH_EMAIL_PREFIX",
@@ -305,3 +306,22 @@ SUPERSET_DASHBOARD_POSITION_DATA_LIMIT = int(os.getenv("DASHBOARD_SIZE_LIMIT", 6
 HTTP_PROXY = os.getenv("HTTP_PROXY")
 HTTPS_PROXY = os.getenv("HTTPS_PROXY")
 NO_PROXY = os.getenv("NO_PROXY")
+
+# Werkzeug configurations
+# Ref: https://werkzeug.palletsprojects.com/en/stable/request_data/#limiting-request-data
+# See: https://github.com/apache/superset/issues/26373
+MAX_CONTENT_LENGTH = int(v) if (v := os.getenv("MAX_CONTENT_LENGTH")) else None
+MAX_FORM_MEMORY_SIZE = int(v) if (v := os.getenv("MAX_FORM_MEMORY_SIZE")) else 500_000
+MAX_FORM_PARTS = int(v) if (v := os.getenv("MAX_FORM_PARTS")) else 1000
+
+def FLASK_APP_MUTATOR(app):
+    """Override the Flask app dynamically."""
+
+    # These values are hardcoded in Werkzeug
+    # So we force an override
+    class ConfiguredLimitRequest(app.request_class):
+        max_form_memory_size = MAX_FORM_MEMORY_SIZE
+        max_form_parts = MAX_FORM_PARTS
+
+    # Swap the default Request class with our configured one
+    app.request_class = ConfiguredLimitRequest

@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.mark.skip_if_deployed
-@pytest_asyncio.fixture(name="deploy-upgrade", scope="module")
+@pytest_asyncio.fixture(name="deploy-major-upgrade", scope="module")
 async def deploy(ops_test: OpsTest):
     """Deploy the app."""
     asyncio.gather(
@@ -42,16 +42,16 @@ async def deploy(ops_test: OpsTest):
     }
     await ops_test.model.deploy(
         APP_NAME,
-        channel="5/edge",
+        channel="5/stable",
         config=superset_config,
     )
     await perform_superset_integrations(ops_test, APP_NAME)
 
 
 @pytest.mark.abort_on_fail
-@pytest.mark.usefixtures("deploy-upgrade")
+@pytest.mark.usefixtures("deploy-major-upgrade")
 class TestUpgrade:
-    """Integration test for Superset charm upgrade from previous release."""
+    """Integration test for Superset charm upgrade from previous major release."""
 
     async def test_upgrade(
         self, ops_test: OpsTest, charm: str, charm_image: str
