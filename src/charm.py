@@ -171,9 +171,6 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         Args:
             event: The event triggered when the peer relation changed.
         """
-        if self.unit.is_leader():
-            return
-
         self.unit.status = WaitingStatus(f"configuring {APP_NAME}")
         self._update(event)
 
