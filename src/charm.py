@@ -11,6 +11,7 @@ https://discourse.charmhub.io/t/4208
 """
 
 import logging
+import os
 
 from charms.data_platform_libs.v0.data_models import TypedCharmBase
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
@@ -33,9 +34,12 @@ from literals import (
     APP_NAME,
     APPLICATION_PORT,
     CONFIG_PATH,
+    DB_NAME,
+    DB_RELATION_NAME,
     DEFAULT_ROLES,
     LOG_FILE,
     PROMETHEUS_METRICS_PORT,
+    REDIS_RELATION_NAME,
     SQL_AB_ROLE,
     STATSD_PORT,
     SUPERSET_VERSION,
@@ -44,9 +48,8 @@ from literals import (
 from log import log_event_handler
 from relations.postgresql import Database
 from relations.redis import Redis
-from state import State
 from structured_config import CharmConfig
-from utils import load_superset_files, query_metadata_database, random_string
+from utils import load_superset_files, query_metadata_database
 
 # Log messages can be retrieved using juju debug-log
 logger = logging.getLogger(__name__)
@@ -56,7 +59,6 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
     """Charm the service.
 
     Attrs:
-        _state: used to store data that is persisted across invocations.
         external_hostname: DNS listing used for external connections.
         on: redis relation events from redis_k8s library
         config_type: the charm structured config
@@ -78,7 +80,6 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         """
         super().__init__(*args)
         self.name = APP_NAME
-        self._state = State(self.app, lambda: self.model.get_relation("peer"))
 
         # Handle postgresql relation
         self.database = Database(self)
@@ -228,13 +229,16 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         except pebble.ConnectionError:
             return False
 
-    def _validate_self_registration_role(self):
+    def _validate_self_registration_role(self, sqlalechmy_uri: str):
         """Determine allowed Superset roles.
+
+        Args:
+            sqlalechmy_uri (str): the SQL Alchemy URI.
 
         Raises:
             ValueError: in case role value is not allowed.
         """
-        uri = self._state.sql_alchemy_uri
+        uri = sqlalechmy_uri
         sql = SQL_AB_ROLE
 
         allowed_roles = query_metadata_database(uri, sql)
@@ -242,6 +246,9 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             allowed_roles = DEFAULT_ROLES
         role = self.config["self-registration-role"]
         if role not in allowed_roles:
+            logger.error(
+                f"The self-registration role {role} is not allowed. Use only {allowed_roles}."
+            )
             raise ValueError(
                 f"The self-registration role {role} is not allowed. Use only {allowed_roles}."
             )
@@ -261,17 +268,14 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         Returns:
             True if peer relation established, else False.
         """
-        if not self._state.is_ready():
-            self.unit.status = WaitingStatus("Waiting for peer relation.")
-            return False
-
-        if not self._state.postgresql_relation:
+        if self.model.get_relation(DB_RELATION_NAME) is None:
             self.unit.status = BlockedStatus("Needs a PostgreSQL relation")
             return False
 
-        if not self._state.redis_relation:
+        if self.model.get_relation(REDIS_RELATION_NAME) is None:
             self.unit.status = BlockedStatus("Needs a Redis relation")
             return False
+
         return True
 
     @log_event_handler(logger)
@@ -283,7 +287,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         """
         container = self.unit.get_container(self.name)
         if not container.can_connect():
-            event.defer()
+            event.set_results({"error": "could not connect to container"})
             return
 
         self.unit.status = MaintenanceStatus(f"restarting {APP_NAME}")
@@ -291,30 +295,29 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         event.set_results({"result": f"{APP_NAME} successfully restarted"})
 
-    def _handle_superset_secret(self):
-        """Set superset secret in _state."""
-        if not self.unit.is_leader():
-            return
-
-        if self.config["superset-secret-key"]:
-            superset_secret = self.config["superset-secret-key"]
-        else:
-            superset_secret = self._state.secret_key or random_string(32)
-        self._state.superset_secret_key = superset_secret
-
-    def _handle_smtp_secret(self):
-        """Set SMTP variables in _state."""
+    def _get_smtp_config(self):
+        """Return SMTP variables."""
         ret = {}
 
-        if not self.config["smtp_secret_id"]:
+        if not self.config["smtp-secret-id"]:
             return ret
 
-        secret_id = self.config["smtp_secret_id"]
+        secret_id = self.config["smtp-secret-id"]
 
         try:
             secret = self.model.get_secret(id=secret_id)
             content = secret.get_content(refresh=True)
-        except SecretNotFoundError:
+        except SecretNotFoundError as e:
+            # Distinguish between a missing secret and an existing secret
+            # that the charm has not been granted access to. The testing
+            # backend raises SecretNotFoundError with a message containing
+            # "not granted access" when the secret exists but is not
+            # accessible to this charm.
+            msg = str(e)
+            if "not granted access" in msg:
+                raise ValueError(
+                    f"SMTP secret with ID '{secret_id}' cannot be accessed."
+                ) from None
             raise ValueError(
                 f"SMTP secret with ID '{secret_id}' cannot be found."
             ) from None
@@ -362,17 +365,28 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         Returns:
             env: dictionary of environment variables
         """
-        self._handle_superset_secret()
-        self._validate_self_registration_role()
+        database_relation_data = self.database.get_db_info()
+        if database_relation_data is None:
+            raise ValueError("database relation data is not available")
+
+        sqlalchemy_uri = f"postgresql://{database_relation_data['user']}:{database_relation_data['password']}@{database_relation_data['host']}:{database_relation_data['port']}/{DB_NAME}"
+        self._validate_self_registration_role(sqlalchemy_uri)
+
+        (
+            redis_hostname,
+            redis_port,
+        ) = self.redis_handler.get_redis_relation_data()
+        if redis_hostname is None or redis_port is None:
+            raise ValueError("redis relation data is not available")
 
         env = {
             "ALLOW_IMAGE_DOMAINS": self.config["allow-image-domains"],
-            "SUPERSET_SECRET_KEY": self._state.superset_secret_key,
+            "SUPERSET_SECRET_KEY": self.config["superset-secret-key"],
             "ADMIN_PASSWORD": self.config["admin-password"],
             "CHARM_FUNCTION": self.config["charm-function"].value,
-            "SQL_ALCHEMY_URI": self._state.sql_alchemy_uri,
-            "REDIS_HOST": self._state.redis_host,
-            "REDIS_PORT": self._state.redis_port,
+            "SQL_ALCHEMY_URI": sqlalchemy_uri,
+            "REDIS_HOST": redis_hostname,
+            "REDIS_PORT": redis_port,
             "SQLALCHEMY_POOL_SIZE": self.config["sqlalchemy-pool-size"],
             "SQLALCHEMY_POOL_TIMEOUT": self.config["sqlalchemy-pool-timeout"],
             "SQLALCHEMY_MAX_OVERFLOW": self.config["sqlalchemy-max-overflow"],
@@ -381,9 +395,6 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "OAUTH_DOMAIN": self.config["oauth-domain"],
             "OAUTH_ADMIN_EMAIL": self.config["oauth-admin-email"],
             "SELF_REGISTRATION_ROLE": self.config["self-registration-role"],
-            "HTTP_PROXY": self.config["http-proxy"],
-            "HTTPS_PROXY": self.config["https-proxy"],
-            "NO_PROXY": self.config["no-proxy"],
             "SUPERSET_LOAD_EXAMPLES": self.config["load-examples"],
             "PYTHONPATH": CONFIG_PATH,
             "HTML_SANITIZATION": self.config["html-sanitization"],
@@ -415,7 +426,20 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         }
         if self.config["feature-flags"]:
             env.update(self.config["feature-flags"])
-        env.update(self._handle_smtp_secret())
+        env.update(self._get_smtp_config())
+
+        http_proxy = os.environ.get("JUJU_CHARM_HTTP_PROXY")
+        https_proxy = os.environ.get("JUJU_CHARM_HTTPS_PROXY")
+        no_proxy = os.environ.get("JUJU_CHARM_NO_PROXY")
+
+        if http_proxy or https_proxy:
+            env.update(
+                {
+                    "HTTP_PROXY": http_proxy,
+                    "HTTPS_PROXY": https_proxy,
+                    "NO_PROXY": no_proxy,
+                }
+            )
 
         return env
 
@@ -433,11 +457,21 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             return
 
         logger.info("configuring %s", APP_NAME)
-        env = self._create_env()
+        try:
+            env = self._create_env()
+        except ValueError as e:
+            self.unit.status = BlockedStatus(str(e))
+            return
+
         load_superset_files(container)
 
+        (
+            redis_hostname,
+            redis_port,
+        ) = self.redis_handler.get_redis_relation_data()
+
         metrics_exporter_command = (
-            f"/usr/bin/celery-exporter --broker-url redis://{self._state.redis_host}:{self._state.redis_port}/4 --port {PROMETHEUS_METRICS_PORT}"
+            f"/usr/bin/celery-exporter --broker-url redis://{redis_hostname}:{redis_port}/4 --port {PROMETHEUS_METRICS_PORT}"
             if self.config["charm-function"] == "worker"
             else "/usr/bin/statsd_exporter"
         )

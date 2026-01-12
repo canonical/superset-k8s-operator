@@ -8,16 +8,14 @@
 
 # pylint:disable=protected-access
 
-import json
 import logging
 from unittest import TestCase, mock
 
-from ops.model import ActiveStatus, MaintenanceStatus, WaitingStatus
+from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus
 from ops.pebble import CheckStatus
 from ops.testing import Harness
 
 from charm import SupersetK8SCharm
-from state import State
 
 SERVER_PORT = "8088"
 logger = logging.getLogger(__name__)
@@ -39,6 +37,21 @@ class TestCharm(TestCase):
         """Set up for the unit tests."""
         self.harness = Harness(SupersetK8SCharm)
         self.addCleanup(self.harness.cleanup)
+
+        patcher_redis = mock.patch(
+            "charm.Redis.get_redis_relation_data",
+            return_value=("redis-host", 6379),
+        )
+        self.mock_redis = patcher_redis.start()
+        self.addCleanup(patcher_redis.stop)
+
+        patcher_db = mock.patch(
+            "charm.query_metadata_database",
+            return_value=["Public", "Gamma", "Alpha", "Admin"],
+        )
+        self.mock_query_metadata_database = patcher_db.start()
+        self.addCleanup(patcher_db.stop)
+
         self.harness.set_can_connect("superset", True)
         self.harness.set_leader(True)
         self.harness.set_model_name("superset-model")
@@ -51,24 +64,6 @@ class TestCharm(TestCase):
         harness = self.harness
         initial_plan = harness.get_container_pebble_plan("superset").to_dict()
         self.assertEqual(initial_plan, {})
-
-    def test_waiting_on_peer_relation_not_ready(self):
-        """The charm is blocked without a peer relation."""
-        harness = self.harness
-
-        # Simulate pebble readiness.
-        container = harness.model.unit.get_container("superset")
-        harness.charm.on.superset_pebble_ready.emit(container)
-
-        # No plans are set yet.
-        got_plan = harness.get_container_pebble_plan("superset").to_dict()
-        self.assertEqual(got_plan, {})
-
-        # The WaitingStatus is set with a message.
-        self.assertEqual(
-            harness.model.unit.status,
-            WaitingStatus("Waiting for peer relation."),
-        )
 
     def test_ready(self):
         """The pebble plan is correctly generated when the charm is ready."""
@@ -101,9 +96,6 @@ class TestCharm(TestCase):
                         "OAUTH_DOMAIN": None,
                         "OAUTH_ADMIN_EMAIL": "admin@superset.com",
                         "SELF_REGISTRATION_ROLE": "Public",
-                        "HTTP_PROXY": None,
-                        "HTTPS_PROXY": None,
-                        "NO_PROXY": None,
                         "SUPERSET_LOAD_EXAMPLES": False,
                         "PYTHONPATH": "/app/pythonpath",
                         "HTML_SANITIZATION": True,
@@ -158,17 +150,21 @@ class TestCharm(TestCase):
         harness = self.harness
         simulate_lifecycle(harness)
 
+        self.assertEqual(
+            harness.model.unit.status,
+            MaintenanceStatus("replanning application"),
+        )
+
         # Update the config.
         self.harness.update_config(
             {
                 "admin-password": "secure-pass",
-                "http-proxy": "proxy:1234",
-                "https-proxy": "proxy:1234",
-                "no-proxy": ".canonical.com",
                 "allow-image-domains": "assets.ubuntu.com",
                 "feature-flags": "ALLOW_ADHOC_SUBQUERY, !GLOBAL_ASYNC_QUERIES",
             }
         )
+
+        # simulate_lifecycle(harness)
 
         # The new plan reflects the change.
         want_plan = {
@@ -197,9 +193,6 @@ class TestCharm(TestCase):
                         "OAUTH_DOMAIN": None,
                         "OAUTH_ADMIN_EMAIL": "admin@superset.com",
                         "SELF_REGISTRATION_ROLE": "Public",
-                        "HTTP_PROXY": "proxy:1234",
-                        "HTTPS_PROXY": "proxy:1234",
-                        "NO_PROXY": ".canonical.com",
                         "SUPERSET_LOAD_EXAMPLES": False,
                         "PYTHONPATH": "/app/pythonpath",
                         "HTML_SANITIZATION": True,
@@ -401,10 +394,9 @@ class TestCharm(TestCase):
         harness = self.harness
 
         simulate_lifecycle(harness)
-        with self.assertRaises(ValueError):
-            self.harness.update_config(
-                {"self-registration-role": "InvalidRole"}
-            )
+        self.harness.update_config({"self-registration-role": "InvalidRole"})
+        expected = "The self-registration role InvalidRole is not allowed. Use only ['Public', 'Gamma', 'Alpha', 'Admin']."
+        self.assertEqual(harness.model.unit.status, BlockedStatus(expected))
 
     def test_smtp_handling_without_secret(self):
         """Test _handle_smtp_secret with no secret."""
@@ -511,8 +503,14 @@ class TestCharm(TestCase):
         }
 
         secret_id = harness.add_user_secret(secret_contents)
-        with self.assertRaises(ValueError):
-            harness.update_config({"smtp-secret-id": secret_id})
+        harness.update_config({"smtp-secret-id": secret_id})
+
+        self.assertEqual(
+            harness.model.unit.status,
+            BlockedStatus(
+                f"SMTP secret with ID '{secret_id}' cannot be accessed."
+            ),
+        )
 
     @mock.patch(
         "charm.SupersetK8SCharm._validate_self_registration_role",
@@ -539,8 +537,14 @@ class TestCharm(TestCase):
 
         secret_id = harness.add_user_secret(secret_contents)
         harness.grant_secret(secret_id, "superset-k8s")
-        with self.assertRaises(ValueError):
-            harness.update_config({"smtp-secret-id": secret_id})
+        harness.update_config({"smtp-secret-id": secret_id})
+
+        self.assertEqual(
+            harness.model.unit.status,
+            BlockedStatus(
+                f"SMTP secret with ID '{secret_id}' has improper schema. Missing: host"
+            ),
+        )
 
     @mock.patch(
         "charm.SupersetK8SCharm._validate_self_registration_role",
@@ -552,27 +556,27 @@ class TestCharm(TestCase):
         """Test _handle_smtp_secret with an SMTP secret ID set to a secret that does not exist."""
         harness = self.harness
         simulate_lifecycle(harness)
+        harness.update_config({"smtp-secret-id": "i-dont-exist"})
 
-        with self.assertRaises(ValueError):
-            harness.update_config({"smtp-secret-id": "i-dont-exist"})
+        self.assertEqual(
+            harness.model.unit.status,
+            BlockedStatus(
+                "SMTP secret with ID 'i-dont-exist' cannot be found."
+            ),
+        )
 
 
-@mock.patch("charm.Redis._get_redis_relation_data")
-def simulate_lifecycle(harness, _get_redis_relation_data):
+@mock.patch("charm.Redis.get_redis_relation_data")
+def simulate_lifecycle(harness, get_redis_relation_data):
     """Simulate a healthy charm life-cycle.
 
     Args:
         harness: ops.testing.Harness object used to simulate charm lifecycle.
+        get_redis_relation_data: Mocked method to get redis relation data.
     """
-    # Simulate peer relation readiness.
-    harness.add_relation("peer", "superset")
-
-    # Simulate pebble readiness.
-    container = harness.model.unit.get_container("superset")
-    harness.charm.on.superset_pebble_ready.emit(container)
-
-    # Simulate redis readiness.
-    _get_redis_relation_data.return_value = ("redis-host", 6379, True)
+    # Simulate redis readiness first and set mocked return so the charm
+    # sees redis data when handling pebble ready.
+    get_redis_relation_data.return_value = ("redis-host", 6379)
     rel_id = harness.add_relation("redis", "redis-k8s")
     harness.add_relation_unit(rel_id, "redis-k8s/0")
 
@@ -580,6 +584,12 @@ def simulate_lifecycle(harness, _get_redis_relation_data):
     harness.add_relation(
         "postgresql_db", "superset", app_data=database_provider_databag()
     )
+
+    # Simulate pebble readiness after relations are in place.
+    container = harness.model.unit.get_container("superset")
+    harness.charm.on.superset_pebble_ready.emit(container)
+
+    harness.update_config({"superset-secret-key": "example-pass"})
 
 
 def database_provider_databag():
@@ -592,61 +602,3 @@ def database_provider_databag():
         "username": "postgres_user",
         "password": "admin",
     }
-
-
-class TestState(TestCase):
-    """Unit tests for state.
-
-    Attrs:
-        maxDiff: Specifies max difference shown by failed tests.
-    """
-
-    maxDiff = None
-
-    def test_get(self):
-        """It is possible to retrieve attributes from the state."""
-        state = make_state({"foo": json.dumps("bar")})
-        self.assertEqual(state.foo, "bar")
-        self.assertIsNone(state.bad)
-
-    def test_set(self):
-        """It is possible to set attributes in the state."""
-        data = {"foo": json.dumps("bar")}
-        state = make_state(data)
-        state.foo = 42
-        state.list = [1, 2, 3]
-        self.assertEqual(state.foo, 42)
-        self.assertEqual(state.list, [1, 2, 3])
-        self.assertEqual(data, {"foo": "42", "list": "[1, 2, 3]"})
-
-    def test_del(self):
-        """It is possible to unset attributes in the state."""
-        data = {"foo": json.dumps("bar"), "answer": json.dumps(42)}
-        state = make_state(data)
-        del state.foo
-        self.assertIsNone(state.foo)
-        self.assertEqual(data, {"answer": "42"})
-        # Deleting a name that is not set does not error.
-        del state.foo
-
-    def test_is_ready(self):
-        """The state is not ready when it is not possible to get relations."""
-        state = make_state({})
-        self.assertTrue(state.is_ready())
-
-        state = State("myapp", lambda: None)
-        self.assertFalse(state.is_ready())
-
-
-def make_state(data):
-    """Create state object.
-
-    Args:
-        data: Data to be included in state.
-
-    Returns:
-        State object with data.
-    """
-    app = "myapp"
-    rel = type("Rel", (), {"data": {app: data}})()
-    return State(app, lambda: rel)
