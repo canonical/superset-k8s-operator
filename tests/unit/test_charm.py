@@ -52,6 +52,8 @@ class TestCharm(TestCase):
         self.mock_query_metadata_database = patcher_db.start()
         self.addCleanup(patcher_db.stop)
 
+        # Required config for structured config validation
+        self.harness.update_config({"superset-secret-key": "example-pass"})
         self.harness.set_can_connect("superset", True)
         self.harness.set_leader(True)
         self.harness.set_model_name("superset-model")
@@ -588,8 +590,6 @@ def simulate_lifecycle(harness, get_redis_relation_data):
     # Simulate pebble readiness after relations are in place.
     container = harness.model.unit.get_container("superset")
     harness.charm.on.superset_pebble_ready.emit(container)
-
-    harness.update_config({"superset-secret-key": "example-pass"})
 
 
 def database_provider_databag():
