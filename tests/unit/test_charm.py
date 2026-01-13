@@ -166,8 +166,6 @@ class TestCharm(TestCase):
             }
         )
 
-        # simulate_lifecycle(harness)
-
         # The new plan reflects the change.
         want_plan = {
             "services": {

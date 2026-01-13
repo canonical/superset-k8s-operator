@@ -226,25 +226,26 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         except pebble.ConnectionError:
             return False
 
-    def _validate_self_registration_role(self, sqlalechmy_uri: str):
+    def _validate_self_registration_role(self, sqlalchemy_uri: str):
         """Determine allowed Superset roles.
 
         Args:
-            sqlalechmy_uri (str): the SQL Alchemy URI.
+            sqlalchemy_uri (str): the SQL Alchemy URI.
 
         Raises:
             ValueError: in case role value is not allowed.
         """
-        uri = sqlalechmy_uri
         sql = SQL_AB_ROLE
 
-        allowed_roles = query_metadata_database(uri, sql)
+        allowed_roles = query_metadata_database(sqlalchemy_uri, sql)
         if not allowed_roles:
             allowed_roles = DEFAULT_ROLES
         role = self.config["self-registration-role"]
         if role not in allowed_roles:
             logger.error(
-                f"The self-registration role {role} is not allowed. Use only {allowed_roles}."
+                "The self-registration role %s is not allowed. Use only %s.",
+                role,
+                allowed_roles,
             )
             raise ValueError(
                 f"The self-registration role {role} is not allowed. Use only {allowed_roles}."
