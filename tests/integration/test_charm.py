@@ -88,7 +88,7 @@ class TestDeployment:
         )
 
         await ops_test.model.applications[UI_NAME].remove_relation(
-            f"{UI_NAME}", f"{REDIS_NAME}"
+            f"{UI_NAME}:redis", f"{REDIS_NAME}:redis"
         )
 
         await ops_test.model.wait_for_idle(
@@ -101,7 +101,7 @@ class TestDeployment:
     async def test_postgresql_relation_removal(self, ops_test: OpsTest):
         """Removes Superset/PostgreSQL relation."""
         await ops_test.model.applications[UI_NAME].remove_relation(
-            f"{UI_NAME}", f"{POSTGRES_NAME}"
+            f"{UI_NAME}:postgresql_db", f"{POSTGRES_NAME}:postgresql_client"
         )
 
         await ops_test.model.wait_for_idle(
