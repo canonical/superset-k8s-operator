@@ -18,6 +18,8 @@ logger = logging.getLogger(__name__)
 def _harness():
     """Harness setup for tests."""
     _harness = Harness(SupersetK8SCharm)
+    # Provide required config before initializing charm
+    _harness.update_config({"superset-secret-key": "example-pass"})
     _harness.begin_with_initial_hooks()
     return _harness
 

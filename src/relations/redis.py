@@ -8,6 +8,7 @@ import logging
 from charms.redis_k8s.v0.redis import RedisRequires
 from ops import framework
 
+from literals import REDIS_RELATION_NAME
 from log import log_event_handler
 
 logger = logging.getLogger(__name__)
@@ -36,32 +37,25 @@ class Redis(framework.Object):
         Args:
             event: The event triggered when the relation changed.
         """
-        if not self.charm.unit.is_leader():
-            return
-
-        host, port, redis_relation = self._get_redis_relation_data()
-
-        self.charm._state.redis_relation = redis_relation
-        self.charm._state.redis_host = host
-        self.charm._state.redis_port = port
-
         self.charm._update(event)
 
-    def _get_redis_relation_data(self):
+    def get_redis_relation_data(self):
         """Get the hostname and port from the redis relation data.
 
         Returns:
             redis_hostname: hostname of redis service
             redis_port: port of redis service
-            redis_relation: bool for if redis has been related
         """
+        if self.charm.model.get_relation(REDIS_RELATION_NAME) is None:
+            logger.debug("no redis relation found")
+            return None, None
+
         unit_data = self.charm.redis.relation_data or {}
-        relation = self.model.get_relation("redis")
+        relation = self.model.get_relation(REDIS_RELATION_NAME)
         application_data = relation.data[relation.app] if relation else {}
 
         redis_hostname = application_data.get("leader-host") or unit_data.get(
             "hostname"
         )
         redis_port = unit_data.get("port")
-        redis_relation = bool(unit_data)
-        return redis_hostname, redis_port, redis_relation
+        return redis_hostname, redis_port
