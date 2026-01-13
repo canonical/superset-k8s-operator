@@ -74,12 +74,14 @@ async def perform_superset_integrations(ops_test: OpsTest, app_name):
         app_name: The name of the Superset application (ui, worker or beat)
     """
     await ops_test.model.integrate(app_name, POSTGRES_NAME)
+    logger.info("PostgreSQL relation created.")
 
     await ops_test.model.wait_for_idle(
-        apps=[app_name], status="blocked", raise_on_blocked=False, timeout=180
+        apps=[app_name], status="blocked", raise_on_blocked=False, timeout=1500
     )
 
     await ops_test.model.integrate(app_name, REDIS_NAME)
+    logger.info("Redis relation created.")
 
     await ops_test.model.wait_for_idle(
         apps=[app_name], status="active", raise_on_blocked=False, timeout=1500
