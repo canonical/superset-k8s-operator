@@ -6,6 +6,8 @@
 
 APPLICATION_PORT = 8088
 DB_NAME = "superset"
+DB_RELATION_NAME = "postgresql_db"
+REDIS_RELATION_NAME = "redis"
 SUPERSET_VERSION = "6.0.0"
 REDIS_KEY_PREFIX = "superset_results"
 APP_NAME = "superset"

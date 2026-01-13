@@ -7,8 +7,6 @@
 import logging
 import os
 import re
-import secrets
-import string
 from pathlib import Path
 
 from sqlalchemy import create_engine
@@ -33,23 +31,6 @@ def charm_path(file_path):
     )
     path = os.path.join(charm_dir, file_path)
     return path
-
-
-def random_string(length) -> str:
-    """Create randomized string for use as app passwords and username ID.
-
-    Args:
-        length: number of characters to generate
-
-    Returns:
-        String of randomized letter+digit characters
-    """
-    return "".join(
-        [
-            secrets.choice(string.ascii_letters + string.digits)
-            for _ in range(length)
-        ]
-    )
 
 
 def push_files(container, file_path, destination, permissions):

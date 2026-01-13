@@ -10,7 +10,7 @@ from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
 from ops import framework
 from ops.charm import RelationEvent
 
-from literals import DB_NAME
+from literals import DB_NAME, DB_RELATION_NAME
 from log import log_event_handler
 
 logger = logging.getLogger(__name__)
@@ -29,7 +29,7 @@ class Database(framework.Object):
         self.charm = charm
         self.charm.postgresql_db = DatabaseRequires(
             self.charm,
-            relation_name="postgresql_db",
+            relation_name=DB_RELATION_NAME,
             database_name=DB_NAME,
             extra_user_roles="admin",
         )
@@ -54,29 +54,6 @@ class Database(framework.Object):
         Args:
             event: The event triggered when the relation changed.
         """
-        if not self.charm.unit.is_leader():
-            return
-
-        logger.info("handling %s change event", event.relation.name)
-
-        dbconn = self._get_db_info()
-        if dbconn is None:
-            logger.info("no database connection info found, deferring event")
-            event.defer()
-            return
-
-        host = dbconn["host"]
-        port = dbconn["port"]
-        user = dbconn["user"]
-        password = dbconn["password"]
-        db_name = DB_NAME
-
-        sqlalchemy_url = (
-            f"postgresql://{user}:{password}@{host}:{port}/{db_name}"
-        )
-        self.charm._state.sql_alchemy_uri = sqlalchemy_url
-        self.charm._state.postgresql_relation = "enabled"
-
         self.charm._update(event)
 
     @log_event_handler(logger)
@@ -86,23 +63,16 @@ class Database(framework.Object):
         Args:
             event: The event triggered when the relation departs.
         """
-        if not self.charm.unit.is_leader():
-            return
-
-        container = self.charm.model.unit.get_container(self.charm.name)
-        if not container.can_connect():
-            event.defer()
-            return
-
-        self.charm._state.sql_alchemy_uri = None
-        self.charm._state.postgresql_relation = False
-
         self.charm._update(event)
 
-    def _get_db_info(self) -> Optional[Dict]:
-        """Get database connection info by reading relation data."""
+    def get_db_info(self) -> Optional[Dict]:
+        """Get database connection info by reading relation data.
+
+        Returns:
+            Optional[Dict]: Information needed for setting up database connection.
+        """
         if (
-            len(self.charm.postgresql_db.relations) == 0
+            self.charm.model.get_relation(DB_RELATION_NAME) is None
             or not self.charm.postgresql_db.is_resource_created()
         ):
             logger.debug(

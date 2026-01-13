@@ -10,6 +10,8 @@ import pytest
 import requests
 from integration.conftest import deploy  # noqa: F401, pylint: disable=W0611
 from integration.helpers import (
+    POSTGRES_NAME,
+    REDIS_NAME,
     UI_NAME,
     api_authentication,
     delete_chart,
@@ -74,4 +76,37 @@ class TestDeployment:
         assert (
             ops_test.model.applications[UI_NAME].units[0].workload_status
             == "maintenance"
+        )
+
+    async def test_redis_relation_removal(self, ops_test: OpsTest):
+        """Removes Superset/Redis relation."""
+        await ops_test.model.wait_for_idle(
+            apps=[UI_NAME],
+            status="active",
+            raise_on_blocked=False,
+            timeout=2000,
+        )
+
+        await ops_test.model.applications[UI_NAME].remove_relation(
+            f"{UI_NAME}:redis", f"{REDIS_NAME}:redis"
+        )
+
+        await ops_test.model.wait_for_idle(
+            apps=[UI_NAME],
+            status="blocked",
+            raise_on_blocked=False,
+            timeout=2000,
+        )
+
+    async def test_postgresql_relation_removal(self, ops_test: OpsTest):
+        """Removes Superset/PostgreSQL relation."""
+        await ops_test.model.applications[UI_NAME].remove_relation(
+            f"{UI_NAME}:postgresql_db", f"{POSTGRES_NAME}:database"
+        )
+
+        await ops_test.model.wait_for_idle(
+            apps=[UI_NAME],
+            status="blocked",
+            raise_on_blocked=False,
+            timeout=2000,
         )
