@@ -27,7 +27,9 @@ logger = logging.getLogger(__name__)
 async def deploy(ops_test: OpsTest):
     """Deploy the app."""
     asyncio.gather(
-        ops_test.model.deploy(POSTGRES_NAME, channel="14", trust=True),
+        ops_test.model.deploy(
+            POSTGRES_NAME, channel="14/candidate", trust=True
+        ),
         ops_test.model.deploy(REDIS_NAME, channel="edge", trust=True),
     )
     await ops_test.model.wait_for_idle(
