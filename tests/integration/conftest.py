@@ -52,7 +52,9 @@ async def charm_fixture(
 async def deploy(ops_test: OpsTest, charm: str, charm_image: str):
     """Deploy the app."""
     asyncio.gather(
-        ops_test.model.deploy(POSTGRES_NAME, channel="14", trust=True),
+        ops_test.model.deploy(
+            POSTGRES_NAME, channel="14/candidate", trust=True
+        ),
         ops_test.model.deploy(REDIS_NAME, channel="edge", trust=True),
         ops_test.model.deploy(NGINX_NAME, trust=True),
     )
