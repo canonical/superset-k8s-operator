@@ -64,14 +64,14 @@ EXPLORE_FORM_DATA_CACHE_CONFIG = {
     "CACHE_KEY_PREFIX": "superset_explore_cache",
     "CACHE_REDIS_HOST": os.getenv("REDIS_HOST"),
     "CACHE_REDIS_PORT": int(os.getenv("REDIS_PORT")),
-    "CACHE_REDIS_DB": 7,
+    "CACHE_REDIS_DB": 2,
 }
 DATA_CACHE_CONFIG = {
     "CACHE_TYPE": "RedisCache",
     "CACHE_DEFAULT_TIMEOUT": 300,
     "CACHE_REDIS_HOST": os.getenv("REDIS_HOST"),
     "CACHE_REDIS_PORT": int(os.getenv("REDIS_PORT")),
-    "CACHE_REDIS_DB": 2,
+    "CACHE_REDIS_DB": 3,
 }
 
 RESULTS_BACKEND = RedisCache(
