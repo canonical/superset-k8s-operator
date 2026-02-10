@@ -40,8 +40,7 @@ echo "Initialising superset"
 
 if [[ "${CHARM_FUNCTION}" == "worker" ]]; then
   echo "Starting Celery worker..."
-  # migle is disabled due to this issue: https://github.com/celery/celery/discussions/7276
-  celery --app=superset.tasks.celery_app:app worker -O fair -l INFO --uid 0 --without-mingle
+  celery --app=superset.tasks.celery_app:app worker -O fair -l INFO --uid 0
 elif [[ "${CHARM_FUNCTION}" == "beat" ]]; then
   echo "Starting Celery beat..."
   celery --app=superset.tasks.celery_app:app beat --pidfile /tmp/celerybeat.pid -l INFO -s "${SUPERSET_HOME}"/celerybeat-schedule
