@@ -19,8 +19,8 @@ UI_NAME = "superset-k8s-ui"
 CHARM_FUNCTIONS = {"app-gunicorn": "ui", "beat": "beat", "worker": "worker"}
 SCALABLE_SERVICES = {"app-gunicorn": "ui", "worker": "worker"}
 API_AUTH_PAYLOAD = {
-    "username": "admin",
-    "password": "admin",
+    "username": "admin",  # nosec
+    "password": "admin",  # nosec
     "provider": "db",
 }
 APP_NAME = "superset-k8s"
