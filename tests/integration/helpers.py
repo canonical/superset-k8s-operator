@@ -254,6 +254,13 @@ async def get_active_workers(ops_test: OpsTest):
     redis_ip = status["applications"][REDIS_NAME]["units"][f"{REDIS_NAME}/0"][
         "address"
     ]
-    app = Celery("superset", broker=f"redis://{redis_ip}:6379/4")
+    app = Celery(
+        "superset",
+        broker=f"redis://{redis_ip}:6379/4",
+        broker_transport_options={
+            "fanout_prefix": True,
+            "fanout_patterns": True,
+        },
+    )
     active_workers = app.control.inspect().active()
     return active_workers
