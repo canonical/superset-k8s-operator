@@ -262,5 +262,11 @@ async def get_active_workers(ops_test: OpsTest):
             "fanout_patterns": True,
         },
     )
-    active_workers = app.control.inspect().active()
+
+    logger.info("Checking all workers...")
+    logger.info(app.control.inspect(timeout=10).ping())
+
+    logger.info("Checking active workers...")
+    active_workers = app.control.inspect(timeout=10).active()
+    logger.info(active_workers)
     return active_workers
