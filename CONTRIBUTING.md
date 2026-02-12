@@ -157,6 +157,35 @@ juju remove-application postgresql-k8s
 ```
 This relation makes use of the `data_platform_libs.v0.data_interfaces` library. The charm can be found on [Charmhub](https://charmhub.io/postgresql-k8s) and on [github](https://github.com/canonical/postgresql-k8s-operator).
 
+### Trino
+When related to Trino, Superset automatically creates database connections for Trino catalogs and grants their access to the default user role.
+
+Superset applies a partial reconciliation between its database connections and the available Trino catalogs by: 
+- adding connections for catalogs that don't have one already
+- updating the connection strings if the Trino URL or credentials are updated 
+- not updating other connection options or permissions if they are changed from the defaults
+- not removing database connections when catalogs are removed or the relation to Trino is broken
+
+For the relation to work, a user named `app-superset-k8s` has to be added in Trino's `trino-user-management` secret and Superset should be granted access to the secret.
+
+```
+# deploy trino charm
+juju deploy trino-k8s --config charm-function=all --trust
+
+# relate trino charm
+juju relate trino-k8s superset-k8s-ui
+
+# grant access to trino credentials secret
+juju grant-secret trino-user-management superset-k8s-ui
+
+# remove relation
+juju remove-relation trino-k8s superset-k8s-ui
+
+# remove application
+juju remove-application trino-k8s
+```
+This relation makes use of the `trino_k8s.v0.trino_catalog` library. The charm can be found on [Charmhub](https://charmhub.io/trino-k8s) and on [github](https://github.com/canonical/trino-k8s-operator).
+
 ### Authentication
 To validate Google Oauth authentication:
 ```
