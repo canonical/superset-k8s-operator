@@ -51,12 +51,12 @@ def get_trino_databases(
 
 
 def build_catalog_config(
-    secret_ids: dict[str, str], catalogs: list[str]
+    catalog_secrets: dict[str, str], catalogs: list[str]
 ) -> str:
     """Build Trino catalog-config YAML with specified catalogs.
 
     Args:
-        secret_ids: Dict mapping catalog names to secret IDs.
+        catalog_secrets: Dict mapping catalog names to secret IDs.
         catalogs: List of catalog names to include (pgsql, mysql, redshift).
 
     Returns:
@@ -69,21 +69,21 @@ def build_catalog_config(
             f"""  pgsql:
     backend: dwh
     database: example
-    secret-id: {secret_ids['postgresql']}"""
+    secret-id: {catalog_secrets['postgresql']}"""
         )
 
     if "mysql" in catalogs:
         catalog_entries.append(
             f"""  mysql:
     backend: mysql
-    secret-id: {secret_ids['mysql']}"""
+    secret-id: {catalog_secrets['mysql']}"""
         )
 
     if "redshift" in catalogs:
         catalog_entries.append(
             f"""  redshift:
     backend: redshift
-    secret-id: {secret_ids['redshift']}"""
+    secret-id: {catalog_secrets['redshift']}"""
         )
 
     backends = """backends:
@@ -208,7 +208,8 @@ async def test_01_create_relation(ops_test: OpsTest):
 @pytest.mark.abort_on_fail
 @pytest.mark.usefixtures("deploy-trino-superset")
 async def test_02_configure_trino_catalogs(
-    ops_test: OpsTest, secret_ids: dict[str, str]
+    ops_test: OpsTest,
+    secret_ids: dict[str, str],  # pylint: disable=redefined-outer-name
 ):
     """Test configuring Trino with catalogs and external hostname."""
     catalog_config = build_catalog_config(secret_ids, ["pgsql", "mysql"])
@@ -290,7 +291,9 @@ async def test_04_verify_databases_created(ops_test: OpsTest):
 
 @pytest.mark.abort_on_fail
 @pytest.mark.usefixtures("deploy-trino-superset")
-async def test_05_add_catalog(ops_test: OpsTest, secret_ids: dict[str, str]):
+async def test_05_add_catalog(
+    ops_test: OpsTest, secret_ids: dict[str, str]
+):  # pylint: disable=redefined-outer-name
     """Test that adding a new catalog creates a new Superset database."""
     redshift_secret = await ops_test.model.add_secret(
         name="redshift-secret",
@@ -376,7 +379,8 @@ async def test_06_credential_rotation(ops_test: OpsTest):
 @pytest.mark.abort_on_fail
 @pytest.mark.usefixtures("deploy-trino-superset")
 async def test_07_remove_catalog_no_deletion(
-    ops_test: OpsTest, secret_ids: dict[str, str]
+    ops_test: OpsTest,
+    secret_ids: dict[str, str],  # pylint: disable=redefined-outer-name
 ):
     """Test that removing a catalog from Trino does NOT delete the Superset database."""
     catalog_config = build_catalog_config(secret_ids, ["pgsql", "redshift"])
