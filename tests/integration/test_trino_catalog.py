@@ -24,9 +24,27 @@ TRINO_APP = "trino-k8s"
 SUPERSET_APP = "superset-k8s"
 USER_SECRET_LABEL = "trino-user-management"  # nosec
 
-POSTGRESQL_REPLICA_SECRET = "user1:password1\nuser2:password2\n"  # nosec
-MYSQL_REPLICA_SECRET = "user1:password1\n"  # nosec
-REDSHIFT_REPLICA_SECRET = "user1:password1\n"  # nosec
+POSTGRESQL_REPLICA_SECRET = """\
+rw:
+  user: trino
+  password: pwd1
+  suffix: _developer
+ro:
+  user: trino_ro
+  password: pwd2
+"""  # nosec
+
+MYSQL_REPLICA_SECRET = """\
+ro:
+  user: trino_ro
+  password: pwd3
+"""  # nosec
+
+REDSHIFT_REPLICA_SECRET = """\
+ro:
+  user: trino_ro
+  password: pwd4
+"""  # nosec
 
 TIMEOUT_DEFAULT = 1000
 TIMEOUT_DEPLOY = 2000

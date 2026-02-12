@@ -211,9 +211,7 @@ class TrinoCatalogRelationHandler(ops.Object):
             logger.warning("Missing Trino credentials, cannot sync databases")
             return None
 
-        host, port, namespace = "trino-k8s", "8080", self.model.name
-        trino_url = f"{host}.{namespace}.svc.cluster.local:{port}"
-        # trino_url = trino_info["trino_url"]
+        trino_url = trino_info["trino_url"]
         catalogs = trino_info["trino_catalogs"]
         use_ssl = self._use_ssl(trino_url)
 
