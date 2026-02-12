@@ -43,11 +43,13 @@ from literals import (
     SQL_AB_ROLE,
     STATSD_PORT,
     SUPERSET_VERSION,
+    TRINO_CATALOG_RELATION_NAME,
     UI_FUNCTIONS,
 )
 from log import log_event_handler
 from relations.postgresql import Database
 from relations.redis import Redis
+from relations.trino_catalog import TrinoCatalog
 from structured_config import CharmConfig
 from utils import load_superset_files, query_metadata_database
 
@@ -86,6 +88,9 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         # Handle redis relation
         self.redis_handler = Redis(self)
+
+        # Handle trino-catalog relation
+        self.trino_catalog_handler = TrinoCatalog(self)
 
         # Handle basic charm lifecycle
         self.framework.observe(self.on.install, self._on_install)
@@ -204,6 +209,10 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             if check.status != CheckStatus.UP:
                 self.unit.status = MaintenanceStatus("Status check: DOWN")
                 return
+
+        # Sync Trino catalog databases if the relation exists
+        if self.model.get_relation(TRINO_CATALOG_RELATION_NAME):
+            self.trino_catalog_handler.sync_databases()
 
         self.unit.set_workload_version(f"v{SUPERSET_VERSION}")
         self.unit.status = ActiveStatus("Status check: UP")
