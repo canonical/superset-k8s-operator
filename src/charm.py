@@ -49,7 +49,7 @@ from literals import (
 from log import log_event_handler
 from relations.postgresql import Database
 from relations.redis import Redis
-from relations.trino_catalog import TrinoCatalog
+from relations.trino_catalog import TrinoCatalogRelationHandler
 from structured_config import CharmConfig
 from utils import load_superset_files, query_metadata_database
 
@@ -90,7 +90,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         self.redis_handler = Redis(self)
 
         # Handle trino-catalog relation
-        self.trino_catalog_handler = TrinoCatalog(self)
+        self.trino_catalog_handler = TrinoCatalogRelationHandler(self)
 
         # Handle basic charm lifecycle
         self.framework.observe(self.on.install, self._on_install)
