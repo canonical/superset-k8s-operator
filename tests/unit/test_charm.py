@@ -82,9 +82,9 @@ class TestCharm(TestCase):
                     "startup": "enabled",
                     "environment": {
                         "ALLOW_IMAGE_DOMAINS": None,
-                        "SUPERSET_SECRET_KEY": "example-pass",
+                        "SUPERSET_SECRET_KEY": "example-pass",  # nosec B105
                         "ADMIN_USER": "unique-user",
-                        "ADMIN_PASSWORD": "admin",
+                        "ADMIN_PASSWORD": "admin",  # nosec B105
                         "CHARM_FUNCTION": "app-gunicorn",
                         "SQL_ALCHEMY_URI": "postgresql://postgres_user:admin@myhost:5432/superset",
                         "REDIS_HOST": "redis-host",
@@ -94,7 +94,7 @@ class TestCharm(TestCase):
                         "SQLALCHEMY_POOL_TIMEOUT": 300,
                         "SQLALCHEMY_MAX_OVERFLOW": 5,
                         "GOOGLE_KEY": None,
-                        "GOOGLE_SECRET": None,
+                        "GOOGLE_SECRET": None,  # nosec B105
                         "OAUTH_DOMAIN": None,
                         "OAUTH_ADMIN_EMAIL": "admin@superset.com",
                         "SELF_REGISTRATION_ROLE": "Public",
@@ -189,7 +189,7 @@ class TestCharm(TestCase):
                         "SQLALCHEMY_POOL_TIMEOUT": 300,
                         "SQLALCHEMY_MAX_OVERFLOW": 5,
                         "GOOGLE_KEY": None,
-                        "GOOGLE_SECRET": None,
+                        "GOOGLE_SECRET": None,  # nosec B105
                         "OAUTH_DOMAIN": None,
                         "OAUTH_ADMIN_EMAIL": "admin@superset.com",
                         "SELF_REGISTRATION_ROLE": "Public",
@@ -598,5 +598,5 @@ def database_provider_databag():
     return {
         "endpoints": "myhost:5432,anotherhost:2345",
         "username": "postgres_user",
-        "password": "admin",
+        "password": "admin",  # nosec B105
     }
