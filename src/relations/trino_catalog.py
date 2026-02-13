@@ -151,6 +151,10 @@ class TrinoCatalogRelationHandler(ops.Object):
             True if the charm function is a UI function and base
             relations are ready.
         """
+        if not self.charm.unit.is_leader():
+            logger.debug("Skipping trino-catalog sync: not the leader unit")
+            return False
+
         if self.charm.config["charm-function"] not in UI_FUNCTIONS:
             logger.debug(
                 "Skipping trino-catalog sync: charm-function '%s' "

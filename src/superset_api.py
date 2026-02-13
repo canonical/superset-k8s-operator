@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 MAX_PAGE_SIZE = 100
 MAX_PAGES = 50
 
+# HTTP request timeout in seconds
+DEFAULT_REQUEST_TIMEOUT = 30
+
 
 @dataclass(frozen=True)
 class TrinoConnection:
@@ -61,6 +64,7 @@ class SupersetApiClient:
         admin_username: str,
         admin_password: str,
         base_url: str = "http://localhost:8088",
+        timeout: int = DEFAULT_REQUEST_TIMEOUT,
     ):
         """Initialize the Superset API client.
 
@@ -68,10 +72,12 @@ class SupersetApiClient:
             admin_username: Superset admin username.
             admin_password: Superset admin password.
             base_url: Superset base URL (default: http://localhost:8088).
+            timeout: Request timeout in seconds (default: 30).
         """
         self.base_url = base_url.rstrip("/")
         self._admin_username = admin_username
         self._admin_password = admin_password
+        self._timeout = timeout
         self._access_token: str | None = None
         self._csrf_token: str | None = None
         self._session_cookie: str | None = None
@@ -98,7 +104,7 @@ class SupersetApiClient:
         )
 
         try:
-            with urllib.request.urlopen(req) as resp:  # nosec B310
+            with urllib.request.urlopen(req, timeout=self._timeout) as resp:  # nosec B310
                 data = json.loads(resp.read())
                 self._access_token = data["access_token"]
                 if not self._access_token:
@@ -121,7 +127,7 @@ class SupersetApiClient:
         )
 
         try:
-            with urllib.request.urlopen(csrf_req) as resp:  # nosec B310
+            with urllib.request.urlopen(csrf_req, timeout=self._timeout) as resp:  # nosec B310
                 data = json.loads(resp.read())
                 self._csrf_token = data["result"]
                 if not self._csrf_token:
@@ -169,7 +175,7 @@ class SupersetApiClient:
         )
 
         try:
-            with urllib.request.urlopen(req) as resp:  # nosec B310
+            with urllib.request.urlopen(req, timeout=self._timeout) as resp:  # nosec B310
                 return json.loads(resp.read())
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8", errors="replace")
@@ -263,6 +269,39 @@ class SupersetApiClient:
 
         return uri
 
+    @staticmethod
+    def _get_default_trino_database_payload(
+        database_name: str, sqlalchemy_uri: str
+    ) -> dict[str, Any]:
+        """Get the default payload for creating a Trino database in Superset.
+
+        Args:
+            database_name: Name for the database in Superset.
+            sqlalchemy_uri: SQLAlchemy connection URI.
+
+        Returns:
+            Default payload dict for Trino database creation.
+        """
+        return {
+            "engine": "trino",
+            "database_name": database_name,
+            "configuration_method": "sqlalchemy_form",
+            "sqlalchemy_uri": sqlalchemy_uri,
+            "engine_information": {
+                "disable_ssh_tunneling": False,
+                "supports_file_upload": True,
+            },
+            "extra": json.dumps(
+                {
+                    "allows_virtual_table_explore": True,
+                    "cost_estimate_enabled": True,
+                }
+            ),
+            "expose_in_sqllab": True,
+            "allow_run_async": True,
+            "impersonate_user": True,
+        }
+
     def get_trino_databases(self) -> list[TrinoConnection]:
         """Get existing Trino database connections.
 
@@ -340,25 +379,9 @@ class SupersetApiClient:
             host_port, trino_catalog, username, password, use_ssl
         )
 
-        payload = {
-            "engine": "trino",
-            "database_name": database_name,
-            "configuration_method": "sqlalchemy_form",
-            "sqlalchemy_uri": sqlalchemy_uri,
-            "engine_information": {
-                "disable_ssh_tunneling": False,
-                "supports_file_upload": True,
-            },
-            "extra": json.dumps(
-                {
-                    "allows_virtual_table_explore": True,
-                    "cost_estimate_enabled": True,
-                }
-            ),
-            "expose_in_sqllab": True,
-            "allow_run_async": True,
-            "impersonate_user": True,
-        }
+        payload = self._get_default_trino_database_payload(
+            database_name, sqlalchemy_uri
+        )
 
         logger.info(
             "Creating Superset database '%s' for Trino catalog '%s'",
