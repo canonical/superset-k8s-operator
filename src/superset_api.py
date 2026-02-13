@@ -196,6 +196,10 @@ class SupersetApiClient:
                 f"API {method} {endpoint} failed ({e.code}): {body}",
                 status_code=e.code,
             ) from e
+        except TimeoutError as e:
+            raise SupersetApiError(
+                f"API {method} {endpoint} timed out after {self._timeout}s: {e}"
+            ) from e
         except urllib.error.URLError as e:
             raise SupersetApiError(
                 f"API {method} {endpoint} connection error: {e}"

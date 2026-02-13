@@ -124,6 +124,10 @@ async def deploy_trino_superset(
     ops_test: OpsTest, charm: str, charm_image: str
 ):
     """Deploy Superset with dependencies and Trino."""
+    await ops_test.model.set_config(
+        {"logging-config": "<root>=INFO;unit=DEBUG"}
+    )
+
     # Deploy dependencies and Trino in parallel
     await ops_test.model.deploy(POSTGRES_NAME, channel="14", trust=True)
     await ops_test.model.deploy(REDIS_NAME, channel="edge", trust=True)
@@ -260,6 +264,7 @@ async def test_03_configure_user_secret(ops_test: OpsTest):
     user_secret_id = user_secret.split(":")[-1]
 
     await ops_test.model.grant_secret(USER_SECRET_LABEL, TRINO_APP)
+    await ops_test.model.grant_secret(USER_SECRET_LABEL, SUPERSET_APP)
 
     async with ops_test.fast_forward():
         await ops_test.model.applications[TRINO_APP].set_config(
@@ -272,10 +277,6 @@ async def test_03_configure_user_secret(ops_test: OpsTest):
             timeout=TIMEOUT_DEFAULT,
         )
 
-    # Grant to Superset (requirer needs read access)
-    await ops_test.model.grant_secret(USER_SECRET_LABEL, SUPERSET_APP)
-
-    async with ops_test.fast_forward():
         await ops_test.model.wait_for_idle(
             apps=[SUPERSET_APP],
             status="active",
