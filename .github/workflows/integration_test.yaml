@@ -13,9 +13,12 @@ jobs:
     uses: canonical/operator-workflows/.github/workflows/integration_test.yaml@main
     secrets: inherit
     with:
+      test-timeout: 90
       channel: 1.28-strict/stable
       modules: '["test_charm.py", "test_scaling.py", "test_upgrades.py", "test_major_upgrades.py"]'
       juju-channel: 3/stable
-      self-hosted-runner: false
+      self-hosted-runner: true
+      self-hosted-runner-label: "xlarge"
+      builder-runner-label: "xlarge"
       microk8s-addons: "dns ingress rbac storage metallb:10.15.119.2-10.15.119.4 registry"
       trivy-severity-config: CRITICAL
