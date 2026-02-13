@@ -104,7 +104,9 @@ class SupersetApiClient:
         )
 
         try:
-            with urllib.request.urlopen(req, timeout=self._timeout) as resp:  # nosec B310
+            with urllib.request.urlopen(
+                req, timeout=self._timeout
+            ) as resp:  # nosec B310
                 data = json.loads(resp.read())
                 self._access_token = data["access_token"]
                 if not self._access_token:
@@ -127,7 +129,9 @@ class SupersetApiClient:
         )
 
         try:
-            with urllib.request.urlopen(csrf_req, timeout=self._timeout) as resp:  # nosec B310
+            with urllib.request.urlopen(
+                csrf_req, timeout=self._timeout
+            ) as resp:  # nosec B310
                 data = json.loads(resp.read())
                 self._csrf_token = data["result"]
                 if not self._csrf_token:
@@ -175,7 +179,9 @@ class SupersetApiClient:
         )
 
         try:
-            with urllib.request.urlopen(req, timeout=self._timeout) as resp:  # nosec B310
+            with urllib.request.urlopen(
+                req, timeout=self._timeout
+            ) as resp:  # nosec B310
                 return json.loads(resp.read())
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8", errors="replace")
