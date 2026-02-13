@@ -44,7 +44,7 @@ PREFERRED_DATABASE = [
 # Redis caching
 CACHE_CONFIG = {
     "CACHE_TYPE": "RedisCache",
-    "CACHE_DEFAULT_TIMEOUT": 300,
+    "CACHE_DEFAULT_TIMEOUT": int(os.getenv("REDIS_TIMEOUT", 300)),
     "CACHE_REDIS_HOST": os.getenv("REDIS_HOST"),
     "CACHE_REDIS_PORT": int(os.getenv("REDIS_PORT")),
     "CACHE_REDIS_DB": 0,
@@ -52,7 +52,7 @@ CACHE_CONFIG = {
 # TALISMAN_ENABLED=True
 FILTER_STATE_CACHE_CONFIG = {
     "CACHE_TYPE": "RedisCache",
-    "CACHE_DEFAULT_TIMEOUT": 86400,
+    "CACHE_DEFAULT_TIMEOUT": int(os.getenv("REDIS_TIMEOUT", 300)),
     "CACHE_KEY_PREFIX": "superset_filter_cache",
     "CACHE_REDIS_HOST": os.getenv("REDIS_HOST"),
     "CACHE_REDIS_PORT": int(os.getenv("REDIS_PORT")),
@@ -60,7 +60,7 @@ FILTER_STATE_CACHE_CONFIG = {
 }
 EXPLORE_FORM_DATA_CACHE_CONFIG = {
     "CACHE_TYPE": "RedisCache",
-    "CACHE_DEFAULT_TIMEOUT": 86400,  # 24 hours
+    "CACHE_DEFAULT_TIMEOUT": int(os.getenv("REDIS_TIMEOUT", 300)),
     "CACHE_KEY_PREFIX": "superset_explore_cache",
     "CACHE_REDIS_HOST": os.getenv("REDIS_HOST"),
     "CACHE_REDIS_PORT": int(os.getenv("REDIS_PORT")),
@@ -68,7 +68,7 @@ EXPLORE_FORM_DATA_CACHE_CONFIG = {
 }
 DATA_CACHE_CONFIG = {
     "CACHE_TYPE": "RedisCache",
-    "CACHE_DEFAULT_TIMEOUT": 300,
+    "CACHE_DEFAULT_TIMEOUT": int(os.getenv("REDIS_TIMEOUT", 300)),
     "CACHE_REDIS_HOST": os.getenv("REDIS_HOST"),
     "CACHE_REDIS_PORT": int(os.getenv("REDIS_PORT")),
     "CACHE_REDIS_DB": 3,
