@@ -178,6 +178,29 @@ async def deploy_trino_superset(
             == "active"
         )
 
+    # Configure Trino user secret and grant access to both Trino and Superset
+    users_data = "app-superset-k8s: testpassword"  # nosec
+
+    user_secret = await ops_test.model.add_secret(
+        name=USER_SECRET_LABEL,
+        data_args=[f"users={users_data}"],
+    )
+    user_secret_id = user_secret.split(":")[-1]
+
+    await ops_test.model.grant_secret(USER_SECRET_LABEL, TRINO_APP)
+    await ops_test.model.grant_secret(USER_SECRET_LABEL, SUPERSET_APP)
+
+    async with ops_test.fast_forward():
+        await ops_test.model.applications[TRINO_APP].set_config(
+            {"user-secret-id": user_secret_id}
+        )
+
+        await ops_test.model.wait_for_idle(
+            apps=[TRINO_APP, SUPERSET_APP],
+            status="active",
+            timeout=TIMEOUT_DEFAULT,
+        )
+
 
 @pytest_asyncio.fixture(scope="module")
 async def secret_ids(ops_test: OpsTest) -> dict[str, str]:
@@ -253,40 +276,7 @@ async def test_02_configure_trino_catalogs(
 
 @pytest.mark.abort_on_fail
 @pytest.mark.usefixtures("deploy-trino-superset")
-async def test_03_configure_user_secret(ops_test: OpsTest):
-    """Test configuring the Trino user secret and granting it to Superset."""
-    users_data = "app-superset-k8s: testpassword"  # nosec
-
-    user_secret = await ops_test.model.add_secret(
-        name=USER_SECRET_LABEL,
-        data_args=[f"users={users_data}"],
-    )
-    user_secret_id = user_secret.split(":")[-1]
-
-    await ops_test.model.grant_secret(USER_SECRET_LABEL, TRINO_APP)
-    await ops_test.model.grant_secret(USER_SECRET_LABEL, SUPERSET_APP)
-
-    async with ops_test.fast_forward():
-        await ops_test.model.applications[TRINO_APP].set_config(
-            {"user-secret-id": user_secret_id}
-        )
-
-        await ops_test.model.wait_for_idle(
-            apps=[TRINO_APP],
-            status="active",
-            timeout=TIMEOUT_DEFAULT,
-        )
-
-        await ops_test.model.wait_for_idle(
-            apps=[SUPERSET_APP],
-            status="active",
-            timeout=TIMEOUT_DEFAULT,
-        )
-
-
-@pytest.mark.abort_on_fail
-@pytest.mark.usefixtures("deploy-trino-superset")
-async def test_04_verify_databases_created(ops_test: OpsTest):
+async def test_03_verify_databases_created(ops_test: OpsTest):
     """Test that Superset database connections were created for each Trino catalog."""
     url = await get_unit_url(
         ops_test, application=SUPERSET_APP, unit=0, port=8088
@@ -310,7 +300,7 @@ async def test_04_verify_databases_created(ops_test: OpsTest):
 
 @pytest.mark.abort_on_fail
 @pytest.mark.usefixtures("deploy-trino-superset")
-async def test_05_add_catalog(
+async def test_04_add_catalog(
     ops_test: OpsTest, secret_ids: dict[str, str]
 ):  # pylint: disable=redefined-outer-name
     """Test that adding a new catalog creates a new Superset database."""
@@ -364,7 +354,7 @@ async def test_05_add_catalog(
 
 @pytest.mark.abort_on_fail
 @pytest.mark.usefixtures("deploy-trino-superset")
-async def test_06_credential_rotation(ops_test: OpsTest):
+async def test_05_credential_rotation(ops_test: OpsTest):
     """Test that updating the user secret triggers credential rotation."""
     await ops_test.juju(
         "secret-set",
@@ -397,7 +387,7 @@ async def test_06_credential_rotation(ops_test: OpsTest):
 
 @pytest.mark.abort_on_fail
 @pytest.mark.usefixtures("deploy-trino-superset")
-async def test_07_remove_catalog_no_deletion(
+async def test_06_remove_catalog_no_deletion(
     ops_test: OpsTest,
     secret_ids: dict[str, str],  # pylint: disable=redefined-outer-name
 ):
@@ -442,7 +432,7 @@ async def test_07_remove_catalog_no_deletion(
 
 @pytest.mark.abort_on_fail
 @pytest.mark.usefixtures("deploy-trino-superset")
-async def test_08_relation_broken(ops_test: OpsTest):
+async def test_07_relation_broken(ops_test: OpsTest):
     """Test that breaking the relation does NOT delete Superset databases."""
     async with ops_test.fast_forward():
         await ops_test.juju(
