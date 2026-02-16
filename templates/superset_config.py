@@ -43,32 +43,40 @@ PREFERRED_DATABASE = [
 
 # Redis caching
 CACHE_CONFIG = {
-    "CACHE_TYPE": "redis",
-    "CACHE_REDIS_URL": f"redis://{os.getenv('REDIS_HOST')}:{os.getenv('REDIS_PORT')}/0",
+    "CACHE_TYPE": "RedisCache",
+    "CACHE_DEFAULT_TIMEOUT": int(os.getenv("REDIS_TIMEOUT", 300)),
+    "CACHE_REDIS_HOST": os.getenv("REDIS_HOST"),
+    "CACHE_REDIS_PORT": int(os.getenv("REDIS_PORT")),
+    "CACHE_REDIS_DB": 0,
 }
 # TALISMAN_ENABLED=True
 FILTER_STATE_CACHE_CONFIG = {
     "CACHE_TYPE": "RedisCache",
-    "CACHE_DEFAULT_TIMEOUT": 86400, # 24 hours
+    "CACHE_DEFAULT_TIMEOUT": int(os.getenv("REDIS_TIMEOUT", 300)),
     "CACHE_KEY_PREFIX": "superset_filter_cache",
-    "CACHE_REDIS_URL": f"redis://{os.getenv('REDIS_HOST')}:{os.getenv('REDIS_PORT')}/1",
+    "CACHE_REDIS_HOST": os.getenv("REDIS_HOST"),
+    "CACHE_REDIS_PORT": int(os.getenv("REDIS_PORT")),
+    "CACHE_REDIS_DB": 1,
 }
 EXPLORE_FORM_DATA_CACHE_CONFIG = {
     "CACHE_TYPE": "RedisCache",
-    "CACHE_DEFAULT_TIMEOUT": 86400, # 24 hours
+    "CACHE_DEFAULT_TIMEOUT": int(os.getenv("REDIS_TIMEOUT", 300)),
     "CACHE_KEY_PREFIX": "superset_explore_cache",
-    "CACHE_REDIS_URL": f"redis://{os.getenv('REDIS_HOST')}:{os.getenv('REDIS_PORT')}/2",
+    "CACHE_REDIS_HOST": os.getenv("REDIS_HOST"),
+    "CACHE_REDIS_PORT": int(os.getenv("REDIS_PORT")),
+    "CACHE_REDIS_DB": 2,
 }
 DATA_CACHE_CONFIG = {
-    "CACHE_TYPE": "SupersetMetastoreCache",
-    "CACHE_KEY_PREFIX": "superset_results",
-    "CACHE_DEFAULT_TIMEOUT": 86400, # 24 hours
-    "CACHE_REDIS_URL": f"redis://{os.getenv('REDIS_HOST')}:{os.getenv('REDIS_PORT')}/3",
+    "CACHE_TYPE": "RedisCache",
+    "CACHE_DEFAULT_TIMEOUT": int(os.getenv("REDIS_TIMEOUT", 300)),
+    "CACHE_REDIS_HOST": os.getenv("REDIS_HOST"),
+    "CACHE_REDIS_PORT": int(os.getenv("REDIS_PORT")),
+    "CACHE_REDIS_DB": 3,
 }
 
 RESULTS_BACKEND = RedisCache(
     host=os.getenv("REDIS_HOST"),
-    port=os.getenv("REDIS_PORT"),
+    port=int(os.getenv("REDIS_PORT")),
     key_prefix="superset_results",
 )
 
@@ -155,12 +163,13 @@ class CeleryConfig(object):
     imports = (
         "superset.sql_lab",
         "superset.tasks",
+        "superset.tasks.async_queries",
     )
     result_backend = (
         f"redis://{os.getenv('REDIS_HOST')}:{os.getenv('REDIS_PORT')}/5"
     )
     worker_log_level = "DEBUG"
-    worker_prefetch_multiplier = 10
+    worker_prefetch_multiplier = 1
     task_acks_late = True
     task_annotations = {
         "sql_lab.get_sql_results": {
@@ -238,14 +247,16 @@ FEATURE_FLAGS = {
 
 # Asynchronous queries
 GLOBAL_ASYNC_QUERIES_REDIS_STREAM_PREFIX = "async-events-"
-GLOBAL_ASYNC_QUERIES_JWT_SECRET = os.getenv("GLOBAL_ASYNC_QUERIES_JWT")
-GLOBAL_ASYNC_QUERIES_CACHE_BACKEND = RedisCache(
-    host=os.getenv("REDIS_HOST"),
-    port=int(os.getenv("REDIS_PORT")),
-    key_prefix="superset_results",
-    default_timeout=int(os.getenv("REDIS_TIMEOUT", 300)),
-)
-GLOBAL_ASYNC_QUERIES_POLLING_DELAY = os.getenv("GLOBAL_ASYNC_QUERIES_POLLING_DELAY")
+GLOBAL_ASYNC_QUERIES_JWT_SECRET = os.environ["GLOBAL_ASYNC_QUERIES_JWT"]
+GLOBAL_ASYNC_QUERIES_CACHE_BACKEND = {
+    "CACHE_TYPE": "RedisCache",
+    "CACHE_KEY_PREFIX": "superset_gaq_",
+    "CACHE_DEFAULT_TIMEOUT": int(os.getenv("REDIS_TIMEOUT", 300)),
+    "CACHE_REDIS_HOST": os.getenv("REDIS_HOST"),
+    "CACHE_REDIS_PORT": int(os.getenv("REDIS_PORT")),
+    "CACHE_REDIS_DB": 6,
+}
+GLOBAL_ASYNC_QUERIES_POLLING_DELAY = int(os.getenv("GLOBAL_ASYNC_QUERIES_POLLING_DELAY", "500"))
 SECRET_KEY = os.getenv("SUPERSET_SECRET_KEY")
 
 # Log rotation
