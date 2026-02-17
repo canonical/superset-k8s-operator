@@ -3,11 +3,11 @@
 
 """Integration tests for the trino-catalog relation on the Superset side."""
 
+import asyncio
 import logging
 
 import pytest
 import pytest_asyncio
-import requests
 from integration.helpers import (
     POSTGRES_NAME,
     REDIS_NAME,
@@ -50,22 +50,72 @@ TIMEOUT_DEFAULT = 1000
 TIMEOUT_DEPLOY = 2000
 
 
-def get_trino_databases(
-    session: requests.Session, base_url: str
+async def get_trino_databases(
+    ops_test: OpsTest,
+    expected_count: int | None = None,
+    timeout: int = TIMEOUT_DEFAULT,
 ) -> list[dict]:
     """Query Superset API for Trino database connections.
 
     Args:
-        session: Authenticated requests session.
-        base_url: Superset base URL.
+        ops_test: OpsTest fixture.
+        expected_count: If provided, poll until this many databases exist.
+        timeout: Maximum wait time in seconds when polling.
 
     Returns:
         List of database dicts where backend is trino.
+
+    Raises:
+        TimeoutError: If expected_count not reached within timeout.
     """
-    resp = session.get(f"{base_url}/api/v1/database/", timeout=30)
-    resp.raise_for_status()
-    databases = resp.json().get("result", [])
-    return [db for db in databases if db.get("backend") == "trino"]
+    url = await get_unit_url(
+        ops_test, application=SUPERSET_APP, unit=0, port=8088
+    )
+    session = await api_authentication(ops_test, url)
+
+    def _fetch_trino_dbs() -> list[dict]:
+        """Fetch Trino databases from Superset API."""
+        resp = session.get(f"{url}/api/v1/database/", timeout=30)
+        resp.raise_for_status()
+        databases = resp.json().get("result", [])
+        return [db for db in databases if db.get("backend") == "trino"]
+
+    # If no expected count, return immediately
+    if expected_count is None:
+        return _fetch_trino_dbs()
+
+    # Poll until expected count reached
+    interval = 20
+    attempts = timeout // interval
+
+    for attempt in range(attempts):
+        trino_dbs = _fetch_trino_dbs()
+
+        if len(trino_dbs) == expected_count:
+            logger.info(
+                "Found %d Trino databases after %d attempts",
+                expected_count,
+                attempt + 1,
+            )
+            return trino_dbs
+
+        logger.debug(
+            "Attempt %d/%d: Found %d/%d databases, retrying in %ds...",
+            attempt + 1,
+            attempts,
+            len(trino_dbs),
+            expected_count,
+            interval,
+        )
+        await asyncio.sleep(interval)
+
+    # Timeout - get final state for error message
+    trino_dbs = _fetch_trino_dbs()
+    db_names = [db.get("database_name") for db in trino_dbs]
+    raise TimeoutError(
+        f"Expected {expected_count} Trino databases, found {len(trino_dbs)}: "
+        f"{db_names}"
+    )
 
 
 def build_catalog_config(
@@ -121,8 +171,8 @@ def build_catalog_config(
 @pytest.mark.skip_if_deployed
 @pytest_asyncio.fixture(name="deploy-trino-superset", scope="module")
 async def deploy_trino_superset(
-    ops_test: OpsTest, charm: str, charm_image: str
-):
+    ops_test: OpsTest, charm: str, charm_image: str, secret_ids: dict[str, str]
+):  # pylint: disable=redefined-outer-name
     """Deploy Superset with dependencies and Trino."""
     await ops_test.model.set_config(
         {"logging-config": "<root>=INFO;unit=DEBUG"}
@@ -152,6 +202,7 @@ async def deploy_trino_superset(
         "charm-function": "app-gunicorn",
         "superset-secret-key": SUPERSET_SECRET_KEY,
         "admin-password": "admin",
+        "feature-flags": "GLOBAL_ASYNC_QUERIES",
     }
 
     await ops_test.model.deploy(
@@ -167,7 +218,7 @@ async def deploy_trino_superset(
             apps=[SUPERSET_APP],
             status="blocked",
             raise_on_blocked=False,
-            timeout=600,
+            timeout=TIMEOUT_DEPLOY,
         )
 
         # Integrate with postgresql and redis
@@ -190,9 +241,26 @@ async def deploy_trino_superset(
     await ops_test.model.grant_secret(USER_SECRET_LABEL, TRINO_APP)
     await ops_test.model.grant_secret(USER_SECRET_LABEL, SUPERSET_APP)
 
+    # Grant catalog secrets to Trino
+    await ops_test.model.grant_secret("postgresql-secret", TRINO_APP)
+    await ops_test.model.grant_secret("mysql-secret", TRINO_APP)
+
+    # Build catalog configuration using secret_ids fixture
+    catalog_config = build_catalog_config(secret_ids, ["pgsql", "mysql"])
+
     async with ops_test.fast_forward():
+        # Configure Trino with all settings and create relation
         await ops_test.model.applications[TRINO_APP].set_config(
-            {"user-secret-id": user_secret_id}
+            {
+                "user-secret-id": user_secret_id,
+                "external-hostname": "trino.test.local",
+                "catalog-config": catalog_config,
+            }
+        )
+
+        await ops_test.model.integrate(
+            f"{TRINO_APP}:trino-catalog",
+            f"{SUPERSET_APP}:trino-catalog",
         )
 
         await ops_test.model.wait_for_idle(
@@ -200,6 +268,9 @@ async def deploy_trino_superset(
             status="active",
             timeout=TIMEOUT_DEFAULT,
         )
+
+    # Wait for Superset to create both Trino databases (with retry)
+    await get_trino_databases(ops_test, expected_count=2)
 
 
 @pytest_asyncio.fixture(scope="module")
@@ -219,75 +290,14 @@ async def secret_ids(ops_test: OpsTest) -> dict[str, str]:
     )
     secrets["mysql"] = mysql_secret.split(":")[-1]
 
-    await ops_test.model.grant_secret("postgresql-secret", TRINO_APP)
-    await ops_test.model.grant_secret("mysql-secret", TRINO_APP)
-
     return secrets
 
 
 @pytest.mark.abort_on_fail
 @pytest.mark.usefixtures("deploy-trino-superset")
-async def test_01_create_relation(ops_test: OpsTest):
-    """Test creating the trino-catalog relation."""
-    async with ops_test.fast_forward():
-        await ops_test.model.integrate(
-            f"{TRINO_APP}:trino-catalog",
-            f"{SUPERSET_APP}:trino-catalog",
-        )
-
-        await ops_test.model.wait_for_idle(
-            apps=[TRINO_APP, SUPERSET_APP],
-            status="active",
-            raise_on_blocked=False,
-            timeout=TIMEOUT_DEFAULT,
-        )
-
-    trino_catalog_relations = [
-        rel
-        for rel in ops_test.model.applications[SUPERSET_APP].relations
-        if rel.matches(f"{SUPERSET_APP}:trino-catalog")
-    ]
-    assert len(trino_catalog_relations) > 0
-
-
-@pytest.mark.abort_on_fail
-@pytest.mark.usefixtures("deploy-trino-superset")
-async def test_02_configure_trino_catalogs(
-    ops_test: OpsTest,
-    secret_ids: dict[str, str],  # pylint: disable=redefined-outer-name
-):
-    """Test configuring Trino with catalogs and external hostname."""
-    catalog_config = build_catalog_config(secret_ids, ["pgsql", "mysql"])
-
-    async with ops_test.fast_forward():
-        await ops_test.model.applications[TRINO_APP].set_config(
-            {
-                "external-hostname": "trino.test.local",
-                "catalog-config": catalog_config,
-            }
-        )
-
-        await ops_test.model.wait_for_idle(
-            apps=[TRINO_APP],
-            status="active",
-            timeout=TIMEOUT_DEFAULT,
-        )
-
-
-@pytest.mark.abort_on_fail
-@pytest.mark.usefixtures("deploy-trino-superset")
-async def test_03_verify_databases_created(ops_test: OpsTest):
+async def test_01_verify_databases_created(ops_test: OpsTest):
     """Test that Superset database connections were created for each Trino catalog."""
-    url = await get_unit_url(
-        ops_test, application=SUPERSET_APP, unit=0, port=8088
-    )
-    session = await api_authentication(ops_test, url)
-    trino_dbs = get_trino_databases(session, url)
-
-    assert len(trino_dbs) == 2, (
-        f"Expected 2 Trino databases, got {len(trino_dbs)}: "
-        f"{[db.get('database_name') for db in trino_dbs]}"
-    )
+    trino_dbs = await get_trino_databases(ops_test, expected_count=2)
 
     db_names = {db["database_name"] for db in trino_dbs}
     expected_names = {"Pgsql (pgsql)", "Mysql (mysql)"}
@@ -300,7 +310,7 @@ async def test_03_verify_databases_created(ops_test: OpsTest):
 
 @pytest.mark.abort_on_fail
 @pytest.mark.usefixtures("deploy-trino-superset")
-async def test_04_add_catalog(
+async def test_02_add_catalog(
     ops_test: OpsTest, secret_ids: dict[str, str]
 ):  # pylint: disable=redefined-outer-name
     """Test that adding a new catalog creates a new Superset database."""
@@ -322,27 +332,12 @@ async def test_04_add_catalog(
         )
 
         await ops_test.model.wait_for_idle(
-            apps=[TRINO_APP],
+            apps=[TRINO_APP, SUPERSET_APP],
             status="active",
             timeout=TIMEOUT_DEFAULT,
         )
 
-        await ops_test.model.wait_for_idle(
-            apps=[SUPERSET_APP],
-            status="active",
-            timeout=TIMEOUT_DEFAULT,
-        )
-
-    url = await get_unit_url(
-        ops_test, application=SUPERSET_APP, unit=0, port=8088
-    )
-    session = await api_authentication(ops_test, url)
-    trino_dbs = get_trino_databases(session, url)
-
-    assert len(trino_dbs) == 3, (
-        f"Expected 3 Trino databases, got {len(trino_dbs)}: "
-        f"{[db.get('database_name') for db in trino_dbs]}"
-    )
+    trino_dbs = await get_trino_databases(ops_test, expected_count=3)
 
     db_names = {db["database_name"] for db in trino_dbs}
     assert (
@@ -354,7 +349,7 @@ async def test_04_add_catalog(
 
 @pytest.mark.abort_on_fail
 @pytest.mark.usefixtures("deploy-trino-superset")
-async def test_05_credential_rotation(ops_test: OpsTest):
+async def test_03_credential_rotation(ops_test: OpsTest):
     """Test that updating the user secret triggers credential rotation."""
     await ops_test.juju(
         "secret-set",
@@ -369,16 +364,7 @@ async def test_05_credential_rotation(ops_test: OpsTest):
             timeout=TIMEOUT_DEFAULT,
         )
 
-    url = await get_unit_url(
-        ops_test, application=SUPERSET_APP, unit=0, port=8088
-    )
-    session = await api_authentication(ops_test, url)
-    trino_dbs = get_trino_databases(session, url)
-
-    assert len(trino_dbs) == 3, (
-        f"Expected 3 Trino databases after credential rotation, "
-        f"got {len(trino_dbs)}"
-    )
+    trino_dbs = await get_trino_databases(ops_test, expected_count=3)
 
     logger.info(
         "Verified credential rotation: %d databases intact", len(trino_dbs)
@@ -387,7 +373,7 @@ async def test_05_credential_rotation(ops_test: OpsTest):
 
 @pytest.mark.abort_on_fail
 @pytest.mark.usefixtures("deploy-trino-superset")
-async def test_06_remove_catalog_no_deletion(
+async def test_04_remove_catalog_no_deletion(
     ops_test: OpsTest,
     secret_ids: dict[str, str],  # pylint: disable=redefined-outer-name
 ):
@@ -400,27 +386,12 @@ async def test_06_remove_catalog_no_deletion(
         )
 
         await ops_test.model.wait_for_idle(
-            apps=[TRINO_APP],
+            apps=[TRINO_APP, SUPERSET_APP],
             status="active",
             timeout=TIMEOUT_DEFAULT,
         )
 
-        await ops_test.model.wait_for_idle(
-            apps=[SUPERSET_APP],
-            status="active",
-            timeout=TIMEOUT_DEFAULT,
-        )
-
-    url = await get_unit_url(
-        ops_test, application=SUPERSET_APP, unit=0, port=8088
-    )
-    session = await api_authentication(ops_test, url)
-    trino_dbs = get_trino_databases(session, url)
-
-    assert len(trino_dbs) == 3, (
-        f"Expected 3 Trino databases (no deletion), got {len(trino_dbs)}: "
-        f"{[db.get('database_name') for db in trino_dbs]}"
-    )
+    trino_dbs = await get_trino_databases(ops_test, expected_count=3)
 
     db_names = {db["database_name"] for db in trino_dbs}
     assert (
@@ -432,7 +403,7 @@ async def test_06_remove_catalog_no_deletion(
 
 @pytest.mark.abort_on_fail
 @pytest.mark.usefixtures("deploy-trino-superset")
-async def test_07_relation_broken(ops_test: OpsTest):
+async def test_05_relation_broken(ops_test: OpsTest):
     """Test that breaking the relation does NOT delete Superset databases."""
     async with ops_test.fast_forward():
         await ops_test.juju(
@@ -455,16 +426,7 @@ async def test_07_relation_broken(ops_test: OpsTest):
     ]
     assert len(trino_catalog_relations) == 0
 
-    url = await get_unit_url(
-        ops_test, application=SUPERSET_APP, unit=0, port=8088
-    )
-    session = await api_authentication(ops_test, url)
-    trino_dbs = get_trino_databases(session, url)
-
-    assert len(trino_dbs) == 3, (
-        f"Expected 3 Trino databases after relation broken, "
-        f"got {len(trino_dbs)}"
-    )
+    trino_dbs = await get_trino_databases(ops_test, expected_count=3)
 
     logger.info(
         "Verified databases persist after relation broken: %d databases",

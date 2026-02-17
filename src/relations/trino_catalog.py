@@ -56,6 +56,10 @@ class TrinoCatalogRelationHandler(ops.Object):
             charm.on.secret_changed,
             self._on_secret_changed,
         )
+        self.framework.observe(
+            charm.on.update_status,
+            self._on_update_status,
+        )
 
     @log_event_handler(logger)
     def _on_relation_changed(self, event: ops.RelationEvent) -> None:
@@ -97,6 +101,11 @@ class TrinoCatalogRelationHandler(ops.Object):
         if secret_id and event.secret.id == secret_id:
             logger.info("Trino credentials secret changed, syncing databases")
             self.sync_databases(force_update_credentials=True)
+
+    @log_event_handler(logger)
+    def _on_update_status(self, event: ops.UpdateStatusEvent) -> None:
+        """Trigger database sync on update-status to reconcile state."""
+        self.sync_databases()
 
     def sync_databases(self, force_update_credentials: bool = False) -> None:
         """Synchronise Trino catalogs into Superset database connections.
