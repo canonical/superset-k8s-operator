@@ -141,4 +141,4 @@ When you update Trino's `catalog-config`, the pods restart to apply changes. Dur
 
 - Existing Superset queries to Trino will fail
 - New database connection creation may be delayed
-- Superset automatically retries until reconcilation is complete
+- Superset automatically retries until reconciliation is complete
