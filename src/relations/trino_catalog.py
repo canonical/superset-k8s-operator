@@ -9,6 +9,7 @@ Superset database connections via the Superset REST API.
 
 import logging
 from typing import Any
+from urllib.parse import urlsplit
 
 import ops
 from charms.trino_k8s.v0.trino_catalog import (
@@ -249,10 +250,7 @@ class TrinoCatalogRelationHandler(ops.Object):
         Returns:
             True when the port is 443, False otherwise.
         """
-        if ":" in trino_url:
-            port = trino_url.rsplit(":", 1)[-1]
-            return port == "443"
-        return False
+        return urlsplit(f"//{trino_url}").port == 443
 
     def _catalog_display_name(self, catalog_name: str) -> str:
         """Generate Superset database name from a catalog.
@@ -344,18 +342,7 @@ class TrinoCatalogRelationHandler(ops.Object):
                 conn for conn in existing_dbs if conn.catalog == catalog.name
             ]
 
-            if existing_connections:
-                self._update_existing_connections(
-                    api=api,
-                    connections=existing_connections,
-                    catalog_name=catalog.name,
-                    trino_url=trino_url,
-                    username=username,
-                    password=password,
-                    use_ssl=use_ssl,
-                    force_update=force_update,
-                )
-            else:
+            if not existing_connections:
                 self._create_new_connection(
                     api=api,
                     db_name=db_name,
@@ -367,6 +354,17 @@ class TrinoCatalogRelationHandler(ops.Object):
                 )
 
                 self._grant_database_access(api, db_name, role_id)
+
+            self._update_existing_connections(
+                api=api,
+                connections=existing_connections,
+                catalog_name=catalog.name,
+                trino_url=trino_url,
+                username=username,
+                password=password,
+                use_ssl=use_ssl,
+                force_update=force_update,
+            )
 
     def _update_existing_connections(  # pylint: disable=too-many-positional-arguments
         self,
@@ -396,31 +394,32 @@ class TrinoCatalogRelationHandler(ops.Object):
                 force_update or f"@{trino_url}/" not in conn.sqlalchemy_uri
             )
 
-            if needs_update:
-                logger.info(
-                    "Updating Superset database '%s' (id=%s)",
-                    conn.database_name,
-                    conn.id,
-                )
-                try:
-                    api.update_trino_database(
-                        database_id=conn.id,
-                        host_port=trino_url,
-                        trino_catalog=catalog_name,
-                        username=username,
-                        password=password,
-                        use_ssl=use_ssl,
-                    )
-                except SupersetApiError as e:
-                    logger.error(
-                        "Failed to update database '%s': %s",
-                        conn.database_name,
-                        e,
-                    )
-            else:
+            if not needs_update:
                 logger.debug(
                     "Superset database '%s' is up to date, skipping",
                     conn.database_name,
+                )
+                continue
+
+            logger.info(
+                "Updating Superset database '%s' (id=%s)",
+                conn.database_name,
+                conn.id,
+            )
+            try:
+                api.update_trino_database(
+                    database_id=conn.id,
+                    host_port=trino_url,
+                    trino_catalog=catalog_name,
+                    username=username,
+                    password=password,
+                    use_ssl=use_ssl,
+                )
+            except SupersetApiError as e:
+                logger.error(
+                    "Failed to update database '%s': %s",
+                    conn.database_name,
+                    e,
                 )
 
     def _create_new_connection(  # pylint: disable=too-many-positional-arguments

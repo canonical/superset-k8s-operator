@@ -105,35 +105,21 @@ class SupersetApiClient:
                 login_url, json=payload, timeout=self._timeout
             )
             response.raise_for_status()
-
-            data = response.json()
-            self._access_token = data.get("access_token")
-            self._refresh_token = data.get("refresh_token")
-
-            if not self._access_token or not self._refresh_token:
-                raise SupersetApiError("Access or refresh token not received")
-
-            # Decode access token expiry
-            try:
-                payload_decoded = jwt.decode(
-                    self._access_token, options={"verify_signature": False}
-                )
-                exp = payload_decoded.get("exp")
-                if exp:
-                    self._access_exp = datetime.fromtimestamp(
-                        exp, timezone.utc
-                    )
-            except Exception as e:
-                logger.warning("Failed to decode JWT expiry: %s", e)
-
-            # Get CSRF token
-            self._fetch_csrf_token()
-
-            logger.info("Successfully authenticated with Superset")
-
         except requests.RequestException as e:
             logger.error("Authentication failed: %s", e)
             raise SupersetApiError(f"Authentication failed: {e}") from e
+
+        data = response.json()
+        self._access_token = data.get("access_token")
+        self._refresh_token = data.get("refresh_token")
+
+        if not self._access_token or not self._refresh_token:
+            raise SupersetApiError("Access or refresh token not received")
+
+        self._update_access_expiry()
+        self._fetch_csrf_token()
+
+        logger.info("Successfully authenticated with Superset")
 
     def _fetch_csrf_token(self) -> None:
         """Fetch the CSRF token using the access token.
@@ -179,32 +165,30 @@ class SupersetApiClient:
                 refresh_url, headers=headers, timeout=self._timeout
             )
             response.raise_for_status()
-
-            self._access_token = response.json().get("access_token")
-            if not self._access_token:
-                raise SupersetApiError("Access token not received on refresh")
-
-            # Update expiry
-            try:
-                payload_decoded = jwt.decode(
-                    self._access_token, options={"verify_signature": False}
-                )
-                exp = payload_decoded.get("exp")
-                if exp:
-                    self._access_exp = datetime.fromtimestamp(
-                        exp, timezone.utc
-                    )
-            except Exception as e:
-                logger.warning("Failed to decode JWT expiry: %s", e)
-
-            # Refresh CSRF token
-            self._fetch_csrf_token()
-
-            logger.info("Successfully refreshed access token")
-
         except requests.RequestException as e:
             logger.error("Token refresh failed: %s", e)
             raise SupersetApiError(f"Token refresh failed: {e}") from e
+
+        self._access_token = response.json().get("access_token")
+        if not self._access_token:
+            raise SupersetApiError("Access token not received on refresh")
+
+        self._update_access_expiry()
+        self._fetch_csrf_token()
+
+        logger.info("Successfully refreshed access token")
+
+    def _update_access_expiry(self) -> None:
+        """Decode the access token and update the cached expiry timestamp."""
+        try:
+            payload = jwt.decode(
+                self._access_token, options={"verify_signature": False}
+            )
+            exp = payload.get("exp")
+            if exp:
+                self._access_exp = datetime.fromtimestamp(exp, timezone.utc)
+        except Exception as e:
+            logger.warning("Failed to decode JWT expiry: %s", e)
 
     def _ensure_authenticated(self) -> None:
         """Ensure we have valid authentication, refreshing if needed."""
