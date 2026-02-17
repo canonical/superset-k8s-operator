@@ -5,11 +5,13 @@
 
 import json
 import logging
-import urllib.error
-import urllib.request
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import quote_plus
+
+import jwt
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -78,9 +80,11 @@ class SupersetApiClient:
         self._admin_username = admin_username
         self._admin_password = admin_password
         self._timeout = timeout
+        self._session = requests.Session()
         self._access_token: str | None = None
+        self._refresh_token: str | None = None
         self._csrf_token: str | None = None
-        self._session_cookie: str | None = None
+        self._access_exp: datetime | None = None
 
     def _authenticate(self) -> None:
         """Authenticate with Superset and get tokens.
@@ -88,71 +92,151 @@ class SupersetApiClient:
         Raises:
             SupersetApiError: If authentication fails.
         """
-        login_payload = json.dumps(
-            {
-                "username": self._admin_username,
-                "password": self._admin_password,
-                "provider": "db",
-            }
-        ).encode("utf-8")
-
-        req = urllib.request.Request(
-            f"{self.base_url}/api/v1/security/login",
-            data=login_payload,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
+        login_url = f"{self.base_url}/api/v1/security/login"
+        payload = {
+            "username": self._admin_username,
+            "password": self._admin_password,
+            "provider": "db",
+            "refresh": True,
+        }
 
         try:
-            with urllib.request.urlopen(
-                req, timeout=self._timeout
-            ) as resp:  # nosec B310
-                data = json.loads(resp.read())
-                self._access_token = data["access_token"]
-                if not self._access_token:
-                    raise SupersetApiError("Access token not received")
-                cookie_header = resp.headers.get("Set-Cookie", "")
-                if "session=" in cookie_header:
-                    self._session_cookie = cookie_header.split("session=")[
-                        1
-                    ].split(";")[0]
-        except (urllib.error.URLError, KeyError) as e:
-            raise SupersetApiError(f"Failed to obtain JWT token: {e}") from e
+            response = self._session.post(
+                login_url, json=payload, timeout=self._timeout
+            )
+            response.raise_for_status()
 
-        csrf_headers = {"Authorization": f"Bearer {self._access_token}"}
-        if self._session_cookie:
-            csrf_headers["Cookie"] = f"session={self._session_cookie}"
+            data = response.json()
+            self._access_token = data.get("access_token")
+            self._refresh_token = data.get("refresh_token")
 
-        csrf_req = urllib.request.Request(
-            f"{self.base_url}/api/v1/security/csrf_token/",
-            headers=csrf_headers,
-        )
+            if not self._access_token or not self._refresh_token:
+                raise SupersetApiError("Access or refresh token not received")
+
+            # Decode access token expiry
+            try:
+                payload_decoded = jwt.decode(
+                    self._access_token, options={"verify_signature": False}
+                )
+                exp = payload_decoded.get("exp")
+                if exp:
+                    self._access_exp = datetime.fromtimestamp(
+                        exp, timezone.utc
+                    )
+            except Exception as e:
+                logger.warning("Failed to decode JWT expiry: %s", e)
+
+            # Get CSRF token
+            self._fetch_csrf_token()
+
+            logger.info("Successfully authenticated with Superset")
+
+        except requests.RequestException as e:
+            logger.error("Authentication failed: %s", e)
+            raise SupersetApiError(f"Authentication failed: {e}") from e
+
+    def _fetch_csrf_token(self) -> None:
+        """Fetch the CSRF token using the access token.
+
+        Raises:
+            SupersetApiError: If CSRF token cannot be obtained.
+        """
+        csrf_url = f"{self.base_url}/api/v1/security/csrf_token/"
+        headers = {"Authorization": f"Bearer {self._access_token}"}
 
         try:
-            with urllib.request.urlopen(
-                csrf_req, timeout=self._timeout
-            ) as resp:  # nosec B310
-                data = json.loads(resp.read())
-                self._csrf_token = data["result"]
-                if not self._csrf_token:
-                    raise SupersetApiError("CSRF token not received")
-                cookie_header = resp.headers.get("Set-Cookie", "")
-                if "session=" in cookie_header:
-                    self._session_cookie = cookie_header.split("session=")[
-                        1
-                    ].split(";")[0]
-        except (urllib.error.URLError, KeyError) as e:
+            response = self._session.get(
+                csrf_url, headers=headers, timeout=self._timeout
+            )
+            response.raise_for_status()
+
+            self._csrf_token = response.json().get("result")
+            if not self._csrf_token:
+                raise SupersetApiError("CSRF token not received")
+
+            logger.debug("Successfully obtained CSRF token")
+
+        except requests.RequestException as e:
             raise SupersetApiError(f"Failed to obtain CSRF token: {e}") from e
 
+    def _refresh_access_token(self) -> None:
+        """Refresh the access token using the refresh token.
+
+        Raises:
+            SupersetApiError: If token refresh fails.
+        """
+        if not self._refresh_token:
+            raise SupersetApiError("No refresh token available")
+
+        refresh_url = f"{self.base_url}/api/v1/security/refresh"
+        headers = {
+            "Authorization": f"Bearer {self._refresh_token}",
+            "Content-Type": "application/json",
+        }
+
+        try:
+            response = self._session.post(
+                refresh_url, headers=headers, timeout=self._timeout
+            )
+            response.raise_for_status()
+
+            self._access_token = response.json().get("access_token")
+            if not self._access_token:
+                raise SupersetApiError("Access token not received on refresh")
+
+            # Update expiry
+            try:
+                payload_decoded = jwt.decode(
+                    self._access_token, options={"verify_signature": False}
+                )
+                exp = payload_decoded.get("exp")
+                if exp:
+                    self._access_exp = datetime.fromtimestamp(
+                        exp, timezone.utc
+                    )
+            except Exception as e:
+                logger.warning("Failed to decode JWT expiry: %s", e)
+
+            # Refresh CSRF token
+            self._fetch_csrf_token()
+
+            logger.info("Successfully refreshed access token")
+
+        except requests.RequestException as e:
+            logger.error("Token refresh failed: %s", e)
+            raise SupersetApiError(f"Token refresh failed: {e}") from e
+
+    def _ensure_authenticated(self) -> None:
+        """Ensure we have valid authentication, refreshing if needed."""
+        # Initial authentication
+        if not self._access_token:
+            self._authenticate()
+            return
+
+        # Check if token is expired and refresh if needed
+        if self._access_exp and self._access_exp <= datetime.now(timezone.utc):
+            logger.debug("Access token expired, refreshing")
+            try:
+                self._refresh_access_token()
+            except SupersetApiError:
+                # If refresh fails, try full re-authentication
+                logger.warning("Token refresh failed, re-authenticating")
+                self._authenticate()
+
     def _send_request(
-        self, method: str, endpoint: str, payload: dict[str, Any] | None = None
+        self,
+        method: str,
+        endpoint: str,
+        params: dict[str, Any] | None = None,
+        payload: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Send an authenticated request to the Superset API.
 
         Args:
-            method: HTTP method (GET, POST, PUT, etc.).
+            method: HTTP method (GET, POST, PUT, DELETE).
             endpoint: API endpoint path.
-            payload: JSON payload for POST/PUT requests.
+            params: URL query parameters.
+            payload: JSON payload for request body.
 
         Returns:
             Parsed JSON response.
@@ -160,8 +244,7 @@ class SupersetApiClient:
         Raises:
             SupersetApiError: If the request fails.
         """
-        if not self._access_token:
-            self._authenticate()
+        self._ensure_authenticated()
 
         url = f"{self.base_url}{endpoint}"
         headers = {
@@ -170,39 +253,23 @@ class SupersetApiClient:
             "X-CSRF-Token": self._csrf_token or "",
             "Referer": f"{self.base_url}/api/v1/security/csrf_token/",
         }
-        if self._session_cookie:
-            headers["Cookie"] = f"session={self._session_cookie}"
-
-        data = json.dumps(payload).encode("utf-8") if payload else None
-        req = urllib.request.Request(
-            url, data=data, headers=headers, method=method
-        )
 
         try:
-            with urllib.request.urlopen(
-                req, timeout=self._timeout
-            ) as resp:  # nosec B310
-                return json.loads(resp.read())
-        except urllib.error.HTTPError as e:
-            body = e.read().decode("utf-8", errors="replace")
-            logger.error(
-                "Superset API %s %s failed (%s): %s",
+            response = self._session.request(
                 method,
-                endpoint,
-                e.code,
-                body,
+                url,
+                params=params,
+                headers=headers,
+                json=payload,
+                timeout=self._timeout,
             )
+            response.raise_for_status()
+            return response.json()
+
+        except requests.RequestException as e:
+            logger.error("Request error for %s %s: %s", method, url, e)
             raise SupersetApiError(
-                f"API {method} {endpoint} failed ({e.code}): {body}",
-                status_code=e.code,
-            ) from e
-        except TimeoutError as e:
-            raise SupersetApiError(
-                f"API {method} {endpoint} timed out after {self._timeout}s: {e}"
-            ) from e
-        except urllib.error.URLError as e:
-            raise SupersetApiError(
-                f"API {method} {endpoint} connection error: {e}"
+                f"API {method} {endpoint} request failed: {e}"
             ) from e
 
     def _paginated_get(
