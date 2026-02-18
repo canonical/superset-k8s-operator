@@ -8,6 +8,7 @@ APPLICATION_PORT = 8088
 DB_NAME = "superset"
 DB_RELATION_NAME = "postgresql_db"
 REDIS_RELATION_NAME = "redis"
+TRINO_CATALOG_RELATION_NAME = "trino-catalog"
 SUPERSET_VERSION = "6.0.0"
 REDIS_KEY_PREFIX = "superset_results"
 APP_NAME = "superset"

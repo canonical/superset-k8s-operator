@@ -15,7 +15,7 @@ jobs:
     with:
       test-timeout: 90
       channel: 1.35-strict/stable
-      modules: '["test_charm.py", "test_scaling.py", "test_upgrades.py", "test_major_upgrades.py"]'
+      modules: '["test_charm.py", "test_scaling.py", "test_upgrades.py", "test_major_upgrades.py", "test_trino_catalog.py"]'
       juju-channel: 3/stable
       self-hosted-runner: false
       microk8s-addons: "dns ingress rbac storage metallb:10.15.119.2-10.15.119.4 registry"
