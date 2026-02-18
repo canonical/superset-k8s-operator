@@ -2,5 +2,5 @@ ops >= 2.16.0
 pydantic==1.10.12
 sqlalchemy<2.0
 cosl==1.4.0
-requests==2.32.0
+requests==2.32.4
 pyjwt==2.11.0
