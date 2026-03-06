@@ -166,3 +166,6 @@ options:
   max-form-parts:
     description: Werkzeug limit for the number of parts to allow in a multipart form.
     type: int
+  data-access-request-url:
+    description: Data access request URL shown with "permission denied" error messages.
+    type: string

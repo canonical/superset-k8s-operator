@@ -8,6 +8,10 @@ from superset.stats_logger import StatsdStatsLogger
 import sentry_sdk
 import yaml
 
+import json
+import re
+from flask import request
+
 
 APPLICATION_PORT = os.getenv("APPLICATION_PORT")
 SERVER_ALIAS = os.getenv("SERVER_ALIAS")
@@ -336,3 +340,143 @@ def FLASK_APP_MUTATOR(app):
 
     # Swap the default Request class with our configured one
     app.request_class = ConfiguredLimitRequest
+
+# Re-write Trino error messages in a more user-friendly way.
+request_message = "Request access from your administrator"
+if os.getenv("DATA_ACCESS_REQUEST_URL"):
+    request_message = f"Request access:\n {os.getenv('DATA_ACCESS_REQUEST_URL')}"
+
+PERMISSION_DENIED_MESSAGE = (
+    "You don’t have access to this dataset.\n\n"
+    f"{request_message}"
+)
+
+# Example:
+#   Access Denied: Cannot select from columns [html_url, login, url, node_id] in table or view users
+_COLUMN_DENIED_PATTERN = re.compile(
+    r"Cannot select from columns \[(?P<columns>[^\]]+)\]\s+in\s+table\s+or\s+view\s+(?P<table>[\w.]+)",
+    re.IGNORECASE,
+)
+
+# Example:
+#   Access Denied: Cannot access catalog sales
+_CATALOG_DENIED_PATTERN = re.compile(
+    r"Cannot access catalog\s+(?P<catalog>[\w-]+)",
+    re.IGNORECASE,
+)
+
+_DENIED_PATTERNS = [
+    re.compile(r"\bPERMISSION_DENIED\b", re.IGNORECASE),
+    re.compile(r"name=PERMISSION_DENIED", re.IGNORECASE),
+    re.compile(r"\bAccess Denied\b", re.IGNORECASE),
+    re.compile(r"\bnot authorized\b", re.IGNORECASE),
+]
+
+def _rewrite_permission_denied_string(msg: str) -> str:
+    """
+    Return a rewritten message if this is a permission-denied case.
+    Otherwise, return the original string unchanged.
+    """
+    if not isinstance(msg, str) or not msg.strip():
+        return msg
+
+    m = _COLUMN_DENIED_PATTERN.search(msg)
+    if m:
+        table = (m.group("table") or "").strip()
+        columns = (m.group("columns") or "").strip()
+
+        # Normalize columns formatting a bit
+        columns_clean = ", ".join([c.strip() for c in columns.split(",") if c.strip()]) or columns
+
+        return (
+            f"Access to one or more restricted columns in '{table}' was blocked.\n\n"
+            f"Restricted columns: {columns_clean}\n\n"
+            f"{request_message}"
+        )
+
+    # Catalog-level denial
+    m = _CATALOG_DENIED_PATTERN.search(msg)
+    if m:
+        catalog = (m.group("catalog") or "").strip()
+        return (
+            f"Access to catalog '{catalog}' is restricted.\n\n"
+            f"{request_message}"
+        )
+
+    # Generic permission denied
+    if any(p.search(msg) for p in _DENIED_PATTERNS):
+        return PERMISSION_DENIED_MESSAGE
+
+    return msg
+
+
+def _rewrite_any(obj):
+    """
+    Recursively rewrite denied messages anywhere inside an object.
+
+    Handles dict/list nesting patterns used by:
+    - /api/v1/database/... endpoints (schemas, catalogs, etc.)
+    - /api/v1/sqllab/... endpoints
+    - /api/v1/async_event/ payloads (GLOBAL_ASYNC_QUERIES charts)
+    - legacy /superset/... JSON endpoints, if present
+    """
+    if isinstance(obj, str):
+        return _rewrite_permission_denied_string(obj)
+
+    if isinstance(obj, list):
+        return [_rewrite_any(x) for x in obj]
+
+    if isinstance(obj, dict):
+        return {k: _rewrite_any(v) for k, v in obj.items()}
+
+    return obj
+
+
+def _should_consider_path(path: str) -> bool:
+    """
+    Limit rewriting to API-style routes to reduce risk of modifying HTML responses.
+
+    Covers:
+    - /api/v1/... (including /api/v1/async_event/)
+    - /superset/... JSON endpoints (legacy explore/sql lab)
+    """
+    if not path:
+        return False
+    return path.startswith("/api/") or path.startswith("/superset/")
+
+
+def attach_error_rewriter(app):
+    """Attach after_request hook to rewrite permission-denied errors in JSON responses."""
+
+    @app.after_request
+    def _rewrite_response(response):
+        try:
+            # Only rewrite JSON-ish payloads.
+            # Use "json" substring to include: application/json, application/problem+json, etc.
+            ctype = (response.headers.get("Content-Type") or "").lower()
+            if "json" not in ctype:
+                return response
+
+            path = request.path or ""
+            if not _should_consider_path(path):
+                return response
+
+            if getattr(response, "direct_passthrough", False):
+                return response
+
+            payload = response.get_json(silent=True)
+            if payload is None:
+                return response
+
+            new_payload = _rewrite_any(payload)
+
+            response.set_data(json.dumps(new_payload))
+            response.headers["Content-Length"] = str(len(response.get_data()))
+            return response
+        except Exception:
+            # Never block responses if rewriting fails
+            return response
+
+    return app
+
+FLASK_APP_MUTATOR = attach_error_rewriter

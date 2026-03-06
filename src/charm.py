@@ -430,6 +430,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "MAX_CONTENT_LENGTH": self.config["max-content-length"],
             "MAX_FORM_MEMORY_SIZE": self.config["max-form-memory-size"],
             "MAX_FORM_PARTS": self.config["max-form-parts"],
+            "DATA_ACCESS_REQUEST_URL": self.config["data-access-request-url"],
         }
         if self.config["feature-flags"]:
             env.update(self.config["feature-flags"])

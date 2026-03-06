@@ -119,6 +119,7 @@ class TestCharm(TestCase):
                         "MAX_CONTENT_LENGTH": None,
                         "MAX_FORM_MEMORY_SIZE": None,
                         "MAX_FORM_PARTS": None,
+                        "DATA_ACCESS_REQUEST_URL": None,
                     },
                     "on-check-failure": {"up": "ignore"},
                 }
@@ -215,6 +216,7 @@ class TestCharm(TestCase):
                         "MAX_CONTENT_LENGTH": None,
                         "MAX_FORM_MEMORY_SIZE": None,
                         "MAX_FORM_PARTS": None,
+                        "DATA_ACCESS_REQUEST_URL": None,
                     },
                     "on-check-failure": {"up": "ignore"},
                 },
