@@ -52,6 +52,7 @@ async def deploy(ops_test: OpsTest, charm: str, charm_image: str):
                 "charm-function": function,
                 "superset-secret-key": SUPERSET_SECRET_KEY,
                 "server-alias": UI_NAME,
+                "feature-flags": "GLOBAL_ASYNC_QUERIES",
             }
 
             await deploy_and_relate_superset_charm(
