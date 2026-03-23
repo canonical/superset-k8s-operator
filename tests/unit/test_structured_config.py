@@ -26,20 +26,34 @@ def _harness():
 
 def test_config_parsing_parameters_integer_values(_harness) -> None:
     """Check that integer fields are parsed correctly."""
-    integer_fields = [
-        "sqlalchemy-pool-size",
-        "sqlalchemy-pool-timeout",
-        "sqlalchemy-max-overflow",
-        "webserver-timeout",
-    ]
+    integer_fields = {
+        "sqlalchemy-pool-size": [42, 100, 1],
+        "sqlalchemy-pool-timeout": [42, 100, 1],
+        "sqlalchemy-max-overflow": [42, 100, 1],
+        "webserver-timeout": [60, 170, 300],
+        "server-worker-amount": [1, 8, 32],
+        "server-threads-amount": [1, 50, 200],
+        "gunicorn-timeout": [30, 120, 600],
+        "celery-worker-concurrency": [0, 16, 128],
+    }
     erroneus_values = [2147483648, -2147483649]
-    valid_values = [42, 100, 1]
-    webserver_timeout_valid_values = [60, 170, 300]
-    for field in integer_fields:
-        if field == "webserver-timeout":
-            valid_values = webserver_timeout_valid_values
+    for field, valid_values in integer_fields.items():
         check_invalid_values(_harness, field, erroneus_values)
         check_valid_values(_harness, field, valid_values)
+
+
+def test_config_parsing_parameters_out_of_range_values(_harness) -> None:
+    """Check out-of-range values for fields with bounded validators."""
+    invalid_ranges = {
+        "webserver-timeout": [59, 301],
+        "server-worker-amount": [0, 33],
+        "server-threads-amount": [0, 201],
+        "gunicorn-timeout": [29, 601],
+        "celery-worker-concurrency": [-1, 129],
+    }
+
+    for field, invalid_values in invalid_ranges.items():
+        check_invalid_values(_harness, field, invalid_values)
 
 
 def test_product_related_values(_harness) -> None:
