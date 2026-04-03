@@ -23,7 +23,7 @@ LIBAPI = 0
 
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
-LIBPATCH = 2
+LIBPATCH = 4
 
 
 
@@ -104,9 +104,6 @@ class TrinoCatalogProvider(Object):
 
     This library handles the relation lifecycle and data updates.
     The charm is responsible for providing the actual data (url, catalogs, secret).
-
-    Note: The credentials secret is model-owned and must be manually granted
-    to each requirer application using: juju grant-secret <secret> <requirer-app>
     """
 
     def __init__(self, charm: CharmBase, relation_name: str = "trino-catalog"):
@@ -212,27 +209,6 @@ class TrinoCatalogProvider(Object):
         )
         return True
 
-    def update_all_relations(
-        self,
-        trino_url: str,
-        trino_catalogs: List[TrinoCatalog],
-        trino_credentials_secret_id: str,
-    ) -> None:
-        """Update all trino-catalog relations with the provided data.
-
-        Args:
-            trino_url: Trino URL
-            trino_catalogs: List of TrinoCatalog objects
-            trino_credentials_secret_id: Juju secret ID containing Trino users
-        """
-        for relation in self.charm.model.relations.get(self.relation_name, []):
-            self.update_relation_data(
-                relation=relation,
-                trino_url=trino_url,
-                trino_catalogs=trino_catalogs,
-                trino_credentials_secret_id=trino_credentials_secret_id,
-            )
-
 
 class TrinoCatalogRequirer(Object):
     """Requirer side of the trino_catalog relation."""
@@ -247,6 +223,15 @@ class TrinoCatalogRequirer(Object):
         super().__init__(charm, relation_name)
         self.charm = charm
         self.relation_name = relation_name
+
+        self.framework.observe(
+            charm.on[relation_name].relation_created,
+            self._on_relation_created,
+        )
+
+    def _on_relation_created(self, event) -> None:
+        """Publish app name so the provider can build a readable username."""
+        event.relation.data[self.charm.app]["app_name"] = self.charm.app.name
 
     def get_trino_info(self) -> Optional[dict]:
         """Get current Trino connection information.
@@ -289,11 +274,7 @@ class TrinoCatalogRequirer(Object):
         }
 
     def get_credentials(self) -> Optional[tuple]:
-        """Get Trino credentials to use from the secret.
-
-        Note: The requirer application must be granted access to the secret
-        using: juju grant-secret <secret> <requirer-app>. The secret must
-        contain a user matching the format "app-<requirer-charm-name>".
+        """Get Trino credentials from the per-relation secret.
 
         Returns:
             Tuple of (username, password) or None if not available.
@@ -302,8 +283,6 @@ class TrinoCatalogRequirer(Object):
             SecretNotFoundError: If the secret does not exist.
             ModelError: If permission is denied to access the secret.
         """
-        required_username = f"app-{self.charm.meta.name}"
-
         trino_info = self.get_trino_info()
         if not trino_info:
             return None
@@ -321,27 +300,16 @@ class TrinoCatalogRequirer(Object):
             raise
         except ModelError as e:
             logger.error(
-                "Permission denied accessing secret '%s': %s. Run juju grant-secret",
+                "Failed to access secret '%s': %s",
                 trino_info["trino_credentials_secret_id"],
                 str(e),
             )
             raise
 
-        users_data = credentials.get("users", "")
-
-        # Parse "username: password" format
-        users = {}
-        for line in users_data.strip().split("\n"):
-            if ":" in line:
-                username, password = line.split(":", 1)
-                users[username.strip()] = password.strip()
-
-        # Search for the required user
-        if required_username not in users:
-            logger.error(
-                "User '%s' not found in Trino user credentials.",
-                required_username,
-            )
+        username = credentials.get("username")
+        password = credentials.get("password")
+        if not username or not password:
+            logger.error("Secret missing username or password fields.")
             return None
 
-        return (required_username, users[required_username])
+        return (username, password)
