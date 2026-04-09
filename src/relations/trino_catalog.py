@@ -380,11 +380,15 @@ class TrinoCatalogRelationHandler(ops.Object):
             force_update: Whether to force update all connections.
         """
         for conn in connections:
+            uri_user = f"trino://{quote_plus(username)}"
+            has_current_user = (
+                f"{uri_user}:" in conn.sqlalchemy_uri  # user:password@host
+                or f"{uri_user}@" in conn.sqlalchemy_uri  # user@host
+            )
             needs_update = (
                 force_update
                 or f"@{trino_url}/" not in conn.sqlalchemy_uri
-                or f"trino://{quote_plus(username)}@"
-                not in conn.sqlalchemy_uri
+                or not has_current_user
             )
 
             if not needs_update:
