@@ -22,7 +22,6 @@ logger = logging.getLogger(__name__)
 
 TRINO_APP = "trino-k8s"
 SUPERSET_APP = "superset-k8s"
-USER_SECRET_LABEL = "trino-user-management"  # nosec
 
 POSTGRESQL_REPLICA_SECRET = """\
 rw:
@@ -229,18 +228,6 @@ async def deploy_trino_superset(
             == "active"
         )
 
-    # Configure Trino user secret and grant access to both Trino and Superset
-    users_data = "app-superset-k8s: testpassword"  # nosec
-
-    user_secret = await ops_test.model.add_secret(
-        name=USER_SECRET_LABEL,
-        data_args=[f"users={users_data}"],
-    )
-    user_secret_id = user_secret.split(":")[-1]
-
-    await ops_test.model.grant_secret(USER_SECRET_LABEL, TRINO_APP)
-    await ops_test.model.grant_secret(USER_SECRET_LABEL, SUPERSET_APP)
-
     # Grant catalog secrets to Trino
     await ops_test.model.grant_secret("postgresql-secret", TRINO_APP)
     await ops_test.model.grant_secret("mysql-secret", TRINO_APP)
@@ -249,13 +236,9 @@ async def deploy_trino_superset(
     catalog_config = build_catalog_config(secret_ids, ["pgsql", "mysql"])
 
     async with ops_test.fast_forward():
-        # Configure Trino with all settings and create relation
+        # Configure Trino with catalog config and create relation
         await ops_test.model.applications[TRINO_APP].set_config(
-            {
-                "user-secret-id": user_secret_id,
-                "external-hostname": "trino.test.local",
-                "catalog-config": catalog_config,
-            }
+            {"catalog-config": catalog_config}
         )
 
         await ops_test.model.integrate(
@@ -349,31 +332,7 @@ async def test_02_add_catalog(
 
 @pytest.mark.abort_on_fail
 @pytest.mark.usefixtures("deploy-trino-superset")
-async def test_03_credential_rotation(ops_test: OpsTest):
-    """Test that updating the user secret triggers credential rotation."""
-    await ops_test.juju(
-        "secret-set",
-        USER_SECRET_LABEL,
-        "users=app-superset-k8s: rotatedpassword",  # nosec
-    )
-
-    async with ops_test.fast_forward():
-        await ops_test.model.wait_for_idle(
-            apps=[SUPERSET_APP],
-            status="active",
-            timeout=TIMEOUT_DEFAULT,
-        )
-
-    trino_dbs = await get_trino_databases(ops_test, expected_count=3)
-
-    logger.info(
-        "Verified credential rotation: %d databases intact", len(trino_dbs)
-    )
-
-
-@pytest.mark.abort_on_fail
-@pytest.mark.usefixtures("deploy-trino-superset")
-async def test_04_remove_catalog_no_deletion(
+async def test_03_remove_catalog_no_deletion(
     ops_test: OpsTest,
     secret_ids: dict[str, str],  # pylint: disable=redefined-outer-name
 ):
@@ -403,7 +362,7 @@ async def test_04_remove_catalog_no_deletion(
 
 @pytest.mark.abort_on_fail
 @pytest.mark.usefixtures("deploy-trino-superset")
-async def test_05_relation_broken(ops_test: OpsTest):
+async def test_04_relation_broken(ops_test: OpsTest):
     """Test that breaking the relation does NOT delete Superset databases."""
     async with ops_test.fast_forward():
         await ops_test.juju(

@@ -9,43 +9,12 @@ The integration uses the `trino-catalog` relation interface, which automatically
 1. Superset is deployed as `charm-function=app-gunicorn` (the default)
 2. Trino is deployed as `charm-function=coordinator` (or `all`) and configured with:
    - `external-hostname` if Trino is behind an ingress with TLS
-   - `user-secret-id` pointing to a valid user management secret
    - `catalog-config` with at least one catalog
 
 ```bash
 juju deploy superset-k8s
 
 juju deploy trino-k8s --config charm-function=all --trust
-```
-
-## Create Trino user credentials
-
-Superset requires credentials to connect to Trino. These credentials must follow the naming convention `app-<charm-name>` in the Trino user management secret.
-
-First, create a file containing the user credentials (`trino-users.yaml`):
-
-```yaml
-app-superset-k8s: your-secure-password
-```
-
-Create a Juju secret from this file:
-
-```bash
-juju add-secret trino-user-management users#file=trino-users.yaml
-```
-
-The output will be in the format `secret:<secret-id>`.
-
-Apply the user secret to Trino and Superset:
-
-
-```bash
-juju grant-secret <secret-id> trino-k8s
-
-juju config trino-k8s \
-    user-secret-id="<secret-id>"
-
-juju grant-secret <secret-id> superset-k8s
 ```
 
 ## Establish the relation
@@ -58,7 +27,9 @@ juju relate trino-k8s:trino-catalog superset-k8s:trino-catalog
 
 ## Verify the integration
 
-After establishing the relation and granting secret access, Superset will automatically create database connections for each configured Trino catalog.
+Trino automatically creates per-relation credentials and grants them to Superset. No manual secret creation or granting is required.
+
+After establishing the relation, Superset will automatically create database connections for each configured Trino catalog.
 
 You can verify the integration by:
 
@@ -75,17 +46,9 @@ Each database connection will be automatically configured with:
 
 When you add or modify catalogs in Trino's `catalog-config`, Superset will automatically detect these changes and create corresponding database connections.
 
-## Rotate credentials
+## Credential rotation
 
-To rotate the Trino user password:
-
-1. Update the secret with new credentials:
-
-```bash
-juju update-secret trino-user-management users#file=trino-users.yaml
-```
-
-2. Superset will automatically update all Trino database connections with the new credentials during the next `secret-changed` event.
+Trino manages per-relation credentials automatically. If the credentials are rotated by Trino, Superset will update all affected database connections during the next `secret-changed` event.
 
 ## Understanding connection behavior
 

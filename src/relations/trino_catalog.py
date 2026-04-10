@@ -9,7 +9,7 @@ Superset database connections via the Superset REST API.
 
 import logging
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import quote_plus, urlsplit
 
 import ops
 from charms.trino_k8s.v0.trino_catalog import (
@@ -187,24 +187,14 @@ class TrinoCatalogRelationHandler(ops.Object):
         try:
             credentials = self.trino_catalog_requirer.get_credentials()
         except ops.SecretNotFoundError:
-            logger.error(
-                "Trino credentials secret not found. "
-                "Run: juju grant-secret <secret> superset-k8s"
-            )
+            logger.error("Trino credentials secret not found")
             return None, None
         except ops.ModelError as e:
-            logger.error(
-                "Permission denied accessing Trino credentials: %s. "
-                "Run: juju grant-secret <secret> superset-k8s",
-                e,
-            )
+            logger.error("Failed to access Trino credentials secret: %s", e)
             return None, None
 
         if not credentials:
-            logger.error(
-                "User 'app-superset-k8s' not found in Trino credentials. "
-                "Add this user to the user-secret."
-            )
+            logger.error("Trino credentials not available")
             return None, None
 
         return credentials
@@ -390,8 +380,15 @@ class TrinoCatalogRelationHandler(ops.Object):
             force_update: Whether to force update all connections.
         """
         for conn in connections:
+            uri_user = f"trino://{quote_plus(username)}"
+            has_current_user = (
+                f"{uri_user}:" in conn.sqlalchemy_uri  # user:password@host
+                or f"{uri_user}@" in conn.sqlalchemy_uri  # user@host
+            )
             needs_update = (
-                force_update or f"@{trino_url}/" not in conn.sqlalchemy_uri
+                force_update
+                or f"@{trino_url}/" not in conn.sqlalchemy_uri
+                or not has_current_user
             )
 
             if not needs_update:

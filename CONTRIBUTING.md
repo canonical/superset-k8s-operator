@@ -186,7 +186,7 @@ Superset applies a partial reconciliation between its database connections and t
 - not updating other connection options or permissions if they are changed from the defaults
 - not removing database connections when catalogs are removed or the relation to Trino is broken
 
-For the relation to work, a user named `app-superset-k8s` has to be added in Trino's `trino-user-management` secret and Superset should be granted access to the secret.
+Trino automatically creates per-relation credentials and grants them to Superset when the relation is established. No manual secret creation or granting is required.
 
 ```
 # deploy trino charm
@@ -194,9 +194,6 @@ juju deploy trino-k8s --config charm-function=all --trust
 
 # relate trino charm
 juju relate trino-k8s superset-k8s-ui
-
-# grant access to trino credentials secret
-juju grant-secret trino-user-management superset-k8s-ui
 
 # remove relation
 juju remove-relation trino-k8s superset-k8s-ui
