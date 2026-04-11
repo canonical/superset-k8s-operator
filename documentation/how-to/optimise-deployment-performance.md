@@ -63,7 +63,6 @@ In addition to pod scaling, you can tune process-level concurrency from charm co
 The following options are available:
 
 - `server-worker-amount`: Gunicorn worker processes per UI pod.
-- `server-threads-amount`: threads per Gunicorn worker.
 - `gunicorn-timeout`: Gunicorn request timeout (seconds).
 - `celery-worker-concurrency`: Celery worker processes per worker pod. Set to `0` to use Celery defaults.
 
@@ -72,7 +71,6 @@ Example profile for 3 UI pods and 5 worker pods:
 ```bash
 juju config superset-k8s \
 	server-worker-amount=2 \
-	server-threads-amount=8 \
 	gunicorn-timeout=120
 
 juju config superset-k8s-worker \
