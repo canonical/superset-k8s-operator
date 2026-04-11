@@ -142,6 +142,22 @@ options:
     description: The time in seconds the server can maintain a database connection.
     default: 180
     type: int
+  server-worker-amount:
+    description: "Number of Gunicorn worker processes per UI pod. Valid range: 1-32."
+    default: 1
+    type: int
+  server-threads-amount:
+    description: "Number of threads per Gunicorn worker process. Valid range: 1-200."
+    default: 20
+    type: int
+  gunicorn-timeout:
+    description: "Gunicorn worker timeout in seconds. Valid range: 30-600."
+    default: 60
+    type: int
+  celery-worker-concurrency:
+    description: "Number of concurrent Celery worker processes per worker pod. Valid range: 0-128."
+    default: 0
+    type: int
   cache-warmup:
     description: Boolean representing if the cache warm-up functionality should be enabled.
     default: False

@@ -422,6 +422,12 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "SERVER_ALIAS": self.config["server-alias"],
             "APPLICATION_PORT": APPLICATION_PORT,
             "WEBSERVER_TIMEOUT": self.config["webserver-timeout"],
+            "SERVER_WORKER_AMOUNT": self.config["server-worker-amount"],
+            "SERVER_THREADS_AMOUNT": self.config["server-threads-amount"],
+            "GUNICORN_TIMEOUT": self.config["gunicorn-timeout"],
+            "CELERY_WORKER_CONCURRENCY": self.config[
+                "celery-worker-concurrency"
+            ],
             "STATSD_PORT": STATSD_PORT,
             "LOG_FILE": LOG_FILE,
             "CACHE_WARMUP": self.config["cache-warmup"],
