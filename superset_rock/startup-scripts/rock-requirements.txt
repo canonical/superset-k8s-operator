@@ -15,3 +15,6 @@ gspread==6.1.2
 # Monitoring
 sentry-sdk==0.10.2
 statsd==4.0.1
+
+# Requirement for gevent worker class
+gevent==26.4.0
