@@ -4,4 +4,3 @@ sqlalchemy<2.0
 cosl==1.4.0
 requests==2.32.0
 pyjwt==2.11.0
-gevent==26.4.0
