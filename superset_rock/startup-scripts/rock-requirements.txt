@@ -17,5 +17,4 @@ sentry-sdk==0.10.2
 statsd==4.0.1
 
 # Requirement for gevent worker class
-gevent==26.4.0
-greenlet>=3.2.2,<4
+gevent==25.9.1
