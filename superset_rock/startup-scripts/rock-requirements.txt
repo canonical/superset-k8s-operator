@@ -18,3 +18,4 @@ statsd==4.0.1
 
 # Requirement for gevent worker class
 gevent==26.4.0
+greenlet>=3.2.2,<4
