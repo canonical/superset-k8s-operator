@@ -70,7 +70,6 @@ class CharmConfig(BaseConfigModel):
     server_alias: str
     webserver_timeout: int
     server_worker_amount: int
-    server_threads_amount: int
     gunicorn_timeout: int
     celery_worker_concurrency: int
     feature_flags: Optional[str]
@@ -228,25 +227,6 @@ class CharmConfig(BaseConfigModel):
         """
         int_value = int(value)
         if 1 <= int_value <= 32:
-            return int_value
-        raise ValueError("Value out of range.")
-
-    @validator("server_threads_amount")
-    @classmethod
-    def server_threads_amount_validator(cls, value: str) -> Optional[int]:
-        """Check validity of `server_threads_amount` field.
-
-        Args:
-            value: server-threads-amount value
-
-        Returns:
-            int_value: integer for server-threads-amount configuration
-
-        Raises:
-            ValueError: in the case when the value is out of range
-        """
-        int_value = int(value)
-        if 1 <= int_value <= 200:
             return int_value
         raise ValueError("Value out of range.")
 
