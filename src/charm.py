@@ -12,6 +12,7 @@ https://discourse.charmhub.io/t/4208
 
 import logging
 import os
+import secrets
 
 from charms.data_platform_libs.v0.data_models import TypedCharmBase
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
@@ -388,7 +389,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         env = {
             "ALLOW_IMAGE_DOMAINS": self.config["allow-image-domains"],
-            "SUPERSET_SECRET_KEY": self.config["superset-secret-key"],
+            "SUPERSET_SECRET_KEY": self.config["superset-secret-key"] or secrets.token_hex(32),
             "ADMIN_PASSWORD": self.config["admin-password"],
             "CHARM_FUNCTION": self.config["charm-function"].value,
             "SQL_ALCHEMY_URI": sqlalchemy_uri,
