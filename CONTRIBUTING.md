@@ -4,8 +4,14 @@ To make contributions to this charm, you'll need a working [development setup](h
 
 A lot of the commands you would need are covered with the [Makefile](./Makefile), learn more by running `make help`.
 
-**Note:** It is recommended to build in the host and deploy in a [Multipass](https://canonical.com/multipass/install) instance.
-Use `multipass mount` to mount the project directory with the build artifacts into your Multipass instance.
+**Note:** It is recommended to build on the host and deploy in a [Multipass](https://canonical.com/multipass/install) instance.
+Launch a VM and mount the project directory so the VM has access to build artifacts:
+
+```shell
+multipass launch 24.04 -n superset-dev -m 8g -c 2 -d 40G
+multipass mount ~/path/to/superset-k8s-operator superset-dev:/home/ubuntu/superset-k8s-operator
+multipass shell superset-dev
+```
 
 ## Environment for coding
 
@@ -95,8 +101,7 @@ After installation, some additional setup is required:
 
 ```shell
 # Enable required MicroK8s addons
-sudo microk8s enable hostpath-storage
-sudo microk8s enable registry
+sudo microk8s enable hostpath-storage registry dns
 
 # Add your user to the required groups
 sudo usermod -aG snap_microk8s $USER
@@ -130,10 +135,10 @@ Superset runs as three separate components. After the initial deploy you can add
 
 ```shell
 # Deploy a worker
-juju deploy ./superset-k8s_amd64.charm --resource superset-image=localhost:32000/superset:latest --config charm-function=worker superset-k8s-worker
+juju deploy ./superset-k8s_ubuntu-22.04-amd64.charm --resource superset-image=localhost:32000/superset:latest --config charm-function=worker superset-k8s-worker
 
 # Deploy the beat scheduler
-juju deploy ./superset-k8s_amd64.charm --resource superset-image=localhost:32000/superset:latest --config charm-function=beat superset-k8s-beat
+juju deploy ./superset-k8s_ubuntu-22.04-amd64.charm --resource superset-image=localhost:32000/superset:latest --config charm-function=beat superset-k8s-beat
 ```
 
 It is recommended to change the logging configuration when working with deployments:
@@ -242,51 +247,3 @@ SELECT * FROM ab_user WHERE email = '<your email>';
 # Remove the application before retrying
 juju remove-application superset-k8s-ui superset-k8s-beat superset-k8s-worker --force
 ```
-
-## Upgrading Superset version
-
-The Apache Superset project uses [semantic versioning](https://semver.org/). This charmed operator is set up to utilize the same versioning. However, the [charmed operator](https://charmhub.io/superset-k8s) uses channels (`edge` and `stable`) to differentiate between major versions and risk levels (e.g. channel `5/stable` is used to deploy Superset 5, while `6/stable` is used to deploy Superset 6). Upgrades between major stable tracks should result in no breaking changes.
-
-On Github, the `main` branch corresponds to the `latest/edge` channel on Charmhub. The `track/*` branches correspond to the `*/edge` channels on Charmhub. Depending on which channel you are targeting, you should make the changes on the relevant Github branch.
-
-The following are steps required to perform a major upgrade on the Superset charmed operator. For simplicity, we will assume we are upgrading Superset to `v6`.
-
-## Pull changes from most recent track
-
-As an example, if you are upgrading to version 6, then you must pull the latest changes from the most recent stable version (in this case, it would be branch `track/5` on Github). Resolve any merge conflicts that may come up. This will ensure any changes or bug fixes made to the charm on `track/5` are propagated to the latest version.
-
-## Upgrade Superset rock
-
-The [`superset_rock`](./superset_rock/) directory contains the [`rockcraft.yaml`](./superset_rock/rockcraft.yaml) file that contains the source build definition. Here, we need to update the source to reflect the version being built (e.g. `6.0.0`), as well as updating the checksums. Depending on upstream changes, this may entail updating build dependencies in different parts of the rock.
-
-## Upgrade Superset charm
-
-Depending on the changes introduced with the new version of Superset, we may need to update certain aspects of the Superset charm, such as adding/removing feature flags or updating dependencies such as Redis. An example of this can be found [here](https://github.com/canonical/superset-k8s-operator/pull/64/changes).
-
-## Create new track on Charmhub
-
-If a channel for the new version does not exist on Charmhub, you must request for it to be created. This can be done by creating a new topic on [Discourse](https://discourse.charmhub.io/) requesting the creation of such tracks. In this case, you should request the creation of channels `6/edge` and `6/stable`.
-
-## Update major_upgrades integration test
-
-The purpose of the [`test_major_upgrades.py`](./tests/integration/test_major_upgrades.py) is to test the compatibility of upgrading the charm between major versions of Superset. To do so, we must modify this test to deploy the stable version of the previous release (e.g. `5/stable` if we are attempting to upgrade to Superset v6). The success of this test ensures there are no breaking changes when performing major upgrades with the Superset charm.
-
-## Test and promote charm
-
-Once the PR is successfully merged to the `main` branch, it will automatically release to the `latest/edge` channel on Charmhub. You must test this on a staging environment to ensure the charm is functional. Once confirmed, you may use the [Promote charm](https://github.com/canonical/superset-k8s-operator/actions/workflows/promote_charm.yaml) workflow to promote it from `latest/edge` to `6/edge`.
-
-Once the charm is thoroughly tested on staging and deemed production-ready, the promote charm workflow should be triggered again to promote the channel `6/edge` to `6/stable`.
-
-## Create track/<x> branch
-
-Once the PR is successfully merged to the `main` branch, create a new `track/<x>` track which will be used to push changes to the `<x>/edge` channel on Charmhub. To do so, run the following (the below is an example for `track/6` branch):
-
-```shell
-git checkout main
-git pull origin main
-
-git checkout -b track/6
-git push -u origin track/6
-```
-
-Once done, a repo admin **must** create branch protection rules for the newly created branch.

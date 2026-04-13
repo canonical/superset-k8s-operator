@@ -17,7 +17,7 @@ REGISTRY := localhost:32000
 
 # Ensure yq is installed: 'sudo snap install yq'
 CHARM_NAME := $(shell yq '.name' $(METADATA_YAML))
-CHARM_ARCH := amd64
+CHARM_ARCH := ubuntu-22.04-amd64
 
 ROCK_NAME := $(shell yq '.name' $(ROCKCRAFT_YAML))
 ROCK_VERSION := $(shell yq '.version' $(ROCKCRAFT_YAML))
@@ -31,9 +31,6 @@ CHARM_FILE := $(PROJECT_ROOT)/$(CHARM_NAME)_$(CHARM_ARCH).charm
 ROCK_FILE := $(ROCK_DIR)/$(ROCK_NAME)_$(ROCK_VERSION)_$(ROCK_ARCH).rock
 
 # Default target
-.PHONY: all
-all: build
-
 .PHONY: help
 help:
 	@echo "Usage: make [target]"
@@ -44,10 +41,8 @@ help:
 	@echo "  build-rock        Build the OCI archive (rock) using rockcraft"
 	@echo "  check-build-deps  Check if necessary dependencies for building are installed"
 	@echo "  check-deploy-deps Check if necessary dependencies for deploying are installed"
-	@echo "  check-deps        Check if all dependencies are installed"
 	@echo "  install-build-deps Install dependencies needed for building"
 	@echo "  install-deploy-deps Install dependencies needed for deploying"
-	@echo "  install-deps      Install all dependencies"
 	@echo "  checks            Run all the code quality checks"
 	@echo "  clean             Remove built charm and rock files"
 	@echo "  clean-charmcraft  Clean charmcraft environment"
@@ -85,9 +80,6 @@ install-deploy-deps:
 	sudo snap install docker --channel latest/stable
 	@echo "All deployment dependencies installed."
 
-.PHONY: install-deps
-install-deps: install-build-deps install-deploy-deps
-
 .PHONY: check-build-deps
 check-build-deps:
 	@which yq >/dev/null || (echo "yq not found" && exit 1)
@@ -104,9 +96,6 @@ check-deploy-deps:
 	@which microk8s >/dev/null || (echo "microk8s not found" && exit 1)
 	@which skopeo >/dev/null || (echo "skopeo not found" && exit 1)
 	@echo "All deployment dependencies are installed."
-
-.PHONY: check-deps
-check-deps: check-build-deps check-deploy-deps
 
 .PHONY: checks
 checks: fmt lint test
