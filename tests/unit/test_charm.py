@@ -353,6 +353,51 @@ class TestCharm(TestCase):
         plan = harness.get_container_pebble_plan("superset").to_dict()
         assert plan is not None
 
+    def test_secret_key_uses_configured_value(self):
+        """SUPERSET_SECRET_KEY uses the configured value when superset-secret-key is set."""
+        harness = self.harness
+        simulate_lifecycle(harness)
+
+        env = harness.get_container_pebble_plan("superset").to_dict()[
+            "services"
+        ]["superset"]["environment"]
+        self.assertEqual(env["SUPERSET_SECRET_KEY"], "example-pass")  # nosec
+
+    def test_secret_key_auto_generated(self):
+        """SUPERSET_SECRET_KEY is auto-generated when superset-secret-key is not configured."""
+        harness = Harness(SupersetK8SCharm)
+        self.addCleanup(harness.cleanup)
+
+        patcher_redis = mock.patch(
+            "charm.Redis.get_redis_relation_data",
+            return_value=("redis-host", 6379),
+        )
+        patcher_redis.start()
+        self.addCleanup(patcher_redis.stop)
+
+        patcher_db = mock.patch(
+            "charm.query_metadata_database",
+            return_value=["Public", "Gamma", "Alpha", "Admin"],
+        )
+        patcher_db.start()
+        self.addCleanup(patcher_db.stop)
+
+        harness.set_can_connect("superset", True)
+        harness.set_leader(True)
+        harness.set_model_name("superset-model")
+        harness.add_network("10.0.0.10", endpoint="peer")
+        harness.begin()
+
+        simulate_lifecycle(harness)
+
+        env = harness.get_container_pebble_plan("superset").to_dict()[
+            "services"
+        ]["superset"]["environment"]
+        secret_key = env["SUPERSET_SECRET_KEY"]
+        self.assertIsNotNone(secret_key)
+        self.assertEqual(len(secret_key), 64)  # secrets.token_hex(32) = 64 hex chars
+
+
     def test_beat_deployment(self):
         """The pebble plan reflects the beat function."""
         harness = self.harness
