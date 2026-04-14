@@ -12,7 +12,8 @@ https://discourse.charmhub.io/t/4208
 
 import logging
 import os
-import secrets
+
+from pydantic import ValidationError
 
 from charms.data_platform_libs.v0.data_models import TypedCharmBase
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
@@ -105,6 +106,9 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             self.on.peer_relation_changed, self._on_peer_relation_changed
         )
         self.framework.observe(self.on.secret_changed, self._on_secret_changed)
+
+        if not self._validate_config():
+            return
 
         # Handle Ingress
         self._require_nginx_route()
@@ -270,12 +274,37 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         self.unit.status = MaintenanceStatus(f"restarting {APP_NAME}")
         container.restart(self.name)
 
+    def _validate_config(self):
+        """Check charm config is valid, setting WaitingStatus if not.
+
+        Returns:
+            True if config is valid, False otherwise.
+        """
+        try:
+            _ = self.config
+            return True
+        except ValidationError as e:
+            missing = [
+                str(err["loc"][0]).replace("_", "-")
+                for err in e.errors()
+                if err["type"] == "value_error.missing"
+            ]
+            self.unit.status = WaitingStatus(
+                f"missing required config: {', '.join(missing)}"
+                if missing
+                else str(e)
+            )
+            return False
+
     def ready_to_start(self):
         """Check if peer relation is established.
 
         Returns:
             True if peer relation established, else False.
         """
+        if not self._validate_config():
+            return False
+
         if self.model.get_relation(DB_RELATION_NAME) is None:
             self.unit.status = BlockedStatus("Needs a PostgreSQL relation")
             return False
@@ -389,7 +418,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         env = {
             "ALLOW_IMAGE_DOMAINS": self.config["allow-image-domains"],
-            "SUPERSET_SECRET_KEY": self.config["superset-secret-key"] or secrets.token_hex(32),
+            "SUPERSET_SECRET_KEY": self.config["superset-secret-key"],
             "ADMIN_PASSWORD": self.config["admin-password"],
             "CHARM_FUNCTION": self.config["charm-function"].value,
             "SQL_ALCHEMY_URI": sqlalchemy_uri,

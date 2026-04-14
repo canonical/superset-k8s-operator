@@ -11,7 +11,7 @@
 import logging
 from unittest import TestCase, mock
 
-from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus
+from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus, WaitingStatus
 from ops.pebble import CheckStatus
 from ops.testing import Harness
 
@@ -363,24 +363,10 @@ class TestCharm(TestCase):
         ]["superset"]["environment"]
         self.assertEqual(env["SUPERSET_SECRET_KEY"], "example-pass")  # nosec
 
-    def test_secret_key_auto_generated(self):
-        """SUPERSET_SECRET_KEY is auto-generated when superset-secret-key is not configured."""
+    def test_secret_key_waiting_when_not_configured(self):
+        """WaitingStatus is set when superset-secret-key is not configured."""
         harness = Harness(SupersetK8SCharm)
         self.addCleanup(harness.cleanup)
-
-        patcher_redis = mock.patch(
-            "charm.Redis.get_redis_relation_data",
-            return_value=("redis-host", 6379),
-        )
-        patcher_redis.start()
-        self.addCleanup(patcher_redis.stop)
-
-        patcher_db = mock.patch(
-            "charm.query_metadata_database",
-            return_value=["Public", "Gamma", "Alpha", "Admin"],
-        )
-        patcher_db.start()
-        self.addCleanup(patcher_db.stop)
 
         harness.set_can_connect("superset", True)
         harness.set_leader(True)
@@ -388,15 +374,10 @@ class TestCharm(TestCase):
         harness.add_network("10.0.0.10", endpoint="peer")
         harness.begin()
 
-        simulate_lifecycle(harness)
-
-        env = harness.get_container_pebble_plan("superset").to_dict()[
-            "services"
-        ]["superset"]["environment"]
-        secret_key = env["SUPERSET_SECRET_KEY"]
-        self.assertIsNotNone(secret_key)
-        self.assertEqual(len(secret_key), 64)  # secrets.token_hex(32) = 64 hex chars
-
+        self.assertEqual(
+            harness.model.unit.status,
+            WaitingStatus("missing required config: superset-secret-key"),
+        )
 
     def test_beat_deployment(self):
         """The pebble plan reflects the beat function."""
