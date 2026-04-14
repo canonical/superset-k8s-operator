@@ -11,7 +11,12 @@
 import logging
 from unittest import TestCase, mock
 
-from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus, WaitingStatus
+from ops.model import (
+    ActiveStatus,
+    BlockedStatus,
+    MaintenanceStatus,
+    WaitingStatus,
+)
 from ops.pebble import CheckStatus
 from ops.testing import Harness
 
@@ -364,7 +369,7 @@ class TestCharm(TestCase):
         self.assertEqual(env["SUPERSET_SECRET_KEY"], "example-pass")  # nosec
 
     def test_secret_key_waiting_when_not_configured(self):
-        """WaitingStatus is set when superset-secret-key is not configured."""
+        """The charm sets waiting status when superset-secret-key is not configured."""
         harness = Harness(SupersetK8SCharm)
         self.addCleanup(harness.cleanup)
 

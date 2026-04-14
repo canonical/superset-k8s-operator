@@ -87,6 +87,7 @@ class CharmConfig(BaseConfigModel):
 
         Args:
             value: configuration value
+            field: the pydantic field being validated
 
         Returns:
             None in place of empty string or value

@@ -13,8 +13,6 @@ https://discourse.charmhub.io/t/4208
 import logging
 import os
 
-from pydantic import ValidationError
-
 from charms.data_platform_libs.v0.data_models import TypedCharmBase
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
 from charms.loki_k8s.v1.loki_push_api import LogForwarder
@@ -31,6 +29,7 @@ from ops.model import (
     WaitingStatus,
 )
 from ops.pebble import CheckStatus
+from pydantic import ValidationError
 
 from literals import (
     APP_NAME,
