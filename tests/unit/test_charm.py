@@ -15,7 +15,6 @@ from ops.model import (
     ActiveStatus,
     BlockedStatus,
     MaintenanceStatus,
-    WaitingStatus,
 )
 from ops.pebble import CheckStatus
 from ops.testing import Harness
@@ -369,7 +368,7 @@ class TestCharm(TestCase):
         self.assertEqual(env["SUPERSET_SECRET_KEY"], "example-pass")  # nosec
 
     def test_secret_key_waiting_when_not_configured(self):
-        """The charm sets WaitingStatus when superset-secret-key is missing."""
+        """The charm sets BlockedStatus when superset-secret-key is missing."""
         harness = Harness(SupersetK8SCharm)
         self.addCleanup(harness.cleanup)
 
@@ -381,14 +380,14 @@ class TestCharm(TestCase):
 
         self.assertEqual(
             harness.model.unit.status,
-            WaitingStatus("missing required config: superset-secret-key"),
+            BlockedStatus("missing required config: superset-secret-key"),
         )
 
         harness.charm.on.update_status.emit()
 
         self.assertEqual(
             harness.model.unit.status,
-            WaitingStatus("missing required config: superset-secret-key"),
+            BlockedStatus("missing required config: superset-secret-key"),
         )
 
     def test_beat_deployment(self):

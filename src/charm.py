@@ -273,7 +273,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         container.restart(self.name)
 
     def _validate_config(self):
-        """Check charm config is valid, setting WaitingStatus if not.
+        """Check charm config is valid, setting BlockedStatus if not.
 
         Returns:
             True if config is valid, False otherwise.
@@ -287,7 +287,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
                 for err in e.errors()
                 if err["type"] == "value_error.missing"
             ]
-            self.unit.status = WaitingStatus(
+            self.unit.status = BlockedStatus(
                 f"missing required config: {', '.join(missing)}"
                 if missing
                 else str(e)
