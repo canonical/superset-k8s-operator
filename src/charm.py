@@ -135,11 +135,12 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         """Require nginx-route relation based on current configuration."""
         require_nginx_route(
             charm=self,
-            service_hostname=self.model.config.get("external-hostname")
-            or self.app.name,
+            service_hostname=self.model.config.get(
+                "external-hostname", self.app.name
+            ),
             service_name=self.app.name,
             service_port=APPLICATION_PORT,
-            tls_secret_name=self.model.config.get("tls-secret-name") or "",
+            tls_secret_name=self.model.config.get("tls-secret-name", ""),
             backend_protocol="HTTP",
         )
 
