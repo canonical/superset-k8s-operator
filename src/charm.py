@@ -106,9 +106,6 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         )
         self.framework.observe(self.on.secret_changed, self._on_secret_changed)
 
-        if not self._validate_config():
-            return
-
         # Handle Ingress
         self._require_nginx_route()
 
@@ -138,10 +135,11 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         """Require nginx-route relation based on current configuration."""
         require_nginx_route(
             charm=self,
-            service_hostname=self.external_hostname,
+            service_hostname=self.model.config.get("external-hostname")
+            or self.app.name,
             service_name=self.app.name,
             service_port=APPLICATION_PORT,
-            tls_secret_name=self.config["tls-secret-name"] or "",
+            tls_secret_name=self.model.config.get("tls-secret-name") or "",
             backend_protocol="HTTP",
         )
 
@@ -296,10 +294,10 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             return False
 
     def ready_to_start(self):
-        """Check if peer relation is established.
+        """Check if the charm is ready to start the application.
 
         Returns:
-            True if peer relation established, else False.
+            True if config is valid and required relations exist, else False.
         """
         if not self._validate_config():
             return False

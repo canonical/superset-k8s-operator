@@ -369,7 +369,7 @@ class TestCharm(TestCase):
         self.assertEqual(env["SUPERSET_SECRET_KEY"], "example-pass")  # nosec
 
     def test_secret_key_waiting_when_not_configured(self):
-        """The charm sets waiting status when superset-secret-key is not configured."""
+        """The charm sets WaitingStatus when superset-secret-key is missing."""
         harness = Harness(SupersetK8SCharm)
         self.addCleanup(harness.cleanup)
 
@@ -377,7 +377,14 @@ class TestCharm(TestCase):
         harness.set_leader(True)
         harness.set_model_name("superset-model")
         harness.add_network("10.0.0.10", endpoint="peer")
-        harness.begin()
+        harness.begin_with_initial_hooks()
+
+        self.assertEqual(
+            harness.model.unit.status,
+            WaitingStatus("missing required config: superset-secret-key"),
+        )
+
+        harness.charm.on.update_status.emit()
 
         self.assertEqual(
             harness.model.unit.status,
