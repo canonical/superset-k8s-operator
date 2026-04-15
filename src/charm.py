@@ -29,6 +29,7 @@ from ops.model import (
     WaitingStatus,
 )
 from ops.pebble import CheckStatus
+from pydantic import ValidationError
 
 from literals import (
     APP_NAME,
@@ -134,10 +135,12 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         """Require nginx-route relation based on current configuration."""
         require_nginx_route(
             charm=self,
-            service_hostname=self.external_hostname,
+            service_hostname=self.model.config.get(
+                "external-hostname", self.app.name
+            ),
             service_name=self.app.name,
             service_port=APPLICATION_PORT,
-            tls_secret_name=self.config["tls-secret-name"] or "",
+            tls_secret_name=self.model.config.get("tls-secret-name", ""),
             backend_protocol="HTTP",
         )
 
@@ -269,12 +272,37 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         self.unit.status = MaintenanceStatus(f"restarting {APP_NAME}")
         container.restart(self.name)
 
-    def ready_to_start(self):
-        """Check if peer relation is established.
+    def _validate_config(self):
+        """Check charm config is valid, setting BlockedStatus if not.
 
         Returns:
-            True if peer relation established, else False.
+            True if config is valid, False otherwise.
         """
+        try:
+            _ = self.config
+            return True
+        except ValidationError as e:
+            missing = [
+                str(err["loc"][0]).replace("_", "-")
+                for err in e.errors()
+                if err["type"] == "value_error.missing"
+            ]
+            self.unit.status = BlockedStatus(
+                f"missing required config: {', '.join(missing)}"
+                if missing
+                else str(e)
+            )
+            return False
+
+    def ready_to_start(self):
+        """Check if the charm is ready to start the application.
+
+        Returns:
+            True if config is valid and required relations exist, else False.
+        """
+        if not self._validate_config():
+            return False
+
         if self.model.get_relation(DB_RELATION_NAME) is None:
             self.unit.status = BlockedStatus("Needs a PostgreSQL relation")
             return False

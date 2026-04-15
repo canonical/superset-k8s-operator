@@ -11,7 +11,11 @@
 import logging
 from unittest import TestCase, mock
 
-from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus
+from ops.model import (
+    ActiveStatus,
+    BlockedStatus,
+    MaintenanceStatus,
+)
 from ops.pebble import CheckStatus
 from ops.testing import Harness
 
@@ -352,6 +356,39 @@ class TestCharm(TestCase):
         )
         plan = harness.get_container_pebble_plan("superset").to_dict()
         assert plan is not None
+
+    def test_secret_key_uses_configured_value(self):
+        """SUPERSET_SECRET_KEY uses the configured value when superset-secret-key is set."""
+        harness = self.harness
+        simulate_lifecycle(harness)
+
+        env = harness.get_container_pebble_plan("superset").to_dict()[
+            "services"
+        ]["superset"]["environment"]
+        self.assertEqual(env["SUPERSET_SECRET_KEY"], "example-pass")  # nosec
+
+    def test_secret_key_waiting_when_not_configured(self):
+        """The charm sets BlockedStatus when superset-secret-key is missing."""
+        harness = Harness(SupersetK8SCharm)
+        self.addCleanup(harness.cleanup)
+
+        harness.set_can_connect("superset", True)
+        harness.set_leader(True)
+        harness.set_model_name("superset-model")
+        harness.add_network("10.0.0.10", endpoint="peer")
+        harness.begin_with_initial_hooks()
+
+        self.assertEqual(
+            harness.model.unit.status,
+            BlockedStatus("missing required config: superset-secret-key"),
+        )
+
+        harness.charm.on.update_status.emit()
+
+        self.assertEqual(
+            harness.model.unit.status,
+            BlockedStatus("missing required config: superset-secret-key"),
+        )
 
     def test_beat_deployment(self):
         """The pebble plan reflects the beat function."""
