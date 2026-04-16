@@ -82,16 +82,17 @@ class CharmConfig(BaseConfigModel):
 
     @validator("*", pre=True)
     @classmethod
-    def blank_string(cls, value):
+    def blank_string(cls, value, field):
         """Check for empty strings.
 
         Args:
             value: configuration value
+            field: the pydantic field being validated
 
         Returns:
             None in place of empty string or value
         """
-        if value == "":
+        if value == "" and field.allow_none:
             return None
         return value
 
