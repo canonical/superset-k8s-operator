@@ -30,6 +30,8 @@ LOCAL_ROCK_TAG := $(ROCK_VERSION)-$(shell date +%s)
 CHARM_FILE := $(PROJECT_ROOT)/$(CHARM_NAME)_$(CHARM_ARCH).charm
 ROCK_FILE := $(ROCK_DIR)/$(ROCK_NAME)_$(ROCK_VERSION)_$(ROCK_ARCH).rock
 
+IMPORT_SCRIPT := $(PROJECT_ROOT)/scripts/import_rock.sh
+
 # Default target
 .PHONY: help
 help:
@@ -47,7 +49,9 @@ help:
 	@echo "  clean             Remove built charm and rock files"
 	@echo "  clean-charmcraft  Clean charmcraft environment"
 	@echo "  clean-rockcraft   Clean rockcraft environment"
-	@echo "  deploy-local      Deploy charm with local resources"
+	@echo "  deploy-local-ui   Deploy UI charm with local resources"
+	@echo "  deploy-local-worker Deploy worker charm with local resources"
+	@echo "  deploy-local-beat Deploy beat charm with local resources"
 	@echo "  fmt               Apply coding style standards to code"
 	@echo "  import-rock       Build and import the rock into MicroK8s"
 	@echo "  lint              Check code against coding style standards"
@@ -116,10 +120,20 @@ clean-rockcraft:
 	@echo "Cleaning rockcraft environment..."
 	cd $(ROCK_DIR) && rockcraft clean
 
-.PHONY: deploy-local
-deploy-local:
-	@echo "Deploying charm with local resources..."
+.PHONY: deploy-local-ui
+deploy-local-ui:
+	@echo "Deploying UI charm with local resources..."
 	juju deploy $(CHARM_FILE) --resource superset-image=$(REGISTRY)/$(ROCK_NAME):latest superset-k8s-ui
+
+.PHONY: deploy-local-worker
+deploy-local-worker:
+	@echo "Deploying worker charm with local resources..."
+	juju deploy $(CHARM_FILE) --resource superset-image=$(REGISTRY)/$(ROCK_NAME):latest --config charm-function=worker superset-k8s-worker
+
+.PHONY: deploy-local-beat
+deploy-local-beat:
+	@echo "Deploying beat charm with local resources..."
+	juju deploy $(CHARM_FILE) --resource superset-image=$(REGISTRY)/$(ROCK_NAME):latest --config charm-function=beat superset-k8s-beat
 
 .PHONY: fmt
 fmt:
@@ -160,13 +174,8 @@ build-rock: $(ROCK_FILE)
 # import-rock depends on the rock file
 .PHONY: import-rock
 import-rock: $(ROCK_FILE)
-	@echo "Importing rock into MicroK8s registry..."
-	skopeo --insecure-policy copy --dest-tls-verify=false \
-		oci-archive:$(ROCK_FILE) \
-		docker://$(REGISTRY)/$(ROCK_NAME):$(LOCAL_ROCK_TAG)
-	skopeo --insecure-policy copy --dest-tls-verify=false \
-		oci-archive:$(ROCK_FILE) \
-		docker://$(REGISTRY)/$(ROCK_NAME):latest
+	@echo "Importing rock $(ROCK_FILE)..."
+	$(IMPORT_SCRIPT) $(ROCK_FILE) $(ROCK_NAME) $(ROCK_VERSION) --latest
 
 .PHONY: venv
 venv:
