@@ -1,7 +1,6 @@
 copilot:
   # The version of the toolkit to use (matches a Release Tag in this repo)
-  version: "v0.8.0"
-
+  version: "v0.12.0"
   # The collections you want to install
   collections:
     - charm-python
