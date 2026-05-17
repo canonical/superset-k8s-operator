@@ -165,15 +165,15 @@ class TrinoCatalogRelationHandler(ops.Object):
             logger.debug("Skipping trino-catalog sync: not the leader unit")
             return False
 
+        if not self.charm.ready_to_start():
+            return False
+
         if self.charm.config["charm-function"] not in UI_FUNCTIONS:
             logger.debug(
                 "Skipping trino-catalog sync: charm-function '%s' "
                 "is not a UI function",
                 self.charm.config["charm-function"],
             )
-            return False
-
-        if not self.charm.ready_to_start():
             return False
 
         return True

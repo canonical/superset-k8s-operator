@@ -1,127 +1,149 @@
-# Testing
+# Contributing
 
-This project uses `tox` for managing test environments (4.4.x). There are some pre-configured environments
-that can be used for linting and formatting code when you're preparing contributions to the charm:
+To make contributions to this charm, you'll need a working [development setup](https://juju.is/docs/sdk/dev-setup).
+
+A lot of the commands you would need are covered with the [Makefile](./Makefile), learn more by running `make help`.
+
+**Note:** It is recommended to build on the host and deploy in a [Multipass](https://canonical.com/multipass/install) instance.
+Launch a VM and mount the project directory so the VM has access to build artifacts:
 
 ```shell
-tox run -e fmt           # update your code according to linting rules
-tox run -e lint          # code style
-tox run -e unit          # unit tests
-tox run -e integration   # integration tests
-tox                      # runs 'format', 'lint', and 'unit' environments
+multipass launch 24.04 -n superset-dev -m 8g -c 2 -d 40G
+multipass mount ~/path/to/superset-k8s-operator superset-dev:/home/ubuntu/superset-k8s-operator
+multipass shell superset-dev
 ```
 
-# Deploy Superset
+## Environment for coding
 
-This charm is used to deploy Superset Server in a k8s cluster. For local deployment, follow the following steps:
+You can install the dependencies for coding with:
 
-## Set up your development environment with Multipass [~ 10 mins]
-When you’re trying things out, it’s good to be in an isolated environment, so you don’t have to worry too much about cleanup. It’s also nice if you don’t need to bother too much with setup. In the Juju world you can get both by spinning up an Ubuntu virtual machine (VM) with Multipass, specifically, using their Juju-ready `charm-dev` blueprint.
+```shell
+make install-build-deps
 ```
-sudo snap install multipass
-multipass launch --cpus 4 --memory 8G --disk 30G --name superset-vm charm-dev
+
+**Note:** If you run this from the VS Code snap's integrated terminal you may get a weird PATH. Run it from an external terminal instead.
+
+You can create an environment for coding with:
+
+```shell
+make venv
+source venv/bin/activate
 ```
-That's it! Your dependencies are all set up, please run `multipass shell superset-vm` and skip to `Create a model`.
 
-## Set up your development environment without Multipass blueprint
-### Install Microk8s
+## Environment for building
+
+You can install the dependencies for building with:
+
+```shell
+make install-build-deps
 ```
-# Install microk8s from snap:
-sudo snap install microk8s --channel=1.27-strict/stable
 
-# Setup an alias for kubectl:
-sudo snap alias microk8s.kubectl kubectl
+This installs: LXD, charmcraft, rockcraft, yq, uv, tox, and the skopeo alias.
 
-# Add your user to the Microk8s group:
-sudo usermod -a -G snap_microk8s $USER
+After installation, LXD must be initialized:
 
-# Switch to the 'microk8s' group:
-newgrp snap_microk8s
-
-# Wait for microk8s to be ready:
-microk8s status --wait-ready
-
-# Enable the necessary Microk8s addons:
-sudo microk8s.enable dns 
-sudo microk8s.enable rbac 
-sudo microk8s.enable hostpath-storage
-
-# Wait for addons to be rolled out:
-microk8s.kubectl rollout status deployments/coredns -n kube-system -w --timeout=600s
-microk8s.kubectl rollout status deployments/hostpath-provisioner -n kube-system -w --timeout=600s
-```
-### Install Charmcraft
-```
-# Install lxd from snap:
-sudo snap install lxd --classic --channel=5.0/stable
-
-# Install charmcraft from snap:
-sudo snap install charmcraft --classic --channel=latest/stable
-
-# Charmcraft relies on LXD. Configure LXD:
+```shell
+sudo adduser $USER lxd
+newgrp lxd
 lxd init --auto
 ```
-### Set up the Juju OLM
-```
-# Install the Juju CLI client, juju:
-sudo snap install juju --channel=3/stable
 
-# Make Juju directory
+## Verify build environment
+
+You can verify that you have all the necessary dependencies installed with:
+
+```shell
+make check-build-deps
+```
+
+## Building artifacts
+
+You can build the charm with:
+
+```shell
+make build-charm
+```
+
+You can build the rock with:
+
+```shell
+make build-rock
+```
+
+## Code quality
+
+You can run linters, static analysis, and unit tests with:
+
+```shell
+make fmt     # Runs formatters and also does formatting checks
+make lint    # Runs linters
+make test    # Runs static analysis and unit tests
+make checks  # Runs all of the above
+
+make test-integration  # Runs integration tests*
+```
+
+*: It is recommended to let CI runners run integration tests on GitHub Actions.
+
+## Deploying locally
+
+### Environment setup
+
+You can install the dependencies with:
+
+```shell
+make install-deploy-deps
+```
+
+This installs: Juju, MicroK8s, and Docker.
+
+After installation, some additional setup is required:
+
+```shell
+# Enable required MicroK8s addons
+sudo microk8s enable hostpath-storage registry dns
+
+# Add your user to the required groups
+sudo usermod -aG snap_microk8s $USER
+sudo groupadd docker
+sudo usermod -aG docker $USER
+
+sudo snap disable docker
+sudo snap enable docker
+
+# Both microk8s and docker require new groups
+# and `newgrp` does not cover for both at the same time.
+# A system reboot is recommended at this point.
+
+# Create the Juju home directory before bootstrapping
+# (required when running from a snap-confined terminal such as VS Code)
 mkdir -p ~/.local/share/juju
 
-# Install a "juju" controller into your "microk8s" cloud:
-juju bootstrap microk8s superset-controller
+juju bootstrap microk8s
 ```
-### Create a model
-```
-# Create a 'model' on this controller:
-juju add-model superset-k8s
 
-# Enable DEBUG logging:
+### Deployment
+
+You can deploy Superset's UI server using local artifacts with:
+
+```shell
+make import-rock
+make deploy-local-ui
+```
+
+Superset runs as three separate components. After the initial deploy you can add the worker and beat scheduler:
+
+```shell
+make deploy-local-worker
+make deploy-local-beat
+```
+
+It is recommended to change the logging configuration when working with deployments:
+
+```shell
 juju model-config logging-config="<root>=INFO;unit=DEBUG"
-
-# Check progress:
-juju status
-juju debug-log
-```
-### Configure juju
-This is an optional step intended to make the update-status hook more responsive. The default value is 5m.
-Following deployment, the status of the application will be checked at this regular interval. By setting this to 1m the deployment will be able to reach an `Active` status soon after application start. Leaving this at 5m will require waiting 5 minutes following deployment for application verification.
-
-Be aware if you update this configuration on the model it will apply to all charms on that model.
-
-```
-# customise update status hook interval:
-juju model-config update-status-hook-interval=1m
 ```
 
-### Pack rock
-```
-cd superset_rock
-
-rockcraft pack
-rockcraft.skopeo --insecure-policy copy --dest-tls-verify=false oci-archive:superset_<version>-24.04-edge_amd64.rock docker://localhost:32000/superset-rock:<version>
-```
-
-### Deploy charm
-```
-cd ../superset-k8s-operator
-
-# Pack the charm:
-charmcraft pack
-
-# deploy the web server
-juju deploy ./superset-k8s_ubuntu-22.04-amd64.charm --resource superset-image=localhost:32000/superset-rock:<version> superset-k8s-ui
-
-# deploy a worker
-juju deploy ./superset-k8s_ubuntu-22.04-amd64.charm --resource superset-image=localhost:32000/superset-rock:<version> --config charm-function=worker superset-k8s-worker
-
-# deploy the beat scheduler
-juju deploy ./superset-k8s_ubuntu-22.04-amd64.charm --resource superset-image=localhost:32000/superset-rock:<version> --config charm-function=beat superset-k8s-beat
-
-# Check deployment was successful:
-juju status
-```
 ## Relations
 ### Redis
 Redis acts as both a cache and message broker for Superset services. It's a requirement to have a redis relation in order to start the Superset application.
@@ -217,22 +239,23 @@ SELECT * FROM ab_user WHERE email = '<your email>';
 ```
 
 ## Cleanup
+
+```shell
 # Remove the application before retrying
-```
 juju remove-application superset-k8s-ui superset-k8s-beat superset-k8s-worker --force
 ```
 
-# Upgrading Superset version
+## Upgrading Superset version
 
 The Apache Superset project uses [semantic versioning](https://semver.org/). This charmed operator is set up to utilize the same versioning. However, the [charmed operator](https://charmhub.io/superset-k8s) uses channels (`edge` and `stable`) to differentiate between major versions and risk levels (e.g. channel `5/stable` is used to deploy Superset 5, while `6/stable` is used to deploy Superset 6). Upgrades between major stable tracks should result in no breaking changes.
 
-On Github, the `main` branch corresponds to the the `latest/edge` channel on Charmhub. The `track/*` branches correspond to the `*/edge` channels on Charmhub. Depending on which channel you are targeting, you should make the changes on the relevant Github branch.
+On Github, the `main` branch corresponds to the `latest/edge` channel on Charmhub. The `track/*` branches correspond to the `*/edge` channels on Charmhub. Depending on which channel you are targeting, you should make the changes on the relevant Github branch.
 
 The following are steps required to perform a major upgrade on the Superset charmed operator. For simplicity, we will assume we are upgrading Superset to `v6`.
 
 ## Pull changes from most recent track
 
-As an example, if you are upgrading to version 6, then you must pull the latest changes from the most recent stable version (in this case, it would be branch `track/5` on Github). Resolve any merge conflicts that may come up. This will ensure any changes or bug fixes made to the charm on `track/5` are propogataed to the latest version.
+As an example, if you are upgrading to version 6, then you must pull the latest changes from the most recent stable version (in this case, it would be branch `track/5` on Github). Resolve any merge conflicts that may come up. This will ensure any changes or bug fixes made to the charm on `track/5` are propagated to the latest version.
 
 ## Upgrade Superset rock
 
