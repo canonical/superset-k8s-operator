@@ -7,5 +7,8 @@ jobs:
   unit-tests:
     uses: canonical/operator-workflows/.github/workflows/test.yaml@main
     secrets: inherit
+    permissions:
+      contents: read
+      pull-requests: write
     with:
       self-hosted-runner: false
