@@ -251,7 +251,14 @@ class SupersetApiClient:
             return response.json()
 
         except requests.RequestException as e:
-            logger.error("Request error for %s %s: %s", method, url, e)
+            body = getattr(getattr(e, "response", None), "text", "")
+            logger.error(
+                "Request error for %s %s: %s | response: %s",
+                method,
+                url,
+                e,
+                body,
+            )
             raise SupersetApiError(
                 f"API {method} {endpoint} request failed: {e}"
             ) from e
@@ -368,6 +375,9 @@ class SupersetApiClient:
 
         Returns:
             List of TrinoConnection objects for all Trino databases.
+
+        Raises:
+            SupersetApiError: If fetching or parsing database connections fails.
         """
         databases = self._paginated_get("/api/v1/database/")
         trino_connections: list[TrinoConnection] = []
@@ -405,7 +415,9 @@ class SupersetApiClient:
                     db_id,
                     e,
                 )
-                continue
+                raise SupersetApiError(
+                    f"Failed to fetch/parse connection for database '{db_name}' (id={db_id}): {e}"
+                ) from e
 
         logger.debug(
             "Found %d Trino connections out of %d total databases",
