@@ -336,3 +336,89 @@ def FLASK_APP_MUTATOR(app):
 
     # Swap the default Request class with our configured one
     app.request_class = ConfiguredLimitRequest
+
+
+# =============================================================================
+# Fix: QueryObject cache-key SQL normalisation (Apache Superset issue #37114)
+# =============================================================================
+#
+# Under GLOBAL_ASYNC_QUERIES the Celery worker and the UI gunicorn process both
+# independently compute QueryObject.cache_key() for the same chart request.
+# When custom SQL expressions contain inconsistent whitespace — multi-line CASE
+# blocks, trailing newlines, or varying spaces around arithmetic operators — the
+# two sides produce different SHA-256 hashes and the UI gets HTTP 422
+# "Error loading data from cache".
+#
+# Root cause: the QueryContext cache (Redis DB0) stores a round-tripped
+# serialisation of the form_data. On the worker side the raw form_data is used
+# directly; on the UI side the round-tripped form is used. Two schema paths
+# that differ in whitespace produce different hashes even for identical queries.
+#
+# The error manifests in charts with metrics with custom SQL expressions such as:
+#   1. Multi-line CASE expressions in orderby: worker retains raw `\n`-indented
+#      SQL while the UI gets a single-line version after QC-cache round-trip.
+#   2. Arithmetic operator spacing: worker receives `SUM("a"+"b")` while the UI
+#      reconstructs `SUM("a" + "b")` after round-trip through the schema.
+#
+# Fix: normalise SQL expressions to a canonical form at QueryObject construction
+# time (__init__), before any hash is ever computed. This covers every code path
+# — UI force-refresh, UI normal, and Celery worker — because all of them
+# construct QueryObjects via the same factory.
+#
+# Upstream reference: Apache Superset PR #38227 performs only CRLF to LF and
+# leading/trailing strip, which is insufficient for internal newlines and
+# operator spacing. This normalisation is a strict superset of PR #38227.
+#
+# Remove this block once a Superset release with full normalisation is deployed.
+# =============================================================================
+import copy as _qo_copy
+import re as _qo_re
+
+from superset.common.query_object import QueryObject as _QO
+
+
+def _qo_norm_sql(expr):
+    """Return canonical form of a custom SQL expression dict.
+
+    Normalises the sqlExpression string so that any two representations of the
+    same SQL produce identical strings, regardless of line endings, indentation,
+    or spacing around arithmetic operators.
+    """
+    if isinstance(expr, dict) and expr.get("expressionType") == "SQL":
+        out = _qo_copy.deepcopy(expr)
+        sql = out.get("sqlExpression")
+        if isinstance(sql, str):
+            # 1. Unify line endings
+            sql = sql.replace("\r\n", "\n").replace("\r", "\n")
+            # 2. Remove whitespace around arithmetic operators so that
+            #    "a + b", "a +b", and "a+b" all produce "a+b"
+            sql = _qo_re.sub(r"\s*([+\-*/])\s*", r"\1", sql)
+            # 3. Collapse all remaining whitespace runs to a single space
+            sql = " ".join(sql.split())
+            out["sqlExpression"] = sql
+        return out
+    return expr
+
+
+def _qo_norm_orderby(item):
+    if isinstance(item, (list, tuple)) and item:
+        return [_qo_norm_sql(item[0])] + list(item[1:])
+    return item
+
+
+_qo_orig_init = _QO.__init__
+
+
+def _qo_patched_init(self, *args, **kwargs):
+    _qo_orig_init(self, *args, **kwargs)
+    self.metrics = [_qo_norm_sql(m) for m in (self.metrics or [])]
+    self.orderby = [_qo_norm_orderby(ob) for ob in (self.orderby or [])]
+    self.columns = [_qo_norm_sql(c) for c in (self.columns or [])]
+    if self.series_limit_metric is not None:
+        self.series_limit_metric = _qo_norm_sql(self.series_limit_metric)
+
+
+_QO.__init__ = _qo_patched_init
+# =============================================================================
+# End fix: QueryObject cache-key SQL normalisation
+# =============================================================================
