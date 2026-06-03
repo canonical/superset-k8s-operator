@@ -132,8 +132,13 @@ class TrinoCatalogRelationHandler(ops.Object):
         if api is None:
             return
 
+        metadata_db_uri = self.charm.database.get_db_uri()
+        if metadata_db_uri is None:
+            logger.error("Metadata database URI unavailable, skipping sync")
+            return
+
         try:
-            existing_dbs = api.get_trino_databases()
+            existing_dbs = api.get_trino_databases(metadata_db_uri)
         except SupersetApiError as e:
             logger.error("Failed to fetch existing databases: %s", e)
             return

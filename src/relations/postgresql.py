@@ -101,3 +101,19 @@ class Database(framework.Object):
             "password": relation_data.get("password"),
             "user": relation_data.get("username"),
         }
+
+    def get_db_uri(self) -> Optional[str]:
+        """Build the SQLAlchemy URI for the Superset metadata database.
+
+        Returns:
+            Optional[str]: Full postgresql:// SQLAlchemy URI, or None if the
+            relation data is not available.
+        """
+        db_info = self.get_db_info()
+        if db_info is None:
+            return None
+
+        return (
+            f"postgresql://{db_info['user']}:{db_info['password']}"
+            f"@{db_info['host']}:{db_info['port']}/{DB_NAME}"
+        )
