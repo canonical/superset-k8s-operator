@@ -38,29 +38,30 @@ help:
 	@echo "Usage: make [target]"
 	@echo ""
 	@echo "Targets:"
-	@echo "  build             Build both charm and rock"
-	@echo "  build-charm       Build the charm using charmcraft"
-	@echo "  build-rock        Build the OCI archive (rock) using rockcraft"
-	@echo "  check-build-deps  Check if necessary dependencies for building are installed"
-	@echo "  check-deploy-deps Check if necessary dependencies for deploying are installed"
-	@echo "  install-build-deps Install dependencies needed for building"
-	@echo "  install-deploy-deps Install dependencies needed for deploying"
-	@echo "  checks            Run all the code quality checks"
-	@echo "  clean             Remove built charm and rock files"
-	@echo "  clean-charmcraft  Clean charmcraft environment"
-	@echo "  clean-rockcraft   Clean rockcraft environment"
-	@echo "  deploy-local-ui   Deploy UI charm with local resources"
-	@echo "  deploy-local-worker Deploy worker charm with local resources"
-	@echo "  deploy-local-beat Deploy beat charm with local resources"
-	@echo "  fmt               Apply coding style standards to code"
-	@echo "  import-rock       Build and import the rock into MicroK8s"
-	@echo "  lint              Check code against coding style standards"
-	@echo "  test              Run unit and static tests"
-	@echo "  test-integration  Run integration tests"
-	@echo "  test-static       Run static type checks"
-	@echo "  test-unit         Run unit tests"
-	@echo "  help              Show this help message"
-	@echo "  venv              Create a virtual environment"
+	@echo "  build                Build both charm and rock"
+	@echo "  build-charm          Build the charm using charmcraft"
+	@echo "  build-rock           Build the OCI archive (rock) using rockcraft"
+	@echo "  check-build-deps     Check if necessary dependencies for building are installed"
+	@echo "  check-deploy-deps    Check if necessary dependencies for deploying are installed"
+	@echo "  install-build-deps   Install dependencies needed for building"
+	@echo "  install-deploy-deps  Install dependencies needed for deploying"
+	@echo "  checks               Run all the code quality checks"
+	@echo "  clean                Remove built charm and rock files"
+	@echo "  clean-charmcraft     Clean charmcraft environment"
+	@echo "  clean-dev            Remove tox, pytest/mypy/ruff caches, coverage data, build/, dist/, __pycache__/"
+	@echo "  clean-rockcraft      Clean rockcraft environment"
+	@echo "  deploy-local-ui      Deploy UI charm with local resources"
+	@echo "  deploy-local-worker  Deploy worker charm with local resources"
+	@echo "  deploy-local-beat    Deploy beat charm with local resources"
+	@echo "  fmt                  Apply coding style standards to code"
+	@echo "  import-rock          Build and import the rock into MicroK8s"
+	@echo "  lint                 Check code against coding style standards"
+	@echo "  test                 Run unit and static tests"
+	@echo "  test-integration     Run integration tests"
+	@echo "  test-static          Run static type checks"
+	@echo "  test-unit            Run unit tests"
+	@echo "  help                 Show this help message"
+	@echo "  venv                 Create a virtual environment"
 
 .PHONY: build
 build: build-charm build-rock
@@ -114,6 +115,21 @@ clean:
 clean-charmcraft:
 	@echo "Cleaning charmcraft environment..."
 	cd $(PROJECT_ROOT) && charmcraft clean
+
+.PHONY: clean-dev
+clean-dev:
+	@echo "Cleaning developer caches and tool artifacts..."
+	rm -rf $(PROJECT_ROOT)/.tox
+	rm -rf $(PROJECT_ROOT)/.mypy_cache
+	rm -rf $(PROJECT_ROOT)/.pytest_cache
+	rm -rf $(PROJECT_ROOT)/.ruff_cache
+	rm -rf $(PROJECT_ROOT)/htmlcov
+	rm -rf $(PROJECT_ROOT)/build
+	rm -rf $(PROJECT_ROOT)/dist
+	rm -f  $(PROJECT_ROOT)/.coverage
+	rm -f  $(PROJECT_ROOT)/coverage.xml
+	find $(PROJECT_ROOT) -path '*/.git' -prune -o -type d -name '__pycache__' -exec rm -rf {} +
+	find $(PROJECT_ROOT) -path '*/.git' -prune -o -type d -name '*.egg-info' -exec rm -rf {} +
 
 .PHONY: clean-rockcraft
 clean-rockcraft:

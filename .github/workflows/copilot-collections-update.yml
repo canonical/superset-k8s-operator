@@ -6,6 +6,9 @@ on:
 
 jobs:
   check-update:
+    permissions:
+      contents: write
+      pull-requests: write
     # Always pin to @main to get the latest logic, but the content version is controlled by your .yaml file
     uses: canonical/copilot-collections/.github/workflows/auto_update_collections.yaml@main
     secrets: inherit

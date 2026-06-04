@@ -12,6 +12,8 @@ from urllib.parse import quote_plus
 
 import jwt
 import requests
+import sqlalchemy
+from sqlalchemy.exc import SQLAlchemyError
 
 logger = logging.getLogger(__name__)
 
@@ -251,7 +253,14 @@ class SupersetApiClient:
             return response.json()
 
         except requests.RequestException as e:
-            logger.error("Request error for %s %s: %s", method, url, e)
+            body = getattr(getattr(e, "response", None), "text", "")
+            logger.error(
+                "Request error for %s %s: %s | response: %s",
+                method,
+                url,
+                e,
+                body,
+            )
             raise SupersetApiError(
                 f"API {method} {endpoint} request failed: {e}"
             ) from e
@@ -363,56 +372,52 @@ class SupersetApiClient:
             "impersonate_user": True,
         }
 
-    def get_trino_databases(self) -> list[TrinoConnection]:
-        """Get existing Trino database connections.
+    def get_trino_databases(
+        self, metadata_db_uri: str
+    ) -> list[TrinoConnection]:
+        """Get existing Trino database connections via a direct DB query.
+
+        Queries the Superset metadata database directly instead of paging
+        the REST API, avoiding N per-database connection calls on every
+        reconcile.
+
+        Args:
+            metadata_db_uri: SQLAlchemy URI for the Superset metadata database.
 
         Returns:
             List of TrinoConnection objects for all Trino databases.
+
+        Raises:
+            SupersetApiError: If querying the metadata database fails.
         """
-        databases = self._paginated_get("/api/v1/database/")
-        trino_connections: list[TrinoConnection] = []
-        for db in databases:
-            backend = db.get("backend", "")
-            if backend != "trino":
-                continue
-
-            db_id = db.get("id")
-            db_name = db.get("database_name")
-            if not db_id or not db_name:
-                continue
-
-            # Fetch detailed connection info for this database
-            try:
-                connection_info = self._send_request(
-                    "GET", f"/api/v1/database/{db_id}/connection"
-                )
-
-                uri = connection_info.get("result", {}).get("sqlalchemy_uri")
-                if uri and "trino://" in uri:
-                    catalog = uri.rsplit("/", 1)[-1].split("?")[0]
-                    trino_connections.append(
-                        TrinoConnection(
-                            id=db_id,
-                            database_name=db_name,
-                            sqlalchemy_uri=uri,
-                            catalog=catalog,
-                        )
+        try:
+            engine = sqlalchemy.create_engine(metadata_db_uri)
+            with engine.connect() as conn:
+                rows = conn.execute(
+                    sqlalchemy.text(
+                        "SELECT id, database_name, sqlalchemy_uri "
+                        "FROM dbs "
+                        "WHERE sqlalchemy_uri LIKE 'trino://%%'"
                     )
-            except (KeyError, AttributeError, SupersetApiError) as e:
-                logger.warning(
-                    "Error fetching/parsing Trino connection '%s' (id=%s): %s",
-                    db_name,
-                    db_id,
-                    e,
-                )
-                continue
+                ).fetchall()
+        except SQLAlchemyError as e:
+            logger.error("Failed to query Trino databases: %s", e)
+            raise SupersetApiError(
+                f"Failed to query Trino databases: {e}"
+            ) from None
 
-        logger.debug(
-            "Found %d Trino connections out of %d total databases",
-            len(trino_connections),
-            len(databases),
-        )
-        return trino_connections
+        connections = [
+            TrinoConnection(
+                id=row[0],
+                database_name=row[1],
+                sqlalchemy_uri=row[2],
+                catalog=row[2].rsplit("/", 1)[-1].split("?")[0],
+            )
+            for row in rows
+        ]
+
+        logger.debug("Found %d Trino connections", len(connections))
+        return connections
 
     def create_trino_database(  # pylint: disable=too-many-positional-arguments
         self,

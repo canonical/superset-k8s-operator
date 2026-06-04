@@ -17,3 +17,5 @@ jobs:
       origin-channel: ${{ github.event.inputs.origin-channel }}
       destination-channel: ${{ github.event.inputs.destination-channel }}
     secrets: inherit
+    permissions:
+      contents: read

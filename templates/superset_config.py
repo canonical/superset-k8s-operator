@@ -325,6 +325,10 @@ MAX_CONTENT_LENGTH = int(v) if (v := os.getenv("MAX_CONTENT_LENGTH")) else None
 MAX_FORM_MEMORY_SIZE = int(v) if (v := os.getenv("MAX_FORM_MEMORY_SIZE")) else 500_000
 MAX_FORM_PARTS = int(v) if (v := os.getenv("MAX_FORM_PARTS")) else 1000
 
+# Report screenshots
+SCREENSHOT_LOCATE_WAIT = 120
+SCREENSHOT_LOAD_WAIT = 600
+
 def FLASK_APP_MUTATOR(app):
     """Override the Flask app dynamically."""
 
@@ -336,3 +340,194 @@ def FLASK_APP_MUTATOR(app):
 
     # Swap the default Request class with our configured one
     app.request_class = ConfiguredLimitRequest
+
+
+# =============================================================================
+# Fix: QueryObject cache-key SQL normalisation (Apache Superset issue #37114)
+# =============================================================================
+#
+# Under GLOBAL_ASYNC_QUERIES the Celery worker and the UI gunicorn process both
+# independently compute QueryObject.cache_key() for the same chart request.
+# When custom SQL expressions contain inconsistent whitespace — multi-line CASE
+# blocks, trailing newlines, or varying spaces around arithmetic operators — the
+# two sides produce different SHA-256 hashes and the UI gets HTTP 422
+# "Error loading data from cache".
+#
+# Root cause: the QueryContext cache (Redis DB0) stores a round-tripped
+# serialisation of the form_data. On the worker side the raw form_data is used
+# directly; on the UI side the round-tripped form is used. Two schema paths
+# that differ in whitespace produce different hashes even for identical queries.
+#
+# The error manifests in charts with metrics with custom SQL expressions such as:
+#   1. Multi-line CASE expressions in orderby: worker retains raw `\n`-indented
+#      SQL while the UI gets a single-line version after QC-cache round-trip.
+#   2. Arithmetic operator spacing: worker receives `SUM("a"+"b")` while the UI
+#      reconstructs `SUM("a" + "b")` after round-trip through the schema.
+#
+# Fix:
+#   * HASH-ONLY. We patch cache_key(), not __init__. The normalised SQL is
+#     used solely to compute the hash; the QueryObject's real sqlExpression is
+#     saved and restored around the call, so the SQL actually sent to the
+#     database is NEVER modified. The worst a bug here can cause is a cache
+#     miss, never altered query results.
+#   * LITERAL/COMMENT SAFE. The normaliser is a small scanner that copies
+#     string literals ('...'), quoted identifiers ("...", `...`) and comments
+#     (-- ..., /* ... */) through verbatim, and only collapses whitespace and
+#     strips spacing around operators/punctuation in actual SQL code. So a
+#     value like 'Closed - Won' or an identifier like "Gross - Net" is never
+#     rewritten.
+#   * The only equivalences collapsed are insignificant inter-token whitespace
+#     and whitespace around operators/punctuation (both semantic no-ops in
+#     SQL) so two expressions that map to the same hash are the same query.
+#
+# Upstream reference: Apache Superset PR #38227 performs only CRLF to LF and
+# leading/trailing strip, which is insufficient for internal newlines and
+# operator spacing. This normalisation is a strict superset of PR #38227.
+#
+# Remove this block once a Superset release with full normalisation is deployed.
+# =============================================================================
+from superset.common.query_object import QueryObject as _QO
+
+# Characters around which whitespace is insignificant in SQL code (outside of
+# string literals / quoted identifiers / comments, which are copied verbatim).
+_QO_TIGHT = set("+-*/%(),.=<>!|&~^:[]")
+_QO_COMMENT_MARKERS = ("--", "/*", "*/")
+
+
+def _qo_norm_sql_str(sql):
+    """Normalise whitespace in a SQL expression, for cache-key hashing only.
+
+    Collapses runs of insignificant whitespace to a single space and removes
+    whitespace around operators/punctuation, while copying string literals,
+    quoted identifiers and comments through unchanged so their contents are
+    never altered. Returns the input untouched on any unexpected error, this
+    only feeds the hash, so a fallback can at worst miss the cache.
+    """
+    try:
+        s = sql.replace("\r\n", "\n").replace("\r", "\n")
+        n = len(s)
+        out = []
+        pending_ws = False  # whitespace seen since the last emitted character
+
+        def last():
+            return out[-1] if out else ""
+
+        def emit_value(text):
+            # identifier / literal / comment / word run: keep a single
+            # separating space if whitespace preceded it and the previous
+            # emitted char is not a tight operator/punctuation.
+            nonlocal pending_ws
+            if out and pending_ws and last() not in _QO_TIGHT:
+                out.append(" ")
+            out.append(text)
+            pending_ws = False
+
+        def emit_tight(ch):
+            # operator / punctuation: no surrounding space, but never fuse two
+            # chars into a comment marker (e.g. `-` `-` -> `--`).
+            nonlocal pending_ws
+            if out and (last() + ch) in _QO_COMMENT_MARKERS:
+                out.append(" ")
+            out.append(ch)
+            pending_ws = False
+
+        i = 0
+        while i < n:
+            c = s[i]
+            # comments take priority over the operator chars that open them
+            if c == "-" and i + 1 < n and s[i + 1] == "-":
+                j = s.find("\n", i)
+                j = n if j == -1 else j
+                emit_value(s[i:j])
+                i = j
+                continue
+            if c == "/" and i + 1 < n and s[i + 1] == "*":
+                j = s.find("*/", i + 2)
+                j = n if j == -1 else j + 2
+                emit_value(s[i:j])
+                i = j
+                continue
+            # quoted regions copied verbatim (handle doubled-quote escapes)
+            if c in ("'", '"', "`"):
+                j = i + 1
+                while j < n:
+                    if s[j] == c:
+                        if j + 1 < n and s[j + 1] == c:
+                            j += 2
+                            continue
+                        j += 1
+                        break
+                    j += 1
+                else:
+                    j = n
+                emit_value(s[i:j])
+                i = j
+                continue
+            if c.isspace():
+                pending_ws = True
+                i += 1
+                continue
+            if c in _QO_TIGHT:
+                emit_tight(c)
+                i += 1
+                continue
+            # ordinary code: consume a maximal run of word characters
+            j = i
+            while (
+                j < n
+                and not s[j].isspace()
+                and s[j] not in _QO_TIGHT
+                and s[j] not in ("'", '"', "`")
+            ):
+                j += 1
+            emit_value(s[i:j])
+            i = j
+        return "".join(out)
+    except Exception:  # pragma: no cover
+        return sql
+
+
+def _qo_norm(expr):
+    """Return a copy of an adhoc SQL dict with a normalised sqlExpression."""
+    if isinstance(expr, dict) and expr.get("expressionType") == "SQL":
+        sql = expr.get("sqlExpression")
+        if isinstance(sql, str):
+            patched = dict(expr)
+            patched["sqlExpression"] = _qo_norm_sql_str(sql)
+            return patched
+    return expr
+
+
+def _qo_norm_orderby(item):
+    if isinstance(item, (list, tuple)) and item:
+        return [_qo_norm(item[0])] + list(item[1:])
+    return item
+
+
+_qo_orig_cache_key = _QO.cache_key
+
+
+def _qo_patched_cache_key(self, **extra):
+    # Swap in normalised SQL only for the duration of the hash computation,
+    # then restore the originals so the executed query is left untouched.
+    saved = (self.metrics, self.columns, self.orderby, self.series_limit_metric)
+    try:
+        self.metrics = [_qo_norm(m) for m in (self.metrics or [])]
+        self.columns = [_qo_norm(c) for c in (self.columns or [])]
+        self.orderby = [_qo_norm_orderby(ob) for ob in (self.orderby or [])]
+        if self.series_limit_metric is not None:
+            self.series_limit_metric = _qo_norm(self.series_limit_metric)
+        return _qo_orig_cache_key(self, **extra)
+    finally:
+        (
+            self.metrics,
+            self.columns,
+            self.orderby,
+            self.series_limit_metric,
+        ) = saved
+
+
+_QO.cache_key = _qo_patched_cache_key
+# =============================================================================
+# End fix: QueryObject cache-key SQL normalisation
+# =============================================================================

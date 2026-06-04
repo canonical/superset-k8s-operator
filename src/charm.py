@@ -35,7 +35,6 @@ from literals import (
     APP_NAME,
     APPLICATION_PORT,
     CONFIG_PATH,
-    DB_NAME,
     DB_RELATION_NAME,
     DEFAULT_ROLES,
     LOG_FILE,
@@ -400,11 +399,10 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         Returns:
             env: dictionary of environment variables
         """
-        database_relation_data = self.database.get_db_info()
-        if database_relation_data is None:
+        sqlalchemy_uri = self.database.get_db_uri()
+        if sqlalchemy_uri is None:
             raise ValueError("database relation data is not available")
 
-        sqlalchemy_uri = f"postgresql://{database_relation_data['user']}:{database_relation_data['password']}@{database_relation_data['host']}:{database_relation_data['port']}/{DB_NAME}"
         self._validate_self_registration_role(sqlalchemy_uri)
 
         (
