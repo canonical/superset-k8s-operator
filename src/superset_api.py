@@ -404,7 +404,7 @@ class SupersetApiClient:
             logger.error("Failed to query Trino databases: %s", e)
             raise SupersetApiError(
                 f"Failed to query Trino databases: {e}"
-            ) from e
+            ) from None
 
         connections = [
             TrinoConnection(
