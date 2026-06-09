@@ -18,4 +18,4 @@ jobs:
       destination-channel: ${{ github.event.inputs.destination-channel }}
     secrets: inherit
     permissions:
-      contents: read
+      contents: write

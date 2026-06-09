@@ -14,4 +14,4 @@ jobs:
     uses: canonical/operator-workflows/.github/workflows/publish_charm.yaml@main
     secrets: inherit
     permissions:
-      contents: read
+      contents: write
