@@ -342,10 +342,6 @@ MAX_CONTENT_LENGTH = int(v) if (v := os.getenv("MAX_CONTENT_LENGTH")) else None
 MAX_FORM_MEMORY_SIZE = int(v) if (v := os.getenv("MAX_FORM_MEMORY_SIZE")) else 500_000
 MAX_FORM_PARTS = int(v) if (v := os.getenv("MAX_FORM_PARTS")) else 1000
 
-# Report screenshots
-SCREENSHOT_LOCATE_WAIT = 120
-SCREENSHOT_LOAD_WAIT = 600
-
 def FLASK_APP_MUTATOR(app):
     """Override the Flask app dynamically."""
 
