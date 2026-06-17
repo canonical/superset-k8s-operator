@@ -17,3 +17,10 @@ You can enable, `True`, and/or disable, `False`, these flags using the following
 ```
 juju config superset-k8s-ui <flag-name>=<True/False>
 ```
+
+[note]
+Enabling `ALERT_REPORTS` also turns on the `PLAYWRIGHT_REPORTS_AND_THUMBNAILS` flag internally, which selects the
+Playwright + Chromium renderer used for report screenshots in Superset 6. This is handled automatically by the charm, so
+`PLAYWRIGHT_REPORTS_AND_THUMBNAILS` should not be set through the `feature-flags` configuration.
+[/note]
+

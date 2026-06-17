@@ -142,17 +142,28 @@ if os.getenv("ALERT_REPORTS", "").lower() == "true":
     SMTP_MAIL_FROM = os.getenv("SMTP_EMAIL")
     EMAIL_REPORTS_SUBJECT_PREFIX = os.getenv("SMTP_EMAIL_SUBJECT_PREFIX")
     ALERT_REPORTS_NOTIFICATION_DRY_RUN = False
-    
-    WEBDRIVER_TYPE = "firefox"
+
+    # The worker process environment is defined by the charm's Pebble layer and
+    # does not export PLAYWRIGHT_BROWSERS_PATH, so point Playwright at the
+    # Chromium build bundled in the ROCK image regardless of the runtime HOME.
+    os.environ.setdefault(
+        "PLAYWRIGHT_BROWSERS_PATH", "/opt/playwright-browsers"
+    )
+
+    # Superset 6 renders report screenshots with Playwright + Chromium.
+    # WEBDRIVER_OPTION_ARGS are passed to playwright.chromium.launch(), so
+    # they must be Chromium flags; --no-sandbox and --disable-dev-shm-usage
+    # are required for headless Chromium inside a container.
+    WEBDRIVER_TYPE = "chrome"
     WEBDRIVER_OPTION_ARGS = [
-        "--headless",
+        "--headless=new",
         "--disable-gpu",
         "--disable-dev-shm-usage",
         "--no-sandbox",
         "--disable-setuid-sandbox",
         "--disable-extensions",
     ]
-    
+
     WEBDRIVER_BASEURL_USER_FRIENDLY = os.getenv("SMTP_SUPERSET_EXTERNAL_URL")
 
 # Celery cache warm-up
@@ -244,6 +255,12 @@ FEATURE_FLAGS = {
     for flag_name in SUPPORTED_FEATURE_FLAGS
     if os.getenv(flag_name, "")
 }
+
+# Alerts and reports rely on screenshots. In Superset 6 the supported renderer
+# is Playwright + Chromium, so enabling ALERT_REPORTS implicitly turns on the
+# Playwright screenshot path; operators do not configure it separately.
+if os.getenv("ALERT_REPORTS", "").lower() == "true":
+    FEATURE_FLAGS["PLAYWRIGHT_REPORTS_AND_THUMBNAILS"] = True
 
 # Asynchronous queries
 GLOBAL_ASYNC_QUERIES_REDIS_STREAM_PREFIX = "async-events-"
