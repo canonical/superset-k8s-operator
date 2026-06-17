@@ -50,6 +50,7 @@ from log import log_event_handler
 from relations.oauth import ClientConfigError, OAuthRelation
 from relations.postgresql import Database
 from relations.redis import Redis
+from relations.tls import Certificates
 from relations.trino_catalog import TrinoCatalogRelationHandler
 from structured_config import CharmConfig
 from utils import load_superset_files, query_metadata_database
@@ -95,6 +96,8 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         # Handle OAuth relation
         self.oauth = OAuthRelation(self)
+        # Handle tls-certificates relation
+        self.certificates_handler = Certificates(self)
 
         # Handle basic charm lifecycle
         self.framework.observe(self.on.install, self._on_install)

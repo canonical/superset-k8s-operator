@@ -46,6 +46,8 @@ requires:
     limit: 1
   oauth:
     interface: oauth
+  certificates:
+    interface: tls-certificates
     optional: true
     limit: 1
 
