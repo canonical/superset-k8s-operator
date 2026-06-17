@@ -53,11 +53,13 @@ parts:
 
     stage:
       # 'python3-venv' package comes with 'ca-certificates' as a dependency. If we don't exclude the files,
-      # it will crash on 'overlay-pkgs' due to conflicting file permissions as it cannot override them
+      # it will crash on 'overlay-pkgs' due to conflicting file permissions as it cannot override them.
+      # On Ubuntu 24.04 the certificate bundle is also staged under /etc/ssl/certs.
       - -usr/lib/ssl/cert.pem
       - -usr/lib/ssl/certs
       - -usr/lib/ssl/openssl.cnf
       - -usr/lib/ssl/private
+      - -etc/ssl/certs/ca-certificates.crt
 
   local-files:
     plugin: dump
