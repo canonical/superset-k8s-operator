@@ -16,6 +16,7 @@ from ops.pebble import CheckStatus
 from ops.testing import Harness
 
 from charm import SupersetK8SCharm
+from literals import CA_CERT_LOCAL_PATH, CA_CERT_PATH
 
 SERVER_PORT = "8088"
 logger = logging.getLogger(__name__)
@@ -24,7 +25,7 @@ mock_incomplete_pebble_plan = {
 }
 
 
-class TestCharm(TestCase):
+class TestCharm(TestCase):  # pylint: disable=too-many-public-methods
     """Unit tests.
 
     Attrs:
@@ -607,6 +608,85 @@ class TestCharm(TestCase):
                 "SMTP secret with ID 'i-dont-exist' cannot be found."
             ),
         )
+
+    def test_certificates_relation_installs_ca(self):
+        """The CA is installed into the container when a cert is available."""
+        harness = self.harness
+        simulate_lifecycle(harness)
+
+        exec_calls = []
+        harness.handle_exec(
+            "superset",
+            ["update-ca-certificates"],
+            handler=lambda args: exec_calls.append(args.command),
+        )
+
+        ca_pem = "-----BEGIN CERTIFICATE-----\nMIIBexample\n-----END CERTIFICATE-----"
+
+        class _FakeCert:
+            """Minimal stand-in for a TLS certificate object."""
+
+            def __init__(self, raw):
+                """Construct the fake certificate.
+
+                Args:
+                    raw: The raw PEM-encoded certificate.
+                """
+                self.raw = raw
+
+        class _FakeEvent:
+            """Minimal stand-in for a certificate-available event."""
+
+            def __init__(self, ca):
+                """Construct the fake event.
+
+                Args:
+                    ca: The raw PEM-encoded CA certificate.
+                """
+                self.ca = _FakeCert(ca)
+                self.deferred = False
+
+            def defer(self):
+                """Record that the event was deferred."""
+                self.deferred = True
+
+        event = _FakeEvent(ca_pem)
+        harness.charm.certificates_handler._on_certificate_available(event)
+
+        self.assertFalse(event.deferred)
+        container = harness.model.unit.get_container("superset")
+        self.assertEqual(
+            container.pull(CA_CERT_PATH).read(), f"{ca_pem}\n"
+        )
+        self.assertEqual(
+            container.pull(CA_CERT_LOCAL_PATH).read(), f"{ca_pem}\n"
+        )
+        self.assertIn(["update-ca-certificates"], exec_calls)
+
+    def test_certificates_relation_broken_removes_ca(self):
+        """The CA is removed from the container when the relation breaks."""
+        harness = self.harness
+        simulate_lifecycle(harness)
+        harness.handle_exec(
+            "superset", ["update-ca-certificates"], result=0
+        )
+
+        container = harness.model.unit.get_container("superset")
+        container.push(CA_CERT_PATH, "ca\n", make_dirs=True)
+        container.push(CA_CERT_LOCAL_PATH, "ca\n", make_dirs=True)
+
+        class _FakeEvent:
+            """Minimal stand-in for a relation-broken event."""
+
+            def defer(self):
+                """Record that the event was deferred."""
+
+        harness.charm.certificates_handler._on_certificates_broken(
+            _FakeEvent()
+        )
+
+        self.assertFalse(container.exists(CA_CERT_PATH))
+        self.assertFalse(container.exists(CA_CERT_LOCAL_PATH))
 
 
 @mock.patch("charm.Redis.get_redis_relation_data")

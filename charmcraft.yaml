@@ -14,9 +14,9 @@ parts:
       - "cargo-1.85"
     charm-binary-python-packages:
       - psycopg2-binary
+      - cryptography
     stage:
       - "-superset_rock"
-
 bases:
   - build-on:
     - name: ubuntu

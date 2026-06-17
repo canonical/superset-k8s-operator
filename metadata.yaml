@@ -44,6 +44,10 @@ requires:
     interface: trino_catalog
     optional: true
     limit: 1
+  certificates:
+    interface: tls-certificates
+    optional: true
+    limit: 1
 
 provides:
   grafana-dashboard:
