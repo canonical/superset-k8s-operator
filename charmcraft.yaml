@@ -21,3 +21,21 @@ bases:
     run-on:
     - name: ubuntu
       channel: "22.04"
+
+charm-libs:
+  - lib: "data_platform_libs.data_interfaces"
+    version: "0"
+  - lib: "data_platform_libs.data_models"
+    version: "0"
+  - lib: "grafana_k8s.grafana_dashboard"
+    version: "0"
+  - lib: "loki_k8s.loki_push_api"
+    version: "1"
+  - lib: "nginx_ingress_integrator.nginx_route"
+    version: "0"
+  - lib: "prometheus_k8s.prometheus_scrape"
+    version: "0"
+  - lib: "redis_k8s.redis"
+    version: "0"
+  - lib: "trino_k8s.trino_catalog"
+    version: "0"
