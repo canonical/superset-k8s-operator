@@ -18,3 +18,6 @@ statsd==4.0.1
 
 # Requirement for gevent worker class
 gevent==24.2.1
+
+# Alerts and reports screenshots (Playwright + Chromium)
+playwright==1.52.0

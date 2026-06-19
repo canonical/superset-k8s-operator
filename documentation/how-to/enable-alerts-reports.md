@@ -78,3 +78,13 @@ for `server-alias` values in more complex setups.
 [/note]
 
 Finally, we pass the secret ID we got from the previous step to the applications so that they can make use of the credentials.
+
+## How screenshots are rendered
+Since Superset 6, report and alert screenshots are rendered with Playwright driving a headless Chromium browser, which
+replaces the Selenium and Firefox stack used in Superset 5. The charm bundles Chromium in its workload image, so no
+additional configuration is required.
+
+Enabling `ALERT_REPORTS` automatically turns on the `PLAYWRIGHT_REPORTS_AND_THUMBNAILS` feature flag that selects the
+Playwright renderer. You do not need to set `PLAYWRIGHT_REPORTS_AND_THUMBNAILS` yourself, and it should not be added to
+the `feature-flags` configuration.
+

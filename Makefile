@@ -15,6 +15,9 @@ ROCKCRAFT_YAML := $(ROCK_DIR)/rockcraft.yaml
 
 REGISTRY := localhost:32000
 
+# Extra arguments forwarded to juju deploy (e.g. ARGS="--config foo=bar")
+ARGS ?=
+
 # Ensure yq is installed: 'sudo snap install yq'
 CHARM_NAME := $(shell yq '.name' $(METADATA_YAML))
 CHARM_ARCH := ubuntu-22.04-amd64
@@ -138,18 +141,24 @@ clean-rockcraft:
 
 .PHONY: deploy-local-ui
 deploy-local-ui:
-	@echo "Deploying UI charm with local resources..."
-	juju deploy $(CHARM_FILE) --resource superset-image=$(REGISTRY)/$(ROCK_NAME):latest superset-k8s-ui
+	@echo "Fetching image digest..."
+	@SUPERSET_DIGEST=$$(skopeo inspect --tls-verify=false docker://$(REGISTRY)/$(ROCK_NAME):latest 2>/dev/null | jq -r '.Digest' || echo "latest") && \
+	echo "Deploying UI charm with local resources (using digest)..." && \
+	juju deploy $(CHARM_FILE) --resource superset-image=$(REGISTRY)/$(ROCK_NAME)@$$SUPERSET_DIGEST $(ARGS) superset-k8s-ui
 
 .PHONY: deploy-local-worker
 deploy-local-worker:
-	@echo "Deploying worker charm with local resources..."
-	juju deploy $(CHARM_FILE) --resource superset-image=$(REGISTRY)/$(ROCK_NAME):latest --config charm-function=worker superset-k8s-worker
+	@echo "Fetching image digest..."
+	@SUPERSET_DIGEST=$$(skopeo inspect --tls-verify=false docker://$(REGISTRY)/$(ROCK_NAME):latest 2>/dev/null | jq -r '.Digest' || echo "latest") && \
+	echo "Deploying worker charm with local resources (using digest)..." && \
+	juju deploy $(CHARM_FILE) --resource superset-image=$(REGISTRY)/$(ROCK_NAME)@$$SUPERSET_DIGEST --config charm-function=worker $(ARGS) superset-k8s-worker
 
 .PHONY: deploy-local-beat
 deploy-local-beat:
-	@echo "Deploying beat charm with local resources..."
-	juju deploy $(CHARM_FILE) --resource superset-image=$(REGISTRY)/$(ROCK_NAME):latest --config charm-function=beat superset-k8s-beat
+	@echo "Fetching image digest..."
+	@SUPERSET_DIGEST=$$(skopeo inspect --tls-verify=false docker://$(REGISTRY)/$(ROCK_NAME):latest 2>/dev/null | jq -r '.Digest' || echo "latest") && \
+	echo "Deploying beat charm with local resources (using digest)..." && \
+	juju deploy $(CHARM_FILE) --resource superset-image=$(REGISTRY)/$(ROCK_NAME)@$$SUPERSET_DIGEST --config charm-function=beat $(ARGS) superset-k8s-beat
 
 .PHONY: fmt
 fmt:
