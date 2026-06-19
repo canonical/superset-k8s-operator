@@ -16,6 +16,7 @@ CONFIG_FILES = [
     "superset_config.py",
     "custom_sso_security_manager.py",
     "sentry_interceptor.py",
+    "permission_error_messages.py",
 ]
 CONFIG_PATH = "/app/pythonpath"
 UI_FUNCTIONS = ["app", "app-gunicorn"]

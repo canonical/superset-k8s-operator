@@ -3,6 +3,7 @@ from cachelib.redis import RedisCache
 from celery.schedules import crontab
 from flask_appbuilder.security.manager import AUTH_OAUTH
 from custom_sso_security_manager import CustomSsoSecurityManager
+from permission_error_messages import attach_error_rewriter
 from sentry_interceptor import redact_params
 from superset.stats_logger import StatsdStatsLogger
 import sentry_sdk
@@ -342,6 +343,9 @@ MAX_CONTENT_LENGTH = int(v) if (v := os.getenv("MAX_CONTENT_LENGTH")) else None
 MAX_FORM_MEMORY_SIZE = int(v) if (v := os.getenv("MAX_FORM_MEMORY_SIZE")) else 500_000
 MAX_FORM_PARTS = int(v) if (v := os.getenv("MAX_FORM_PARTS")) else 1000
 
+# URL users are directed to when they hit a Trino/Ranger permission-denied error.
+DATA_ACCESS_REQUEST_URL = os.getenv("DATA_ACCESS_REQUEST_URL")
+
 def FLASK_APP_MUTATOR(app):
     """Override the Flask app dynamically."""
 
@@ -353,6 +357,9 @@ def FLASK_APP_MUTATOR(app):
 
     # Swap the default Request class with our configured one
     app.request_class = ConfiguredLimitRequest
+
+    # Rewrite Trino/Ranger permission-denied errors into user-friendly messages
+    attach_error_rewriter(app, request_url=DATA_ACCESS_REQUEST_URL)
 
 
 # =============================================================================
