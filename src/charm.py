@@ -49,6 +49,7 @@ from literals import (
 from log import log_event_handler
 from relations.postgresql import Database
 from relations.redis import Redis
+from relations.tls import Certificates
 from relations.trino_catalog import TrinoCatalogRelationHandler
 from structured_config import CharmConfig
 from utils import load_superset_files, query_metadata_database
@@ -91,6 +92,9 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         # Handle trino-catalog relation
         self.trino_catalog_handler = TrinoCatalogRelationHandler(self)
+
+        # Handle tls-certificates relation
+        self.certificates_handler = Certificates(self)
 
         # Handle basic charm lifecycle
         self.framework.observe(self.on.install, self._on_install)
@@ -447,6 +451,11 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "SENTRY_SAMPLE_RATE": self.config["sentry-sample-rate"],
             "SERVER_ALIAS": self.config["server-alias"],
             "APPLICATION_PORT": APPLICATION_PORT,
+            # Explicitly set SUPERSET_PORT so the charm-supplied value always
+            # overrides the service-discovery variable Kubernetes injects for a
+            # service named "superset" (e.g. SUPERSET_PORT=tcp://10.x.x.x:65535),
+            # which would otherwise break gunicorn's --bind. See issue #108.
+            "SUPERSET_PORT": APPLICATION_PORT,
             "WEBSERVER_TIMEOUT": self.config["webserver-timeout"],
             "SERVER_WORKER_AMOUNT": self.config["server-worker-amount"],
             "GUNICORN_TIMEOUT": self.config["gunicorn-timeout"],
