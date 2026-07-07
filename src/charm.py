@@ -545,7 +545,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
                         "up": {
                             "override": "replace",
                             "period": "10s",
-                            "http": {"url": "http://localhost:8088/"},
+                            "http": {"url": "http://localhost:8088/health"},
                         }
                     }
                 },
