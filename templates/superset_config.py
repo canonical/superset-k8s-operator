@@ -112,6 +112,15 @@ beat_schedule_config = {
         },
     }
 
+if os.getenv("LOG_RETENTION_ENABLED").lower() != "false":
+    # Prune the `logs` table (user action audit log) per LOG_RETENTION_DAYS.
+    beat_schedule_config.update({"prune_logs": {
+            "task": "prune_logs",
+            "schedule": crontab(minute=0, hour=0),
+            "kwargs": {"retention_period_days": int(os.getenv("LOG_RETENTION_DAYS"))},
+        },
+    })
+
 if os.getenv("CACHE_WARMUP", "").lower() != "false":
     beat_schedule_config.update({"cache-warmup-daily": {
             "task": "cache-warmup",

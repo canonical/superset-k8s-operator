@@ -74,6 +74,8 @@ class CharmConfig(BaseConfigModel):
     celery_worker_concurrency: int
     feature_flags: Optional[str]
     redis_timeout: int
+    log_retention_enabled: bool
+    log_retention_days: int
     smtp_secret_id: Optional[str]
     dashboard_size_limit: int
     max_content_length: Optional[int]
@@ -304,6 +306,7 @@ class CharmConfig(BaseConfigModel):
         "max_content_length",
         "max_form_memory_size",
         "max_form_parts",
+        "log_retention_days",
     )
     @classmethod
     def non_negative_number_validator(cls, value: str) -> Optional[int]:
