@@ -457,6 +457,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "LOG_FILE": LOG_FILE,
             "CACHE_WARMUP": self.config["cache-warmup"],
             "REDIS_TIMEOUT": self.config["redis-timeout"],
+            "LOG_RETENTION_DAYS": self.config["log-retention-days"],
             "DASHBOARD_SIZE_LIMIT": self.config["dashboard-size-limit"],
             "MAX_CONTENT_LENGTH": self.config["max-content-length"],
             "MAX_FORM_MEMORY_SIZE": self.config["max-form-memory-size"],

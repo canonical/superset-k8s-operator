@@ -110,6 +110,12 @@ beat_schedule_config = {
             "task": "reports.prune_log",
             "schedule": crontab(minute=0, hour=0),
         },
+        # Prune the `logs` table (user action audit log) per LOG_RETENTION_DAYS.
+        "prune_logs": {
+            "task": "prune_logs",
+            "schedule": crontab(minute=0, hour=0),
+            "kwargs": {"retention_period_days": int(os.getenv("LOG_RETENTION_DAYS", 730))},
+        },
     }
 
 if os.getenv("CACHE_WARMUP", "").lower() != "false":
