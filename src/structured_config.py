@@ -74,6 +74,7 @@ class CharmConfig(BaseConfigModel):
     celery_worker_concurrency: int
     feature_flags: Optional[str]
     redis_timeout: int
+    log_retention_enabled: bool
     log_retention_days: int
     smtp_secret_id: Optional[str]
     dashboard_size_limit: int

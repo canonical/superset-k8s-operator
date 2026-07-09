@@ -161,10 +161,18 @@ options:
     description: The time in seconds cached data will remain valid in Redis.
     default: 300
     type: int
+  log-retention-enabled:
+    description: |
+      Whether to automatically prune old rows from the `logs` table (user action
+      audit log) via the daily `prune_logs` Celery beat task. Disable if you don't
+      want the `logs` table pruned at all.
+    default: true
+    type: boolean
   log-retention-days:
     description: |
       Number of days to retain rows in the `logs` table (user action audit log)
       before they are pruned by the daily `prune_logs` Celery beat task.
+      Only takes effect if `log-retention-enabled` is true.
     default: 730
     type: int
   smtp-secret-id:
