@@ -26,6 +26,53 @@ class _SupersetPermissionViewMenuApi(PermissionViewMenuApi):
 class CustomSsoSecurityManager(SupersetSecurityManager):
     permission_view_menu_api = _SupersetPermissionViewMenuApi
 
+    def raise_for_access(self, *args, **kwargs):
+        """Authorize temporary SQL Lab queries for their owner.
+
+        This works around apache/superset#39296 for Superset 6.1.0. Query
+        does not retain execution-time template parameters, so templated SQL
+        is rerouted only when database-level access is already sufficient.
+        """
+        datasource = kwargs.get("datasource")
+        if datasource is not None and "query" not in kwargs:
+            from superset.models.sql_lab import Query
+
+            if isinstance(datasource, Query):
+                from flask import g
+
+                cur_uid = getattr(getattr(g, "user", None), "id", None)
+                q_uid = getattr(datasource, "user_id", None)
+                is_owner = (
+                    cur_uid is not None
+                    and q_uid is not None
+                    and cur_uid == q_uid
+                )
+                is_admin = self.is_admin()
+                database = getattr(datasource, "database", None)
+                sql = getattr(datasource, "sql", None)
+                has_query_context = (
+                    database is not None
+                    and isinstance(sql, str)
+                    and bool(sql.strip())
+                )
+                is_templated = isinstance(sql, str) and (
+                    "{{" in sql or "{%" in sql
+                )
+                can_reroute = is_admin or (
+                    is_owner
+                    and has_query_context
+                    and (
+                        not is_templated or self.can_access_database(database)
+                    )
+                )
+                if can_reroute:
+                    fwd = {
+                        k: v for k, v in kwargs.items() if k != "datasource"
+                    }
+                    fwd["query"] = datasource
+                    return super().raise_for_access(*args, **fwd)
+        return super().raise_for_access(*args, **kwargs)
+
     def oauth_user_info(self, provider, response=None):
         if provider == "google":
             me = self.appbuilder.sm.oauth_remotes[provider].get(
