@@ -1,5 +1,6 @@
 # Required dependencies missing from Superset requirements.txt
 jmespath==1.0.1
+fastmcp==3.4.4
 
 # Optional dependencies for Database connectors
 psycopg2-binary==2.9.10

@@ -47,9 +47,16 @@ parts:
     source-type: tar
     build-packages:
       - build-essential
+      - patch
     stage-packages:
       # we must explicitly use python3, otherwise the symlink won't be created and superset binary shebang cannot start
       - python3-venv
+    override-build: |
+      # Fix upstream bug #41001: DetachedInstanceError when serializing dashboard
+      # RBAC roles via MCP. Replace broken model_validate calls with the existing
+      # serialize_role_object() helper. Remove once upgraded past the 6.1.0 MCP refactor.
+      patch -p1 < "${CRAFT_PROJECT_DIR}/patches/41001-fix-detached-instance-error.patch"
+      craftctl default
 
     stage:
       # 'python3-venv' package comes with 'ca-certificates' and `openssl` as dependencies.

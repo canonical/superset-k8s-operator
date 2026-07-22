@@ -570,3 +570,8 @@ _QO.cache_key = _qo_patched_cache_key
 # =============================================================================
 # End fix: QueryObject cache-key SQL rendering
 # =============================================================================
+
+# MCP server configuration
+# Ref: https://superset.apache.org/admin-docs/configuration/mcp-server/
+if os.getenv("MCP_AUTH_ENABLED", "").lower() == "false":
+    MCP_AUTH_ENABLED = False

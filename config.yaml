@@ -190,3 +190,21 @@ options:
       Superset's upstream access authorization behavior and is disabled by default.
     default: false
     type: boolean
+  mcp-enabled:
+    description: |
+      When true, starts the Superset MCP server as a separate Pebble service
+      (superset mcp run) on mcp-port. Only takes effect when charm-function is
+      'app' or 'app-gunicorn'.
+    type: boolean
+    default: false
+  mcp-port:
+    description: Port the MCP server listens on.
+    type: int
+    default: 5008
+  mcp-auth-enabled:
+    description: |
+      When false, the MCP server runs without JWT authentication (dev/internal
+      mode only). When true (default), authentication must be configured
+      separately. Disable only in trusted environments.
+    type: boolean
+    default: true

@@ -42,6 +42,7 @@ from literals import (
     DEFAULT_ROLES,
     INGRESS_RELATION_NAME,
     LOG_FILE,
+    MCP_PORT,
     PROMETHEUS_METRICS_PORT,
     REDIS_RELATION_NAME,
     SQL_AB_ROLE,
@@ -541,6 +542,13 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
                 "enable-raise-for-access-patch"
             ],
         }
+        if self.config["mcp-enabled"] and self.config["charm-function"] in UI_FUNCTIONS:
+            env.update(
+                {
+                    "MCP_AUTH_ENABLED": self.config["mcp-auth-enabled"],
+                    "MCP_PORT": self.config["mcp-port"],
+                }
+            )
         if self.config["feature-flags"]:
             env.update(self.config["feature-flags"])
         env.update(self._get_oauth_config())
@@ -669,6 +677,24 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             self.model.unit.open_port(port=STATSD_PORT, protocol="udp")
 
         container.add_layer(self.name, pebble_layer, combine=True)
+
+        if self.config["mcp-enabled"] and self.config["charm-function"] in UI_FUNCTIONS:
+            mcp_port = self.config["mcp-port"]
+            mcp_layer = {
+                "services": {
+                    "mcp": {
+                        "override": "replace",
+                        "summary": "Superset MCP server",
+                        "command": f"superset mcp run --host 0.0.0.0 --port {mcp_port}",
+                        "startup": "enabled",
+                        "after": [self.name],
+                        "environment": env,
+                    }
+                }
+            }
+            container.add_layer("mcp", mcp_layer, combine=True)
+            self.model.unit.open_port(port=mcp_port, protocol="tcp")
+
         container.replan()
         self.unit.status = MaintenanceStatus("replanning application")
 

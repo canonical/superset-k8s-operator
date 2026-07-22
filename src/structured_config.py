@@ -80,6 +80,9 @@ class CharmConfig(BaseConfigModel):
     max_form_parts: Optional[int]
     data_access_request_url: Optional[str]
     enable_raise_for_access_patch: bool
+    mcp_enabled: bool
+    mcp_port: int
+    mcp_auth_enabled: bool
 
     @validator("*", pre=True)
     @classmethod

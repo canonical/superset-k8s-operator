@@ -1,0 +1,64 @@
+Upstream issue:  https://github.com/apache/superset/issues/41001
+Affects:         Apache Superset 6.1.0
+Fixed on master: The roles field was removed from DashboardInfo entirely as part
+                 of a broader MCP service refactor (merged ~2026-06-24, confirmed
+                 by maintainer rusackas in issue #41001 comment). The problematic
+                 code path no longer exists on master.
+Backport reason: This charm tracks the 6.1.0 release, which still contains the
+                 broken serialization paths. This patch carries the equivalent fix
+                 forward until the charm upgrades past the refactor.
+
+Root cause:
+  In superset/mcp_service/dashboard/schemas.py, two serialization paths build
+  the roles field via:
+
+      RoleInfo.model_validate(role, from_attributes=True)
+
+  With from_attributes=True, Pydantic reads role.permissions (a List[PermissionView]
+  FAB ORM relationship) and tries to coerce each PermissionView to str, which calls
+  PermissionView.__repr__, which lazy-loads PermissionView.permission. By the time
+  the MCP ASGI sub-app serializes the response the SQLAlchemy session is gone:
+
+      sqlalchemy.orm.exc.DetachedInstanceError: Instance <PermissionView> is not
+      bound to a Session; lazy load operation of attribute 'permission' cannot proceed
+
+  The fix already existed in the same file: serialize_role_object() correctly
+  extracts only the safe scalar fields. This patch replaces both model_validate
+  call sites with that helper, and sets permissions=None in serialize_role_object()
+  to avoid the secondary lazy-load of PermissionView.permission.name.
+
+Verified by: Canonical superset-k8s-operator team (Task 12 investigation, 2026).
+             Confirmed independently by Apache Superset maintainer dosubot in
+             issue #41001 comment (2026-06-15).
+
+--- a/superset/mcp_service/dashboard/schemas.py
++++ b/superset/mcp_service/dashboard/schemas.py
+@@ -142,9 +142,7 @@
+     return RoleInfo(
+         id=getattr(role, "id", None),
+         name=getattr(role, "name", None),
+-        permissions=[perm.name for perm in getattr(role, "permissions", [])]
+-        if hasattr(role, "permissions")
+-        else None,
++        permissions=None,
+     )
+ 
+ 
+@@ -712,7 +710,7 @@
+         if dashboard.tags
+         else [],
+         roles=[
+-            RoleInfo.model_validate(role, from_attributes=True)
++            serialize_role_object(role)
+             for role in dashboard.roles
+         ]
+         if dashboard.roles
+@@ -794,7 +792,7 @@
+         if getattr(dashboard, "tags", None)
+         else [],
+         roles=[
+-            RoleInfo.model_validate(role, from_attributes=True)
++            serialize_role_object(role)
+             for role in getattr(dashboard, "roles", [])
+         ]
+         if getattr(dashboard, "roles", None)

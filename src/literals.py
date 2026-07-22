@@ -5,6 +5,7 @@
 """Literals used by the Superset K8s charm."""
 
 APPLICATION_PORT = 8088
+MCP_PORT = 5008
 DB_NAME = "superset"
 DB_RELATION_NAME = "postgresql_db"
 REDIS_RELATION_NAME = "redis"
