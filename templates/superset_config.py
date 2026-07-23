@@ -2,7 +2,7 @@ import os
 from cachelib.redis import RedisCache
 from celery.schedules import crontab
 from flask_appbuilder.security.manager import AUTH_OAUTH
-from custom_sso_security_manager import CustomSsoSecurityManager
+from custom_sso_security_manager import CustomSecurityManager
 from permission_error_messages import attach_error_rewriter
 from sentry_interceptor import redact_params
 from superset.stats_logger import StatsdStatsLogger
@@ -302,7 +302,7 @@ SQLALCHEMY_DATABASE_URI = os.getenv("SQL_ALCHEMY_URI")
 # OAUTH configuration
 required_auth_vars = ["GOOGLE_KEY", "GOOGLE_SECRET", "OAUTH_DOMAIN"]
 
-CUSTOM_SECURITY_MANAGER = CustomSsoSecurityManager
+CUSTOM_SECURITY_MANAGER = CustomSecurityManager
 if all(os.getenv(var) for var in required_auth_vars):
     AUTH_TYPE = AUTH_OAUTH
     OAUTH_PROVIDERS = [

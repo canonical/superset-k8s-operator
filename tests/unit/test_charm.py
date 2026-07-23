@@ -125,6 +125,7 @@ class TestCharm(TestCase):
                         "MAX_FORM_MEMORY_SIZE": None,
                         "MAX_FORM_PARTS": None,
                         "DATA_ACCESS_REQUEST_URL": None,
+                        "ENABLE_RAISE_FOR_ACCESS_PATCH": False,
                     },
                     "on-check-failure": {"up": "ignore"},
                 }
@@ -169,6 +170,7 @@ class TestCharm(TestCase):
                 "admin-password": "secure-pass",
                 "allow-image-domains": "assets.ubuntu.com",
                 "feature-flags": "ALLOW_ADHOC_SUBQUERY, !GLOBAL_ASYNC_QUERIES",
+                "enable-raise-for-access-patch": True,
             }
         )
 
@@ -227,6 +229,7 @@ class TestCharm(TestCase):
                         "MAX_FORM_MEMORY_SIZE": None,
                         "MAX_FORM_PARTS": None,
                         "DATA_ACCESS_REQUEST_URL": None,
+                        "ENABLE_RAISE_FOR_ACCESS_PATCH": True,
                     },
                     "on-check-failure": {"up": "ignore"},
                 },

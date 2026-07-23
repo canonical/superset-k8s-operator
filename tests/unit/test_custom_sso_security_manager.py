@@ -1,7 +1,7 @@
 # Copyright 2023 Canonical Ltd.
 # See LICENSE file for licensing details.
 
-"""Unit tests for the CustomSsoSecurityManager raise_for_access override.
+"""Unit tests for the CustomSecurityManager raise_for_access override.
 
 The override lives in templates/custom_sso_security_manager.py and is loaded
 by every Superset process at startup.  These tests stub the Superset and
@@ -9,6 +9,7 @@ Flask dependencies so the class can be instantiated and exercised without an
 installed Superset package or running Juju model.
 """
 
+import os
 import pathlib
 import sys
 import types
@@ -140,7 +141,7 @@ def _setup_stubs():  # pylint: disable=too-many-locals
 
 
 def _load_manager_class(stubs):
-    """Load CustomSsoSecurityManager by exec-ing the template file."""
+    """Load CustomSecurityManager by exec-ing the template file."""
     src_path = (
         pathlib.Path(__file__).parent.parent.parent
         / "templates"
@@ -150,7 +151,7 @@ def _load_manager_class(stubs):
     code = compile(src_path.read_text(), src_path, "exec")
     with mock.patch.dict(sys.modules, stubs):
         exec(code, ns)  # nosec B102  # pylint: disable=exec-used
-    return ns["CustomSsoSecurityManager"]
+    return ns["CustomSecurityManager"]
 
 
 _Query, _flask_g, _stubs = _setup_stubs()
@@ -190,7 +191,40 @@ class _StubbedTestCase(unittest.TestCase):
         self._module_patch = mock.patch.dict(sys.modules, _stubs)
         self._module_patch.start()
         self.addCleanup(self._module_patch.stop)
+        self._environment_patch = mock.patch.dict(
+            os.environ, {"ENABLE_RAISE_FOR_ACCESS_PATCH": "true"}
+        )
+        self._environment_patch.start()
+        self.addCleanup(self._environment_patch.stop)
         _flask_g.user = None
+
+
+class TestRaiseForAccessPatchDisabled(_StubbedTestCase):
+    """Verify the disabled patch preserves upstream authorization."""
+
+    def test_owner_query_uses_datasource_authorization_when_unset(self):
+        """An owner Query remains a datasource without the environment value."""
+        _flask_g.user = types.SimpleNamespace(id=42)
+        mgr = _make_manager()
+        q = _make_query(user_id=42)
+        with mock.patch.dict(os.environ, {}, clear=True):
+            mgr.raise_for_access(datasource=q)
+        _, kw = mgr._last_call
+        self.assertIs(kw["datasource"], q)
+        self.assertNotIn("query", kw)
+
+    def test_owner_query_uses_datasource_authorization_by_default(self):
+        """An owner Query remains a datasource when the patch is disabled."""
+        _flask_g.user = types.SimpleNamespace(id=42)
+        mgr = _make_manager()
+        q = _make_query(user_id=42)
+        with mock.patch.dict(
+            os.environ, {"ENABLE_RAISE_FOR_ACCESS_PATCH": "false"}
+        ):
+            mgr.raise_for_access(datasource=q)
+        _, kw = mgr._last_call
+        self.assertIs(kw["datasource"], q)
+        self.assertNotIn("query", kw)
 
 
 class TestRaiseForAccessQueryRerouting(_StubbedTestCase):

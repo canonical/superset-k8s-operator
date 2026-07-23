@@ -1,3 +1,5 @@
+import os
+
 from flask_appbuilder.models.sqla.filters import FilterContains
 from flask_appbuilder.security.sqla.apis import PermissionViewMenuApi
 from superset.security import SupersetSecurityManager
@@ -23,7 +25,7 @@ class _SupersetPermissionViewMenuApi(PermissionViewMenuApi):
             ]
 
 
-class CustomSsoSecurityManager(SupersetSecurityManager):
+class CustomSecurityManager(SupersetSecurityManager):
     permission_view_menu_api = _SupersetPermissionViewMenuApi
 
     def raise_for_access(self, *args, **kwargs):
@@ -33,6 +35,12 @@ class CustomSsoSecurityManager(SupersetSecurityManager):
         does not retain execution-time template parameters, so templated SQL
         is rerouted only when database-level access is already sufficient.
         """
+        if (
+            os.getenv("ENABLE_RAISE_FOR_ACCESS_PATCH", "false").lower()
+            != "true"
+        ):
+            return super().raise_for_access(*args, **kwargs)
+
         datasource = kwargs.get("datasource")
         if datasource is not None and "query" not in kwargs:
             from superset.models.sql_lab import Query
