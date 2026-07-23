@@ -3,7 +3,7 @@
 
 """Unit tests for the CustomSecurityManager raise_for_access override.
 
-The override lives in templates/custom_sso_security_manager.py and is loaded
+The override lives in templates/custom_security_manager.py and is loaded
 by every Superset process at startup.  These tests stub the Superset and
 Flask dependencies so the class can be instantiated and exercised without an
 installed Superset package or running Juju model.
@@ -145,7 +145,7 @@ def _load_manager_class(stubs):
     src_path = (
         pathlib.Path(__file__).parent.parent.parent
         / "templates"
-        / "custom_sso_security_manager.py"
+        / "custom_security_manager.py"
     )
     ns: dict = {}
     code = compile(src_path.read_text(), src_path, "exec")

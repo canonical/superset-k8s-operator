@@ -14,7 +14,7 @@ REDIS_KEY_PREFIX = "superset_results"
 APP_NAME = "superset"
 CONFIG_FILES = [
     "superset_config.py",
-    "custom_sso_security_manager.py",
+    "custom_security_manager.py",
     "sentry_interceptor.py",
     "permission_error_messages.py",
 ]

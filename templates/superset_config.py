@@ -2,7 +2,7 @@ import os
 from cachelib.redis import RedisCache
 from celery.schedules import crontab
 from flask_appbuilder.security.manager import AUTH_OAUTH
-from custom_sso_security_manager import CustomSecurityManager
+from custom_security_manager import CustomSecurityManager
 from permission_error_messages import attach_error_rewriter
 from sentry_interceptor import redact_params
 from superset.stats_logger import StatsdStatsLogger
