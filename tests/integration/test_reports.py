@@ -172,7 +172,11 @@ def api_delete(
 def create_chart_report(
     session: requests.Session, url: str, chart_id: int, name: str
 ) -> int:
-    """Create an active PNG report schedule for a chart.
+    """Create an inactive PNG report schedule for a chart.
+
+    The schedule is created inactive so Celery beat never runs it; the test
+    drives execution synchronously via ``execute_report`` instead, avoiding a
+    race where beat leaves the report wedged in the ``Working`` state.
 
     Args:
         session: Authenticated Superset API session.
@@ -188,7 +192,7 @@ def create_chart_report(
         url,
         "/api/v1/report/",
         {
-            "active": True,
+            "active": False,
             "chart": chart_id,
             "crontab": "* * * * *",
             "name": name,
