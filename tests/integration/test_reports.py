@@ -8,9 +8,10 @@ import asyncio
 import json
 import logging
 import re
+import shlex
 import time
 import uuid
-from typing import Any
+from typing import Any, Mapping
 
 import pytest
 import requests
@@ -57,16 +58,27 @@ async def configure_reports(
         )
 
 
-async def worker_exec(ops_test: OpsTest, command: str) -> str:
+async def worker_exec(
+    ops_test: OpsTest,
+    command: str,
+    environment: Mapping[str, str] | None = None,
+) -> str:
     """Run a command in the worker workload container.
 
     Args:
         ops_test: Juju test model.
         command: Shell command to execute.
+        environment: Environment variables to provide to the command.
 
     Returns:
         Standard output from the command.
     """
+    if environment:
+        assignments = " ".join(
+            f"{key}={shlex.quote(value)}" for key, value in environment.items()
+        )
+        command = f"env {assignments} {command}"
+
     return_code, stdout, stderr = await ops_test.juju(
         "ssh",
         "--container",
@@ -116,6 +128,7 @@ async def assert_worker_config(
         "app = create_app(); "
         "print(app.config['SCREENSHOT_PLAYWRIGHT_DEFAULT_TIMEOUT']); "
         "print(app.config['ALERT_REPORTS_NOTIFICATION_DRY_RUN'])\"",
+        environment,
     )
     assert config.splitlines() == [str(screenshot_timeout * 1000), "True"]
 
