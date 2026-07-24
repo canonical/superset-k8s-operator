@@ -206,18 +206,34 @@ def create_chart_report(
     )
 
 
-async def execute_report(ops_test: OpsTest, report_id: int) -> None:
+async def execute_report(ops_test: OpsTest, report_id: int) -> str:
     """Run the report task synchronously instead of depending on Celery beat.
+
+    The task runs in a one-shot exec process, so its logs go to that process
+    rather than the worker service's juju log; they are returned to the caller.
 
     Args:
         ops_test: Juju test model.
         report_id: Report schedule ID to execute.
+
+    Returns:
+        Combined stdout and stderr emitted while executing the report.
     """
-    await worker_exec(
-        ops_test,
-        'python3 -c "from superset.tasks.scheduler import execute; '
-        f'execute.apply(args=({report_id},))"',
+    environment = await worker_environment(ops_test)
+    assignments = " ".join(
+        f"{key}={shlex.quote(value)}" for key, value in environment.items()
     )
+    command = (
+        f"env {assignments} python3 -c "
+        '"import superset.tasks.celery_app; '
+        "from superset.tasks.scheduler import execute; "
+        f'execute.apply(args=({report_id},))"'
+    )
+    return_code, stdout, stderr = await ops_test.juju(
+        "ssh", "--container", "superset", f"{WORKER_NAME}/0", command
+    )
+    assert return_code == 0, stderr
+    return f"{stdout}\n{stderr}"
 
 
 async def wait_for_report(
@@ -339,15 +355,10 @@ class TestReports:
             session, url, charts[0]["id"], f"dry-run-{uuid.uuid4()}"
         )
         try:
-            await execute_report(ops_test, report_id)
+            output = await execute_report(ops_test, report_id)
             log = await wait_for_report(session, url, report_id, "Success")
             assert log["state"] == "Success"
-            worker_log = await ops_test.juju(
-                "debug-log", "--include", f"unit-{WORKER_NAME}-0"
-            )
-            assert "ALERT_REPORTS_NOTIFICATION_DRY_RUN is enabled" in (
-                worker_log.stdout
-            )
+            assert "ALERT_REPORTS_NOTIFICATION_DRY_RUN is enabled" in output
         finally:
             api_delete(session, url, "/api/v1/report", report_id)
 
