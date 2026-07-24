@@ -151,7 +151,14 @@ if os.getenv("ALERT_REPORTS", "").lower() == "true":
     SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
     SMTP_MAIL_FROM = os.getenv("SMTP_EMAIL")
     EMAIL_REPORTS_SUBJECT_PREFIX = os.getenv("SMTP_EMAIL_SUBJECT_PREFIX")
-    ALERT_REPORTS_NOTIFICATION_DRY_RUN = False
+    ALERT_REPORTS_NOTIFICATION_DRY_RUN = (
+        os.getenv("ALERT_REPORTS_DRY_RUN", "").lower() == "true"
+    )
+
+    # The charm configures this in seconds; Playwright expects milliseconds.
+    SCREENSHOT_PLAYWRIGHT_DEFAULT_TIMEOUT = (
+        int(os.getenv("SCREENSHOT_TIMEOUT", 600)) * 1000
+    )
 
     # The worker process environment is defined by the charm's Pebble layer and
     # does not export PLAYWRIGHT_BROWSERS_PATH, so point Playwright at the

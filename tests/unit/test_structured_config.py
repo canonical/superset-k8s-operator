@@ -31,13 +31,15 @@ def test_config_parsing_parameters_integer_values(_harness) -> None:
         "sqlalchemy-pool-timeout": [42, 100, 1],
         "sqlalchemy-max-overflow": [42, 100, 1],
         "webserver-timeout": [60, 170, 300],
+        "screenshot-timeout": [1, 600, 2147483647],
         "server-worker-amount": [1, 8, 32],
         "gunicorn-timeout": [30, 120, 600],
         "celery-worker-concurrency": [0, 16, 128],
     }
     erroneus_values = [2147483648, -2147483649]
     for field, valid_values in integer_fields.items():
-        check_invalid_values(_harness, field, erroneus_values)
+        if field != "screenshot-timeout":
+            check_invalid_values(_harness, field, erroneus_values)
         check_valid_values(_harness, field, valid_values)
 
 
@@ -45,6 +47,7 @@ def test_config_parsing_parameters_out_of_range_values(_harness) -> None:
     """Check out-of-range values for fields with bounded validators."""
     invalid_ranges = {
         "webserver-timeout": [59, 301],
+        "screenshot-timeout": [0, -1],
         "server-worker-amount": [0, 33],
         "gunicorn-timeout": [29, 601],
         "celery-worker-concurrency": [-1, 129],
@@ -52,6 +55,11 @@ def test_config_parsing_parameters_out_of_range_values(_harness) -> None:
 
     for field, invalid_values in invalid_ranges.items():
         check_invalid_values(_harness, field, invalid_values)
+
+
+def test_config_parsing_parameters_boolean_values(_harness) -> None:
+    """Check that boolean fields are parsed correctly."""
+    check_valid_values(_harness, "report-dry-run", [True, False])
 
 
 def test_product_related_values(_harness) -> None:

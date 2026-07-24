@@ -79,6 +79,29 @@ for `server-alias` values in more complex setups.
 
 Finally, we pass the secret ID we got from the previous step to the applications so that they can make use of the credentials.
 
+## Configuring the screenshot timeout
+
+The `screenshot-timeout` configuration controls how long Superset waits for a report or alert screenshot to render.
+It is measured in seconds and defaults to `600`. Configure it on the worker application that renders reports:
+
+```sh
+juju config superset-worker screenshot-timeout=600
+```
+
+Set the timeout high enough for the dashboard to render, and configure report schedules with enough time between
+executions to avoid overlapping screenshot jobs.
+
+## Testing report rendering without delivery
+
+The `report-dry-run` configuration defaults to `false`. Set it to `true` only when testing report rendering:
+
+```sh
+juju config superset-worker report-dry-run=true
+```
+
+Dry-run still renders report and alert screenshots, but deliberately suppresses email and Slack delivery. Real
+production notifications still require the SMTP configuration described above.
+
 ## How screenshots are rendered
 Since Superset 6, report and alert screenshots are rendered with Playwright driving a headless Chromium browser, which
 replaces the Selenium and Firefox stack used in Superset 5. The charm bundles Chromium in its workload image, so no
@@ -87,4 +110,3 @@ additional configuration is required.
 Enabling `ALERT_REPORTS` automatically turns on the `PLAYWRIGHT_REPORTS_AND_THUMBNAILS` feature flag that selects the
 Playwright renderer. You do not need to set `PLAYWRIGHT_REPORTS_AND_THUMBNAILS` yourself, and it should not be added to
 the `feature-flags` configuration.
-

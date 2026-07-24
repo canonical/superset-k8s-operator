@@ -494,6 +494,8 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             # which would otherwise break gunicorn's --bind. See issue #108.
             "SUPERSET_PORT": APPLICATION_PORT,
             "WEBSERVER_TIMEOUT": self.config["webserver-timeout"],
+            "SCREENSHOT_TIMEOUT": self.config["screenshot-timeout"],
+            "ALERT_REPORTS_DRY_RUN": self.config["report-dry-run"],
             "SERVER_WORKER_AMOUNT": self.config["server-worker-amount"],
             "GUNICORN_TIMEOUT": self.config["gunicorn-timeout"],
             "CELERY_WORKER_CONCURRENCY": self.config[
