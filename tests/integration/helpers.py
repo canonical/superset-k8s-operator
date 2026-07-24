@@ -4,13 +4,20 @@
 
 """Charm integration test helpers."""
 
+import asyncio
 import logging
+import time
 
 import requests
 from celery import Celery
 from pytest_operator.plugin import OpsTest
 
 logger = logging.getLogger(__name__)
+
+# Superset gunicorn binds its port after the charm reports active, so API
+# calls made right after a config-triggered restart must tolerate the boot gap.
+API_READY_TIMEOUT = 300
+API_READY_INTERVAL = 5
 
 NGINX_NAME = "nginx-ingress-integrator"
 POSTGRES_NAME = "postgresql-k8s"
@@ -154,14 +161,36 @@ async def api_authentication(ops_test, base_url):
 
     Returns:
         session: The Requests session.
+
+    Raises:
+        TimeoutError: If successful login does not occur within the
+            timeout window.
     """
     session = requests.Session()
 
-    # Get access token
-    auth_response = session.post(
-        base_url + "/api/v1/security/login", json=API_AUTH_PAYLOAD, timeout=30
-    )
-    access_token = auth_response.json().get("access_token")
+    # Get access token, retrying while the Superset server finishes booting.
+    deadline = time.monotonic() + API_READY_TIMEOUT
+    access_token = None
+    while True:
+        try:
+            auth_response = session.post(
+                base_url + "/api/v1/security/login",
+                json=API_AUTH_PAYLOAD,
+                timeout=30,
+            )
+            access_token = auth_response.json().get("access_token")
+        except (requests.exceptions.RequestException, ValueError) as e:
+            logger.info("Superset API not ready yet: %s", e)
+            access_token = None
+
+        if access_token:
+            break
+        if time.monotonic() >= deadline:
+            raise TimeoutError(
+                f"Superset API at {base_url} did not accept login within "
+                f"{API_READY_TIMEOUT}s"
+            )
+        await asyncio.sleep(API_READY_INTERVAL)
 
     # Add token to session headers for all subsequent requests
     session.headers.update(
