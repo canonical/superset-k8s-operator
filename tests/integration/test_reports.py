@@ -108,7 +108,7 @@ async def assert_worker_config(
     """
     environment = await worker_environment(ops_test)
     assert environment.get("SCREENSHOT_TIMEOUT") == str(screenshot_timeout)
-    assert environment.get("ALERT_REPORTS_DRY_RUN") == "True"
+    assert environment.get("ALERT_REPORTS_DRY_RUN") == "true"
 
     config = await worker_exec(
         ops_test,
