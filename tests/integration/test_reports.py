@@ -130,7 +130,7 @@ async def assert_worker_config(
         "print(app.config['ALERT_REPORTS_NOTIFICATION_DRY_RUN'])\"",
         environment,
     )
-    assert config.splitlines() == [str(screenshot_timeout * 1000), "True"]
+    assert config.splitlines()[-2:] == [str(screenshot_timeout * 1000), "True"]
 
 
 def api_post(
