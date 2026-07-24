@@ -197,3 +197,9 @@ options:
       while viewing a dashboard, so they can request access to the restricted data.
       When unset, the message tells users to contact their administrator instead.
     type: string
+  enable-raise-for-access-patch:
+    description: |
+      Enables the Superset 6.1.0 SQL Lab-to-chart access workaround. This changes
+      Superset's upstream access authorization behavior and is disabled by default.
+    default: false
+    type: boolean

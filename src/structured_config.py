@@ -82,6 +82,7 @@ class CharmConfig(BaseConfigModel):
     max_form_memory_size: Optional[int]
     max_form_parts: Optional[int]
     data_access_request_url: Optional[str]
+    enable_raise_for_access_patch: bool
 
     @validator("*", pre=True)
     @classmethod
