@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 @pytest_asyncio.fixture(name="deploy-major-upgrade", scope="module")
 async def deploy(ops_test: OpsTest):
     """Deploy the app."""
-    asyncio.gather(
+    await asyncio.gather(
         ops_test.model.deploy(POSTGRES_NAME, channel="14", trust=True),
         ops_test.model.deploy(REDIS_NAME, channel="edge", trust=True),
     )
