@@ -148,7 +148,9 @@ def api_post(
         The created resource ID.
     """
     response = session.post(f"{url}{path}", json=data, timeout=30)
-    response.raise_for_status()
+    assert response.ok, (
+        f"POST {path} failed ({response.status_code}): {response.text}"
+    )
     return response.json()["id"]
 
 
@@ -191,10 +193,15 @@ def create_chart_report(
             "crontab": "* * * * *",
             "name": name,
             "recipients": [
-                {"recipient": "reports@example.invalid", "type": "Email"}
+                {
+                    "type": "Email",
+                    "recipient_config_json": {
+                        "target": "reports@example.invalid"
+                    },
+                }
             ],
             "report_format": "PNG",
-            "type": "report",
+            "type": "Report",
         },
     )
 
