@@ -64,7 +64,7 @@ help:
 	@echo "  test-static          Run static type checks"
 	@echo "  test-unit            Run unit tests"
 	@echo "  help                 Show this help message"
-	@echo "  venv                 Create a virtual environment"
+	@echo "  install              Create a virtual environment"
 
 .PHONY: build
 build: build-charm build-rock

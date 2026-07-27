@@ -16,8 +16,6 @@ parts:
       # Pin to prevent pulling incompatible `maturin` version
       - "rustc-1.85"
       - "cargo-1.85"
-    charm-binary-python-packages:
-      - psycopg2-binary
     stage:
       - "-superset_rock"
 
