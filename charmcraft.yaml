@@ -6,6 +6,10 @@
 type: charm
 parts:
   charm:
+    plugin: uv
+    source: .
+    build-snaps:
+      - astral-uv
     build-packages:
       - libffi-dev
       - libssl-dev

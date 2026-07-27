@@ -12,3 +12,4 @@ jobs:
       pull-requests: write
     with:
       self-hosted-runner: false
+      with-uv: true

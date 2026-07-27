@@ -89,5 +89,36 @@ copyright-check = "True"
 copyright-author = "Canonical Ltd."
 copyright-regexp = "Copyright\\s\\d{4}([-,]\\d{4})*\\s+%(author)s"
 
-[dependency-groups]
-dev = []
+[project.optional-dependencies]
+dev = [
+    # Format
+    "black",
+    "isort",
+    # Lint
+    "codespell",
+    "flake8",
+    "flake8-builtins",
+    "flake8-copyright",
+    "flake8-docstrings",
+    "pep8-naming",
+    "pyproject-flake8",
+    "flake8-docstrings-complete",
+    "flake8-test-docs",
+    "mypy",
+    "pylint",
+    "pydocstyle",
+    # Static
+    "bandit[toml]",
+    # Unit
+    "coverage[toml]",
+    "ipdb",
+    "pytest",
+    "psycopg2-binary",
+    # Integration
+    "juju",
+    "pytest-asyncio",
+    "pytest-operator",
+    "celery",
+    "redis",
+    "protobuf",
+]
