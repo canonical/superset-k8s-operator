@@ -575,3 +575,7 @@ _QO.cache_key = _qo_patched_cache_key
 # Ref: https://superset.apache.org/admin-docs/configuration/mcp-server/
 if os.getenv("MCP_AUTH_ENABLED", "").lower() == "false":
     MCP_AUTH_ENABLED = False
+
+_mcp_dev_username = os.getenv("MCP_DEV_USERNAME", "")
+if _mcp_dev_username:
+    MCP_DEV_USERNAME = _mcp_dev_username

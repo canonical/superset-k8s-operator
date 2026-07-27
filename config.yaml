@@ -208,3 +208,10 @@ options:
       separately. Disable only in trusted environments.
     type: boolean
     default: true
+  mcp-dev-username:
+    description: |
+      When mcp-auth-enabled is false, sets MCP_DEV_USERNAME so the MCP server
+      authenticates all requests as this Superset user. Required when
+      mcp-auth-enabled=false. Leave empty when auth is enabled.
+    type: string
+    default: ""

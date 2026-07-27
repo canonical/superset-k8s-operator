@@ -542,13 +542,21 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
                 "enable-raise-for-access-patch"
             ],
         }
-        if self.config["mcp-enabled"] and self.config["charm-function"] in UI_FUNCTIONS:
+        if (
+            self.config["mcp-enabled"]
+            and self.config["charm-function"] in UI_FUNCTIONS
+        ):
             env.update(
                 {
                     "MCP_AUTH_ENABLED": self.config["mcp-auth-enabled"],
                     "MCP_PORT": self.config["mcp-port"],
                 }
             )
+            if (
+                not self.config["mcp-auth-enabled"]
+                and self.config["mcp-dev-username"]
+            ):
+                env["MCP_DEV_USERNAME"] = self.config["mcp-dev-username"]
         if self.config["feature-flags"]:
             env.update(self.config["feature-flags"])
         env.update(self._get_oauth_config())
@@ -678,7 +686,10 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         container.add_layer(self.name, pebble_layer, combine=True)
 
-        if self.config["mcp-enabled"] and self.config["charm-function"] in UI_FUNCTIONS:
+        if (
+            self.config["mcp-enabled"]
+            and self.config["charm-function"] in UI_FUNCTIONS
+        ):
             mcp_port = self.config["mcp-port"]
             mcp_layer = {
                 "services": {

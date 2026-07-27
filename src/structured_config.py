@@ -83,6 +83,7 @@ class CharmConfig(BaseConfigModel):
     mcp_enabled: bool
     mcp_port: int
     mcp_auth_enabled: bool
+    mcp_dev_username: str
 
     @validator("*", pre=True)
     @classmethod
