@@ -26,8 +26,7 @@ make install-build-deps
 You can create an environment for coding with:
 
 ```shell
-make venv
-source venv/bin/activate
+make install
 ```
 
 ## Environment for building

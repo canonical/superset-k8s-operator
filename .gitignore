@@ -1,4 +1,5 @@
 venv/
+.venv/
 build/
 *.charm
 .tox/
@@ -8,3 +9,7 @@ __pycache__/
 .idea
 .vscode/
 *.rock
+*.egg-info/
+.eggs/
+dist/
+.python-version
