@@ -13,6 +13,7 @@ dependencies = [
     "cosl==1.4.0",
     "requests==2.32.0",
     "pyjwt==2.11.0",
+    "psycopg2-binary",
 ]
 
 [tool.bandit]

@@ -18,6 +18,11 @@ parts:
       - "cargo-1.85"
     stage:
       - "-superset_rock"
+  templates-dump:
+    plugin: dump
+    source: .
+    stage:
+      - templates/
 
 bases:
   - build-on:
