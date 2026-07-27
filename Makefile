@@ -202,7 +202,6 @@ import-rock: $(ROCK_FILE)
 	@echo "Importing rock $(ROCK_FILE)..."
 	$(IMPORT_SCRIPT) $(ROCK_FILE) $(ROCK_NAME) $(ROCK_VERSION) --latest
 
-.PHONY: venv
-venv:
-	uv venv --clear venv
-	uv pip install --python venv/bin/python -r requirements.txt
+.PHONY: install
+install:
+	uv sync

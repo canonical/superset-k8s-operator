@@ -2,6 +2,19 @@
 # See LICENSE file for licensing details.
 # Testing tools configuration
 
+[project]
+name = "superset-k8s-operator"
+dynamic = ["version"]
+requires-python = ">=3.9"
+dependencies = [
+    "ops >= 2.16.0",
+    "pydantic==1.10.12",
+    "sqlalchemy<2.0",
+    "cosl==1.4.0",
+    "requests==2.32.0",
+    "pyjwt==2.11.0",
+]
+
 [tool.bandit]
 exclude_dirs = ["/venv/"]
 [tool.bandit.assert_used]
@@ -20,6 +33,7 @@ line_length = 79
 [tool.pytest.ini_options]
 minversion = "6.0"
 log_cli_level = "INFO"
+pythonpath = ["lib", "src"]
 
 # Formatting tools configuration
 [tool.black]
@@ -50,6 +64,9 @@ per-file-ignores = {"tests/*" = ["D100","D101","D102","D103","D104"]}
 [tool.ruff.mccabe]
 max-complexity = 10
 
+[tool.pyright]
+extraPaths = ["lib"]
+
 [tool.codespell]
 skip = "build,lib,venv,icon.svg,.tox,.git,.mypy_cache,.ruff_cache,.coverage"
 
@@ -71,3 +88,6 @@ docstring-convention = "google"
 copyright-check = "True"
 copyright-author = "Canonical Ltd."
 copyright-regexp = "Copyright\\s\\d{4}([-,]\\d{4})*\\s+%(author)s"
+
+[dependency-groups]
+dev = []
