@@ -1,3 +1,6 @@
+# Copyright 2023 Canonical Ltd.
+# See LICENSE file for licensing details.
+
 #!/usr/bin/env python3
 """
 Superset MCP JWT auth + RBAC test suite.
