@@ -572,10 +572,77 @@ _QO.cache_key = _qo_patched_cache_key
 # =============================================================================
 
 # MCP server configuration
-# Ref: https://superset.apache.org/admin-docs/configuration/mcp-server/
+# Ref: https://superset.apache.org/admin-docs/6.1.0/configuration/mcp-server/
 if os.getenv("MCP_AUTH_ENABLED", "").lower() == "false":
     MCP_AUTH_ENABLED = False
 
 _mcp_dev_username = os.getenv("MCP_DEV_USERNAME", "")
 if _mcp_dev_username:
     MCP_DEV_USERNAME = _mcp_dev_username
+
+_mcp_jwt_secret = os.getenv("MCP_JWT_SECRET", "")
+if _mcp_jwt_secret:
+    MCP_AUTH_ENABLED = True
+    MCP_JWT_ALGORITHM = "HS256"
+    MCP_JWT_SECRET = _mcp_jwt_secret
+    MCP_JWT_ISSUER = "superset-k8s"
+    MCP_JWT_AUDIENCE = "superset-mcp"
+
+    # Patch get_user_from_request to bridge FastMCP's validated JWT access
+    # token to Flask's g.user. In Superset 6.1.0, MCP_USER_RESOLVER is
+    # documented but not wired into get_user_from_request(), so the JWT
+    # sub claim is never used to load a Superset user. This patch adds
+    # that missing step between JWT validation and tool execution.
+    def _get_user_from_request_with_jwt():
+        from flask import current_app, g
+
+        if hasattr(g, "user") and g.user:
+            return g.user
+
+        try:
+            import sys
+            from fastmcp.server.dependencies import get_access_token
+            from superset.mcp_service.auth import load_user_with_relationships
+
+            token = get_access_token()
+            with open("/tmp/mcp_patch_debug.txt", "a") as _f:
+                _f.write(f"token={type(token).__name__}: {token}\n")
+            if token is not None:
+                claims = getattr(token, "claims", {}) or {}
+                username = (
+                    getattr(token, "subject", None)
+                    or claims.get("sub")
+                    or claims.get("email")
+                    or claims.get("username")
+                )
+                with open("/tmp/mcp_patch_debug.txt", "a") as _f:
+                    _f.write(f"username={username}\n")
+                if username:
+                    user = load_user_with_relationships(username)
+                    if user:
+                        return user
+        except Exception as e:
+            import sys
+            with open("/tmp/mcp_patch_debug.txt", "a") as _f:
+                _f.write(f"exception: {type(e).__name__}: {e}\n")
+
+        dev_username = current_app.config.get("MCP_DEV_USERNAME")
+        if dev_username:
+            from superset.mcp_service.auth import load_user_with_relationships
+
+            user = load_user_with_relationships(dev_username)
+            if user:
+                return user
+
+        auth_enabled = current_app.config.get("MCP_AUTH_ENABLED", False)
+        jwt_configured = bool(current_app.config.get("MCP_JWT_SECRET"))
+        raise ValueError(
+            "No authenticated user found. Tried:\n"
+            f"  - g.user was not set by JWT middleware "
+            f"(MCP_AUTH_ENABLED={auth_enabled}, JWT keys configured={jwt_configured})\n"
+            "  - MCP_DEV_USERNAME is not configured\n\n"
+            "Either pass a valid JWT bearer token or configure MCP_DEV_USERNAME."
+        )
+
+    import superset.mcp_service.auth as _mcp_auth_module
+    _mcp_auth_module.get_user_from_request = _get_user_from_request_with_jwt

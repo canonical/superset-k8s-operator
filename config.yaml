@@ -215,3 +215,11 @@ options:
       mcp-auth-enabled=false. Leave empty when auth is enabled.
     type: string
     default: ""
+  mcp-jwt-secret:
+    description: |
+      Shared secret for HS256 JWT authentication. Required when
+      mcp-auth-enabled=true. Clients must present a Bearer token signed with
+      this secret whose 'sub' claim matches a Superset username.
+      Use a strong random value (e.g. openssl rand -hex 32).
+    type: string
+    default: ""

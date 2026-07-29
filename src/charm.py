@@ -42,7 +42,6 @@ from literals import (
     DEFAULT_ROLES,
     INGRESS_RELATION_NAME,
     LOG_FILE,
-    MCP_PORT,
     PROMETHEUS_METRICS_PORT,
     REDIS_RELATION_NAME,
     SQL_AB_ROLE,
@@ -542,21 +541,6 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
                 "enable-raise-for-access-patch"
             ],
         }
-        if (
-            self.config["mcp-enabled"]
-            and self.config["charm-function"] in UI_FUNCTIONS
-        ):
-            env.update(
-                {
-                    "MCP_AUTH_ENABLED": self.config["mcp-auth-enabled"],
-                    "MCP_PORT": self.config["mcp-port"],
-                }
-            )
-            if (
-                not self.config["mcp-auth-enabled"]
-                and self.config["mcp-dev-username"]
-            ):
-                env["MCP_DEV_USERNAME"] = self.config["mcp-dev-username"]
         if self.config["feature-flags"]:
             env.update(self.config["feature-flags"])
         env.update(self._get_oauth_config())
@@ -691,6 +675,20 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             and self.config["charm-function"] in UI_FUNCTIONS
         ):
             mcp_port = self.config["mcp-port"]
+            mcp_env = env.copy()
+            mcp_env.update(
+                {
+                    "MCP_AUTH_ENABLED": self.config["mcp-auth-enabled"],
+                    "MCP_PORT": mcp_port,
+                }
+            )
+            if not self.config["mcp-auth-enabled"]:
+                if self.config["mcp-dev-username"]:
+                    mcp_env["MCP_DEV_USERNAME"] = self.config[
+                        "mcp-dev-username"
+                    ]
+            elif self.config["mcp-jwt-secret"]:
+                mcp_env["MCP_JWT_SECRET"] = self.config["mcp-jwt-secret"]
             mcp_layer = {
                 "services": {
                     "mcp": {
@@ -699,7 +697,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
                         "command": f"superset mcp run --host 0.0.0.0 --port {mcp_port}",
                         "startup": "enabled",
                         "after": [self.name],
-                        "environment": env,
+                        "environment": mcp_env,
                     }
                 }
             }
