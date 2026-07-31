@@ -41,4 +41,5 @@ header:
     - 'templates/*'
     - 'uv.lock'
     - 'superset_rock/startup-scripts/**'
+    - 'superset_rock/patches/41001-fix-detached-instance-error.patch'
   comment: on-failure
