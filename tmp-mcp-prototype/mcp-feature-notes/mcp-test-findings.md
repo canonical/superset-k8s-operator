@@ -276,11 +276,6 @@ address), not the external URL. In the charm, `SUPERSET_WEBSERVER_BASE_URL` shou
 be configured to produce correct URLs. Until then, manually replace with
 `http://localhost:8088`.
 
-### `kubectl port-forward` is not stable
-Port-forward dies on pod restart (e.g. after charm refresh). Must be restarted
-manually. Future work: expose Superset via NodePort or `juju expose` + ingress.
-The service (`superset-k8s` ClusterIP) doesn't expose ports 8088/5008 directly —
-must port-forward to the pod, not the service.
 
 ---
 
@@ -288,16 +283,6 @@ must port-forward to the pod, not the service.
 
 1. **`generate_chart` / `generate_explore_link` broken** — investigate the upstream
    `superset-mcp` package or the Superset API endpoint it calls
-2. **`MCP_DEV_USERNAME` not in `superset_config.py`** — was missing from the template,
-   added in charm rev 6 (see `templates/superset_config.py`)
-3. **`mcp_dev_username` not in `structured_config.py`** — caused `AttributeError` on
-   config-changed hook, fixed in charm rev 5
-4. **Dashboard title override** — report upstream or handle in the MCP tool
-5. **UI ChunkLoadError** — `ChunkLoadError: Loading chunk 7391 failed` on dashboard
-   render. The chunk file exists in the container but the port-forward times out when
-   serving large static assets. Likely due to `kubectl port-forward` bandwidth
-   limitations or the port-forward dying mid-transfer. Fix: use a more stable access
-   method (NodePort, ingress, or `multipass exec` browser).
 
 ---
 
