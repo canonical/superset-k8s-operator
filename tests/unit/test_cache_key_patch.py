@@ -177,8 +177,12 @@ def _mk_query_object(backend=None, engine=None, db_id=1):
         """Stub QueryObject carrying only a datasource."""
 
         def __init__(self):
-            """Attach the stub datasource."""
+            """Attach the stub datasource and query attributes."""
             self.datasource = Datasource()
+            self.metrics = []
+            self.columns = []
+            self.orderby = []
+            self.series_limit_metric = None
 
     return QueryObject()
 

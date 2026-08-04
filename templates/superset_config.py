@@ -420,7 +420,7 @@ def FLASK_APP_MUTATOR(app):
 from superset.common.query_object import QueryObject as _QO
 
 _QO_DIALECTS = {}  # database id -> sqlglot dialect (or None if unresolvable)
-_QO_RENDER_CACHE = {}  # (sql, dialect) -> rendered sql (or None if unparseable)
+_QO_RENDER_CACHE = {}  # (sql, dialect) -> rendered sql (or None if unparsable)
 _QO_RENDER_CACHE_MAX = 4096
 
 # SQLAlchemy backend names that sqlglot spells differently. Only consulted when
