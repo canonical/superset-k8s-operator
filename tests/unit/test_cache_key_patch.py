@@ -1,12 +1,15 @@
 # Copyright 2023 Canonical Ltd.
 # See LICENSE file for licensing details.
 
-"""Unit tests for the QueryObject cache-key SQL normaliser patch.
+"""Unit tests for the QueryObject cache-key SQL rendering patch.
 
 The patch lives in templates/superset_config.py and is loaded by every
 Superset process at startup via PYTHONPATH. These tests extract the patch
 functions and exercise them in isolation with no installed Superset package
 or running Juju model required.
+
+The patch renders adhoc SQL with sqlglot, using the datasource's own dialect,
+so that the worker's raw SQL and the UI's re-rendered SQL hash identically.
 """
 
 import pathlib
@@ -22,8 +25,13 @@ import unittest
 def _load_patch_ns():
     """Exec only the fix block from superset_config.py with a stubbed QO.
 
-    Returns a dict of names defined by the fix block:
-    _qo_norm_sql_str, _qo_norm, _qo_norm_orderby, _qo_patched_cache_key.
+    Returns:
+        Dict of names defined by the fix block, including _qo_trim,
+        _qo_dialect, _qo_render_sql, _qo_render_expr, _qo_render_orderby
+        and _qo_patched_cache_key.
+
+    Raises:
+        FileNotFoundError: If superset_config.py cannot be located.
     """
     config_path = (
         pathlib.Path(__file__).parent.parent.parent
@@ -40,7 +48,7 @@ def _load_patch_ns():
     start_marker = (
         "from superset.common.query_object import QueryObject as _QO"
     )
-    end_marker = "# End fix: QueryObject cache-key SQL normalisation"
+    end_marker = "# End fix: QueryObject cache-key SQL rendering"
     start = src.index(start_marker)
     end = src.index(end_marker)
     block = src[start:end]
@@ -76,471 +84,402 @@ def _load_patch_ns():
 
 _P = _load_patch_ns()
 
-_norm = _P["_qo_norm_sql_str"]
-_norm_expr = _P["_qo_norm"]
-_norm_ob = _P["_qo_norm_orderby"]
+_trim = _P["_qo_trim"]
+_dialect = _P["_qo_dialect"]
+_render = _P["_qo_render_sql"]
+_render_expr = _P["_qo_render_expr"]
+_render_ob = _P["_qo_render_orderby"]
 _patched_ck = _P["_qo_patched_cache_key"]
+
+TRINO = "trino"
 
 
 def _mk_metric(sql, label="m"):
-    """Return a minimal adhoc-SQL metric dict."""
+    """Return a minimal adhoc-SQL metric dict.
+
+    Args:
+        sql: The sqlExpression to embed.
+        label: The metric label.
+
+    Returns:
+        An adhoc-SQL metric dict.
+    """
     return {"expressionType": "SQL", "sqlExpression": sql, "label": label}
 
 
 def _orig_returning_h(*args, **kwargs):
-    """Stand-in for _qo_orig_cache_key that returns a fixed hash."""
+    """Stand-in for _qo_orig_cache_key that returns a fixed hash.
+
+    Args:
+        args: Ignored positional arguments.
+        kwargs: Ignored keyword arguments.
+
+    Returns:
+        Fixed hash string.
+    """
     del args, kwargs
     return "H"
 
 
+def _mk_query_object(backend=None, engine=None, db_id=1):
+    """Build a stub QueryObject exposing just what _qo_dialect reads.
+
+    Args:
+        backend: SQLAlchemy backend name, or None to omit url_object.
+        engine: db_engine_spec.engine value, or None to omit the spec.
+        db_id: Database id, used as the dialect memoisation key.
+
+    Returns:
+        An object with a .datasource.database chain.
+    """
+
+    class Url:
+        """Stub SQLAlchemy URL."""
+
+        def get_backend_name(self):
+            """Return the backend name.
+
+            Returns:
+                The configured backend name.
+            """
+            return backend
+
+    class Spec:
+        """Stub db_engine_spec.
+
+        Attrs:
+            engine: The Superset engine name.
+        """
+
+        def __init__(self):
+            """Record the engine name."""
+            self.engine = engine
+
+    class Database:
+        """Stub Superset Database model."""
+
+        def __init__(self):
+            """Attach id and, when configured, url_object/db_engine_spec."""
+            self.id = db_id
+            if backend is not None:
+                self.url_object = Url()
+            if engine is not None:
+                self.db_engine_spec = Spec()
+
+    class Datasource:
+        """Stub Superset datasource."""
+
+        def __init__(self):
+            """Attach the stub database."""
+            self.database = Database()
+
+    class QueryObject:
+        """Stub QueryObject carrying only a datasource."""
+
+        def __init__(self):
+            """Attach the stub datasource and query attributes."""
+            self.datasource = Datasource()
+            self.metrics = []
+            self.columns = []
+            self.orderby = []
+            self.series_limit_metric = None
+
+    return QueryObject()
+
+
 # ---------------------------------------------------------------------------
-# _qo_norm_sql_str
+# _qo_trim
 # ---------------------------------------------------------------------------
 
 
-class TestNormSqlStr(  # pylint: disable=too-many-public-methods
-    unittest.TestCase
-):
-    """Tests for the core SQL normaliser function."""
+class TestTrim(unittest.TestCase):
+    """Tests for the fallback used where sqlglot cannot help."""
 
-    # ---- Production patterns ------------------------------------------- #
+    def test_crlf_normalised(self):
+        """CRLF and bare CR become LF."""
+        self.assertEqual(_trim("a\r\nb"), "a\nb")
+        self.assertEqual(_trim("a\rb"), "a\nb")
 
-    def test_p1_multiline_case_converge(self):
-        """Worker (multiline) and UI (single-line) CASE produce same output."""
-        worker = (
-            "SUM(CASE \n        WHEN \"Stage\" = 'Closed Won' \n"
-            "        AND amount > 0\n    END)\n\n    "
-        )
-        ui = "SUM(CASE WHEN \"Stage\" = 'Closed Won' AND amount>0 END)"
-        self.assertEqual(_norm(worker), _norm(ui))
+    def test_leading_and_trailing_stripped(self):
+        """Whitespace at both ends is removed."""
+        self.assertEqual(_trim("   SUM(x)   "), "SUM(x)")
+        self.assertEqual(_trim("SUM(x)\n\n    "), "SUM(x)")
 
-    def test_p1_trailing_whitespace_stripped(self):
-        """Trailing newlines and spaces are removed."""
-        self.assertEqual(_norm("SUM(x)\n\n    "), "SUM(x)")
+    def test_orderby_item_list_pair_converges(self):
+        """Forms differing only by a trailing space converge."""
+        worker = "br_year DESC, br_num "
+        ui = "br_year DESC, br_num"
+        self.assertEqual(_trim(worker), _trim(ui))
 
-    def test_p1_internal_newlines_collapsed(self):
-        """Internal newlines and indentation are collapsed to a single space."""
-        worker = "SUM(CASE\n        WHEN x>0\n        THEN 1\n    END)"
-        ui = "SUM(CASE WHEN x>0 THEN 1 END)"
-        self.assertEqual(_norm(worker), _norm(ui))
+    def test_internal_text_untouched(self):
+        """Nothing inside the expression is rewritten."""
+        sql = "CASE WHEN s = 'Closed - Won' THEN a + b   END"
+        self.assertEqual(_trim(sql), sql)
 
-    def test_p2_operator_spacing_converge(self):
-        """Worker (no spaces) and UI (with spaces) around + produce same output."""
-        no_spaces = 'SUM("Y1 Renewal"+"Y1 Not Renewal")'
-        with_spaces = 'SUM("Y1 Renewal" + "Y1 Not Renewal")'
-        self.assertEqual(_norm(no_spaces), _norm(with_spaces))
+    def test_literal_content_never_altered(self):
+        """Whitespace inside a string literal survives."""
+        self.assertEqual(_trim("MAX('A   B')"), "MAX('A   B')")
 
-    def test_p2_operator_spacing_all_variants(self):
-        """All whitespace variants around an operator produce the same form."""
-        forms = ["a+b", "a +b", "a+ b", "a + b", "a   +   b"]
-        results = {_norm(f) for f in forms}
-        self.assertEqual(
-            len(results),
-            1,
-            f"Not all collapsed to one form: {results}",
-        )
-
-    # ---- String literal safety ----------------------------------------- #
-
-    def test_literal_operator_chars_preserved(self):
-        """Operator-like chars inside single-quoted literals are untouched."""
-        sql = "CASE WHEN stage = 'Closed - Won' THEN 1 END"
-        self.assertIn("'Closed - Won'", _norm(sql))
-
-    def test_literal_multiple_spaces_preserved(self):
-        """Multiple consecutive spaces inside a literal are left as-is."""
-        sql = "MAX('A   B   C')"
-        self.assertIn("'A   B   C'", _norm(sql))
-
-    def test_literal_arithmetic_plus_preserved(self):
-        """Plus sign inside a string literal is not treated as an operator."""
-        sql = "CASE WHEN label = 'revenue + discount' THEN 1 END"
-        self.assertIn("'revenue + discount'", _norm(sql))
-
-    def test_literal_slash_preserved(self):
-        """Forward slash inside a literal is not treated as division."""
-        sql = "CASE WHEN type = 'A/B test' THEN 1 END"
-        self.assertIn("'A/B test'", _norm(sql))
-
-    def test_literal_star_preserved(self):
-        """Asterisk inside a literal is not treated as multiplication."""
-        sql = "CASE WHEN name = '5 * 5 = 25' THEN 1 END"
-        self.assertIn("'5 * 5 = 25'", _norm(sql))
-
-    def test_literal_doubled_quote_escape_preserved(self):
-        """SQL escaped single quote (doubled) is copied verbatim."""
-        sql = "MAX('it''s a - test')"
-        self.assertIn("'it''s a - test'", _norm(sql))
-
-    def test_literal_comment_markers_not_treated_as_comments(self):
-        """Comment markers inside a literal are not parsed as comments."""
-        sql1 = "CASE WHEN note = '-- not a comment' THEN 1 END"
-        self.assertIn("'-- not a comment'", _norm(sql1))
-
-        sql2 = "CASE WHEN note = '/* also not */' THEN 1 END"
-        self.assertIn("'/* also not */'", _norm(sql2))
-
-    def test_literal_empty_string_preserved(self):
-        """Empty string literal is preserved."""
-        self.assertIn("''", _norm("COALESCE(x, '')"))
-
-    def test_double_quoted_identifier_content_preserved(self):
-        """Operator-like chars inside double-quoted identifiers are untouched."""
-        self.assertIn('"Gross - Net"', _norm('SUM("Gross - Net")'))
-
-    def test_double_quoted_identifier_spaces_preserved(self):
-        """Multiple spaces inside a double-quoted identifier are preserved."""
-        self.assertIn('"Head  Count"', _norm('SUM("Head  Count")'))
-
-    def test_double_quoted_identifier_doubled_escape_preserved(self):
-        """Doubled double-quote escape inside identifier is copied verbatim."""
-        self.assertIn('"col""name"', _norm('SELECT "col""name"'))
-
-    def test_backtick_identifier_preserved(self):
-        """Content inside backtick identifiers is copied verbatim."""
-        self.assertIn("`col - name`", _norm("SUM(`col - name`)"))
-
-    def test_mixed_literals_and_code(self):
-        """Code operators are collapsed while literal content is preserved."""
-        sql = "CASE WHEN s = 'Closed - Won' THEN revenue + discount ELSE 0 END"
-        out = _norm(sql)
-        self.assertIn("'Closed - Won'", out)
-        self.assertIn("revenue+discount", out)
-        self.assertNotIn("revenue + discount", out)
-
-    # ---- Comment safety ------------------------------------------------- #
-
-    def test_line_comment_content_preserved(self):
-        """Operators inside a line comment are not modified."""
-        sql = "a -- minus b\n + c"
-        self.assertIn("-- minus b", _norm(sql))
-
-    def test_block_comment_content_preserved(self):
-        """Operators inside a block comment are not modified."""
-        sql = "a /* x - y */ + b"
-        self.assertIn("/* x - y */", _norm(sql))
-
-    def test_block_comment_multiline_preserved(self):
-        """Multi-line block comment content is copied verbatim."""
-        sql = "x /* line1\nline2\nline3 */ + y"
-        self.assertIn("/* line1\nline2\nline3 */", _norm(sql))
-
-    def test_comment_at_end_preserved(self):
-        """A trailing line comment is copied verbatim."""
-        self.assertIn("-- total revenue", _norm("SUM(x) -- total revenue"))
-
-    # ---- Operator / whitespace normalisation ---------------------------- #
-
-    def test_all_arithmetic_operators_tightened(self):
-        """Spaces around all arithmetic operators are removed."""
-        self.assertEqual(_norm("a + b"), "a+b")
-        self.assertEqual(_norm("a - b"), "a-b")
-        self.assertEqual(_norm("a * b"), "a*b")
-        self.assertEqual(_norm("a / b"), "a/b")
-        self.assertEqual(_norm("a % b"), "a%b")
-
-    def test_comparison_operators_tightened(self):
-        """Spaces around comparison operators are removed."""
-        for sql, want in [
-            ("a > b", "a>b"),
-            ("a < b", "a<b"),
-            ("a >= b", "a>=b"),
-            ("a <= b", "a<=b"),
-            ("a = b", "a=b"),
-            ("a != b", "a!=b"),
-            ("a <> b", "a<>b"),
-        ]:
-            with self.subTest(sql=sql):
-                self.assertEqual(_norm(sql), want)
-
-    def test_pipe_operator_tightened(self):
-        """Spaces around || string concat operator are removed."""
-        self.assertEqual(_norm("a || b"), "a||b")
-
-    def test_mixed_operator_chain(self):
-        """Spaces around all operators in a chain are removed."""
-        self.assertEqual(_norm("a + b * c - d / e"), "a+b*c-d/e")
-
-    def test_paren_spaces_tightened(self):
-        """Spaces inside function-call parentheses are removed."""
-        self.assertEqual(_norm("SUM( x )"), "SUM(x)")
-        self.assertEqual(_norm("COALESCE( a , b )"), "COALESCE(a,b)")
-
-    def test_tab_whitespace_collapsed(self):
-        """Tabs around operators and between keywords are handled."""
-        self.assertEqual(_norm("a\t+\tb"), "a+b")
-        self.assertEqual(_norm("CASE\tWHEN\tx"), "CASE WHEN x")
-
-    def test_mixed_newline_formats(self):
-        """CRLF and bare CR in SQL code are treated as whitespace."""
-        crlf = "CASE\r\nWHEN x > 0\r\nTHEN 1 END"
-        lf = "CASE\nWHEN x > 0\nTHEN 1 END"
-        cr = "CASE\rWHEN x > 0\rTHEN 1 END"
-        self.assertEqual(_norm(crlf), _norm(lf))
-        self.assertEqual(_norm(cr), _norm(lf))
-
-    def test_leading_whitespace_stripped(self):
-        """Leading whitespace is removed."""
-        self.assertEqual(_norm("   SUM(x)"), "SUM(x)")
-
-    def test_trailing_whitespace_stripped(self):
-        """Trailing whitespace and newlines are removed."""
-        self.assertEqual(_norm("SUM(x)   "), "SUM(x)")
-        self.assertEqual(_norm("SUM(x)\n\n    "), "SUM(x)")
-
-    def test_keywords_separated_by_single_space(self):
-        """Multiple spaces between keyword tokens collapse to one."""
-        self.assertEqual(
-            _norm("CASE   WHEN   x   THEN   y   END"),
-            "CASE WHEN x THEN y END",
-        )
-
-    # ---- SQL constructs that must not be corrupted ---------------------- #
-
-    def test_count_star_safe(self):
-        """COUNT(*) is preserved."""
-        self.assertEqual(_norm("COUNT(*)"), "COUNT(*)")
-
-    def test_count_star_with_spaces(self):
-        """COUNT( * ) normalises to COUNT(*)."""
-        self.assertEqual(_norm("COUNT( * )"), "COUNT(*)")
-
-    def test_cast_expression(self):
-        """CAST with spaces normalises correctly."""
-        self.assertEqual(
-            _norm("CAST( amount AS FLOAT )"), "CAST(amount AS FLOAT)"
-        )
-
-    def test_between_expression(self):
-        """BETWEEN expression is handled correctly."""
-        self.assertEqual(
-            _norm("amount BETWEEN 0 AND 100"),
-            "amount BETWEEN 0 AND 100",
-        )
-
-    def test_is_null(self):
-        """IS NULL and IS NOT NULL are handled correctly."""
-        self.assertEqual(_norm("x IS NULL"), "x IS NULL")
-        self.assertEqual(_norm("x IS NOT NULL"), "x IS NOT NULL")
-
-    def test_unary_minus_not_fused_into_comment(self):
-        """'a - -b' must not become 'a--b' (a SQL comment start)."""
-        out = _norm("a - -b")
-        self.assertNotIn("--", out)
-
-    def test_unary_plus_not_fused_into_block_comment(self):
-        """'a / *b' must not become 'a/*b' (a SQL block-comment start)."""
-        self.assertNotIn("/*", _norm("a / *b"))
-
-    def test_schema_qualified_table(self):
-        """schema.table dot notation is preserved."""
-        self.assertEqual(_norm("schema.table"), "schema.table")
-
-    def test_colon_cast_postgres(self):
-        """Colon cast (::) for PostgreSQL is tightened."""
-        self.assertEqual(_norm("value :: INT"), "value::INT")
-
-    # ---- Edge cases ----------------------------------------------------- #
-
-    def test_empty_string(self):
-        """Empty string returns empty string."""
-        self.assertEqual(_norm(""), "")
-
-    def test_whitespace_only(self):
-        """Whitespace-only input returns empty string."""
-        self.assertEqual(_norm("   "), "")
-        self.assertEqual(_norm("\n\n  \t"), "")
-
-    def test_single_identifier(self):
-        """Single identifier is returned unchanged."""
-        self.assertEqual(_norm("revenue"), "revenue")
-
-    def test_deeply_nested_parens(self):
-        """Deeply nested function calls are normalised correctly."""
-        self.assertEqual(_norm("f( g( h( a + b ) ) )"), "f(g(h(a+b)))")
-
-    def test_very_long_multiline_case(self):
-        """Realistic multi-branch CASE collapses to a single line."""
-        sql = (
-            "SUM(CASE\n"
-            "    WHEN stage = 'Closed Won' AND amount > 0\n"
-            "    THEN amount\n"
-            "    WHEN stage = 'In Progress'\n"
-            "    THEN amount * 0.5\n"
-            "    ELSE 0\n"
-            "END)\n\n    "
-        )
-        out = _norm(sql)
-        self.assertNotIn("\n", out)
-        self.assertIn("'Closed Won'", out)
-        self.assertIn("'In Progress'", out)
-        self.assertIn("0.5", out)
-
-    def test_unclosed_string_literal_no_crash(self):
-        """Scanner reaching EOF inside a literal must not raise."""
-        try:
-            out = _norm("CASE WHEN x = 'unclosed")
-            self.assertIsInstance(out, str)
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            self.fail(f"Raised exception on unclosed literal: {exc}")
-
-    def test_unclosed_block_comment_no_crash(self):
-        """Scanner reaching EOF inside a block comment must not raise."""
-        try:
-            out = _norm("x + /* unclosed comment")
-            self.assertIsInstance(out, str)
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            self.fail(f"Raised exception on unclosed comment: {exc}")
+    def test_empty_and_whitespace_only(self):
+        """Empty and whitespace-only inputs collapse to an empty string."""
+        self.assertEqual(_trim(""), "")
+        self.assertEqual(_trim("   \n\t "), "")
 
     def test_idempotent(self):
-        """Applying the normaliser twice gives the same result as once."""
-        sql = (
-            "SUM(CASE\n  WHEN a > 0\n  THEN revenue + cost\n  ELSE 0\nEND)\n\n"
+        """Trimming twice equals trimming once."""
+        once = _trim("  SUM(x)\r\n  ")
+        self.assertEqual(_trim(once), once)
+
+
+# ---------------------------------------------------------------------------
+# _qo_dialect
+# ---------------------------------------------------------------------------
+
+
+class TestDialect(unittest.TestCase):
+    """Tests for dialect resolution."""
+
+    def setUp(self):
+        """Clear the per-database dialect memo before each test."""
+        _P["_QO_DIALECTS"].clear()
+
+    def tearDown(self):
+        """Remove any injected Superset mapping module."""
+        sys.modules.pop("superset.sql.parse", None)
+        sys.modules.pop("superset.sql", None)
+        _P["_QO_DIALECTS"].clear()
+
+    def _inject_superset_mapping(self, mapping):
+        """Install a stub superset.sql.parse exposing SQLGLOT_DIALECTS.
+
+        Args:
+            mapping: The dict to expose as SQLGLOT_DIALECTS.
+        """
+        pkg = types.ModuleType("superset.sql")
+        mod = types.ModuleType("superset.sql.parse")
+        mod.SQLGLOT_DIALECTS = mapping  # type: ignore[attr-defined]
+        sys.modules["superset.sql"] = pkg
+        sys.modules["superset.sql.parse"] = mod
+
+    def test_superset_mapping_preferred(self):
+        """Superset's own engine mapping is consulted first."""
+        self._inject_superset_mapping({"trino": "trino"})
+        obj = _mk_query_object(backend="postgresql", engine="trino", db_id=10)
+        self.assertEqual(_dialect(obj), "trino")
+
+    def test_backend_name_used_when_mapping_absent(self):
+        """Without the mapping, the SQLAlchemy backend name is used."""
+        obj = _mk_query_object(backend="trino", db_id=11)
+        self.assertEqual(_dialect(obj), "trino")
+
+    def test_backend_alias_applied(self):
+        """Backend names sqlglot spells differently are translated."""
+        cases = {"postgresql": "postgres", "mssql": "tsql"}
+        for db_id, (backend, want) in enumerate(cases.items(), start=20):
+            with self.subTest(backend=backend):
+                _P["_QO_DIALECTS"].clear()
+                obj = _mk_query_object(backend=backend, db_id=db_id)
+                self.assertEqual(_dialect(obj), want)
+
+    def test_unknown_backend_is_unresolved(self):
+        """A backend sqlglot does not know resolves to None, never a guess."""
+        obj = _mk_query_object(backend="not-a-real-engine", db_id=30)
+        self.assertIsNone(_dialect(obj))
+
+    def test_unknown_mapping_value_falls_through_to_backend(self):
+        """A mapping value sqlglot rejects does not block the fallback."""
+        self._inject_superset_mapping({"weird": "not-a-real-dialect"})
+        obj = _mk_query_object(backend="trino", engine="weird", db_id=31)
+        self.assertEqual(_dialect(obj), "trino")
+
+    def test_no_datasource_returns_none(self):
+        """A QueryObject without a datasource resolves to None."""
+
+        class Bare:
+            """QueryObject stub with no datasource attribute."""
+
+        self.assertIsNone(_dialect(Bare()))
+
+    def test_exploding_datasource_returns_none(self):
+        """An attribute that raises must not escape as an exception."""
+
+        class Exploding:
+            """QueryObject stub whose datasource access raises.
+
+            Attrs:
+                datasource: Property that raises on access.
+            """
+
+            @property
+            def datasource(self):
+                """Raise on access.
+
+                Raises:
+                    RuntimeError: Always.
+                """
+                raise RuntimeError("boom")
+
+        self.assertIsNone(_dialect(Exploding()))
+
+    def test_result_is_memoised_per_database(self):
+        """The resolved dialect is cached against the database id."""
+        obj = _mk_query_object(backend="trino", db_id=40)
+        _dialect(obj)
+        self.assertIn(40, _P["_QO_DIALECTS"])
+        self.assertEqual(_P["_QO_DIALECTS"][40], "trino")
+
+
+# ---------------------------------------------------------------------------
+# _qo_render_sql
+# ---------------------------------------------------------------------------
+
+
+class TestRenderSql(unittest.TestCase):
+    """Tests for the sqlglot render used to build the hash input."""
+
+    def setUp(self):
+        """Clear the render memo before each test."""
+        _P["_QO_RENDER_CACHE"].clear()
+
+    def test_no_dialect_falls_back_to_trim(self):
+        """Without a dialect the SQL is only trimmed, never rendered."""
+        self.assertEqual(_render("  sum(a)+sum(b)  ", None), "sum(a)+sum(b)")
+
+    def test_unparseable_falls_back_to_trim(self):
+        """An expression sqlglot cannot parse is only trimmed."""
+        self.assertEqual(
+            _render("br_year DESC, br_num ", TRINO), "br_year DESC, br_num"
         )
-        once = _norm(sql)
-        self.assertEqual(_norm(once), once)
+
+    def test_render_is_idempotent(self):
+        """Rendering an already-rendered string changes nothing."""
+        once = _render("sum(a)+sum(b)", TRINO)
+        self.assertEqual(_render(once, TRINO), once)
+
+    def test_result_is_memoised(self):
+        """A rendered expression is cached against (sql, dialect)."""
+        _render("SUM(a)", TRINO)
+        self.assertIn(("SUM(a)", TRINO), _P["_QO_RENDER_CACHE"])
+
+    def test_cache_is_bounded(self):
+        """The render cache clears rather than growing without limit."""
+        limit = _P["_QO_RENDER_CACHE_MAX"]
+        for i in range(limit + 5):
+            _render(f"SUM(col_{i})", TRINO)
+        self.assertLessEqual(len(_P["_QO_RENDER_CACHE"]), limit)
+
+    def test_empty_string(self):
+        """An empty expression is returned as an empty string."""
+        self.assertEqual(_render("", TRINO), "")
+
+    def test_never_raises_on_junk(self):
+        """Malformed input returns a string instead of raising."""
+        for junk in ("SELECT ((( unbalanced", "sum(a", "   "):
+            with self.subTest(junk=junk):
+                self.assertIsInstance(_render(junk, TRINO), str)
 
 
 # ---------------------------------------------------------------------------
-# _qo_norm (adhoc metric dict wrapper)
+# _qo_render_expr (adhoc metric dict wrapper)
 # ---------------------------------------------------------------------------
 
 
-class TestNormExpr(unittest.TestCase):
-    """Tests for the adhoc-SQL dict normaliser."""
+class TestRenderExpr(unittest.TestCase):
+    """Tests for the adhoc-SQL dict wrapper."""
 
     def test_non_dict_passthrough(self):
         """Non-dict values are returned unchanged."""
         for val in ("raw_string", 42, None, ["list"]):
             with self.subTest(val=val):
-                self.assertIs(_norm_expr(val), val)
+                self.assertIs(_render_expr(val, TRINO), val)
 
     def test_dict_without_expression_type_passthrough(self):
         """Dict without expressionType is returned unchanged."""
         d = {"label": "m", "sqlExpression": "SUM(x + y)"}
-        self.assertIs(_norm_expr(d), d)
+        self.assertIs(_render_expr(d, TRINO), d)
 
     def test_dict_with_non_sql_expression_type_passthrough(self):
         """Dict with expressionType != 'SQL' is returned unchanged."""
         d = {"expressionType": "SIMPLE", "column": "revenue"}
-        self.assertIs(_norm_expr(d), d)
+        self.assertIs(_render_expr(d, TRINO), d)
 
-    def test_adhoc_sql_dict_normaliseised(self):
-        """Dict with expressionType='SQL' gets sqlExpression normalised."""
-        d = {
-            "expressionType": "SQL",
-            "sqlExpression": "SUM( x + y )",
-            "label": "m",
-        }
-        self.assertEqual(_norm_expr(d)["sqlExpression"], "SUM(x+y)")
+    def test_adhoc_sql_dict_rendered(self):
+        """Dict with expressionType='SQL' gets its sqlExpression rendered."""
+        d = _mk_metric("sum(x)+sum(y)")
+        self.assertEqual(
+            _render_expr(d, TRINO)["sqlExpression"], "SUM(x) + SUM(y)"
+        )
 
     def test_original_dict_not_mutated(self):
         """The original dict object is not modified in place."""
-        original_sql = "SUM( x + y )"
-        d = {"expressionType": "SQL", "sqlExpression": original_sql}
-        _norm_expr(d)
+        original_sql = "sum(x)+sum(y)"
+        d = _mk_metric(original_sql)
+        _render_expr(d, TRINO)
         self.assertEqual(d["sqlExpression"], original_sql)
 
     def test_other_fields_preserved(self):
         """Non-sqlExpression fields in the dict are preserved unchanged."""
-        d = {
-            "expressionType": "SQL",
-            "sqlExpression": "SUM( x )",
-            "label": "my metric",
-            "optionName": "abc123",
-        }
-        result = _norm_expr(d)
+        d = _mk_metric("SUM( x )", label="my metric")
+        d["optionName"] = "abc123"
+        result = _render_expr(d, TRINO)
         self.assertEqual(result["label"], "my metric")
         self.assertEqual(result["optionName"], "abc123")
 
     def test_result_is_new_dict(self):
         """The returned dict is a new object, not the original."""
-        d = {"expressionType": "SQL", "sqlExpression": "SUM( x )"}
-        self.assertIsNot(_norm_expr(d), d)
-
-    def test_production_metric_pattern1(self):
-        """Multiline CASE metric is flattened and literal is preserved."""
-        sql = "SUM(CASE \n        WHEN \"Stage\" = 'Closed Won'\n    END)\n\n    "
-        d = {"expressionType": "SQL", "sqlExpression": sql, "label": "m"}
-        result = _norm_expr(d)
-        self.assertNotIn("\n", result["sqlExpression"])
-        self.assertIn("'Closed Won'", result["sqlExpression"])
-
-    def test_production_metric_pattern2(self):
-        """Operator-spacing variants converge to the same normalised form."""
-        sql = 'SUM("Y1 Renewal" + "Y1 Not Renewal")'
-        d_spaces = {"expressionType": "SQL", "sqlExpression": sql}
-        d_nospace = {
-            "expressionType": "SQL",
-            "sqlExpression": sql.replace(" + ", "+"),
-        }
-        self.assertEqual(
-            _norm_expr(d_spaces)["sqlExpression"],
-            _norm_expr(d_nospace)["sqlExpression"],
-        )
+        d = _mk_metric("SUM( x )")
+        self.assertIsNot(_render_expr(d, TRINO), d)
 
 
 # ---------------------------------------------------------------------------
-# _qo_norm_orderby (orderby item wrapper)
+# _qo_render_orderby (orderby item wrapper)
 # ---------------------------------------------------------------------------
 
 
-class TestNormOrderby(unittest.TestCase):
+class TestRenderOrderby(unittest.TestCase):
     """Tests for the orderby item wrapper."""
 
     def test_non_sequence_passthrough(self):
         """Non-list/non-tuple values are returned unchanged."""
         for val in ("string", 42, None):
             with self.subTest(val=val):
-                self.assertIs(_norm_ob(val), val)
+                self.assertIs(_render_ob(val, TRINO), val)
 
-    def test_empty_list_passthrough(self):
-        """Empty list is returned unchanged."""
-        val: list = []
-        self.assertIs(_norm_ob(val), val)
+    def test_empty_sequence_passthrough(self):
+        """Empty list and tuple are returned unchanged."""
+        empty_list: list = []
+        empty_tuple: tuple = ()
+        self.assertIs(_render_ob(empty_list, TRINO), empty_list)
+        self.assertIs(_render_ob(empty_tuple, TRINO), empty_tuple)
 
-    def test_empty_tuple_passthrough(self):
-        """Empty tuple is returned unchanged."""
-        val: tuple = ()
-        self.assertIs(_norm_ob(val), val)
-
-    def test_list_item_first_element_normaliseised(self):
-        """First element of a list orderby item is normalised."""
-        metric = _mk_metric("SUM( x + y )")
-        result = _norm_ob([metric, True])
-        self.assertEqual(result[0]["sqlExpression"], "SUM(x+y)")
+    def test_first_element_rendered(self):
+        """Only the first element of the orderby item is rendered."""
+        result = _render_ob([_mk_metric("sum(x)+sum(y)"), True], TRINO)
+        self.assertEqual(result[0]["sqlExpression"], "SUM(x) + SUM(y)")
         self.assertEqual(result[1], True)
 
     def test_tuple_item_converted_to_list(self):
-        """Tuple orderby item is converted to list and normalised."""
-        metric = _mk_metric("SUM( x + y )")
-        result = _norm_ob((metric, False))
+        """Tuple orderby item is converted to list and rendered."""
+        result = _render_ob((_mk_metric("sum(x)"), False), TRINO)
         self.assertIsInstance(result, list)
-        self.assertEqual(result[0]["sqlExpression"], "SUM(x+y)")
-        self.assertEqual(result[1], False)
+        self.assertEqual(result[0]["sqlExpression"], "SUM(x)")
 
     def test_non_sql_first_element_passthrough(self):
         """Non-adhoc-SQL first element is passed through unchanged."""
-        result = _norm_ob(["plain_column", True])
-        self.assertEqual(result[0], "plain_column")
+        self.assertEqual(
+            _render_ob(["plain_column", True], TRINO)[0], "plain_column"
+        )
 
     def test_original_metric_dict_not_mutated(self):
-        """The original metric dict inside the orderby item is not modified."""
-        original_sql = "SUM( x + y )"
+        """The metric dict inside the orderby item is not modified."""
+        original_sql = "sum(x)+sum(y)"
         metric = _mk_metric(original_sql)
-        _norm_ob([metric, True])
+        _render_ob([metric, True], TRINO)
         self.assertEqual(metric["sqlExpression"], original_sql)
-
-    def test_result_is_new_list(self):
-        """The returned list is a new object."""
-        metric = _mk_metric("SUM( x )")
-        item = [metric, True]
-        self.assertIsNot(_norm_ob(item), item)
 
     def test_extra_elements_preserved(self):
         """Elements beyond [metric, bool] are preserved."""
-        metric = _mk_metric("SUM( x )")
-        result = _norm_ob([metric, True, "extra"])
+        result = _render_ob([_mk_metric("SUM(x)"), True, "extra"], TRINO)
         self.assertEqual(len(result), 3)
         self.assertEqual(result[2], "extra")
 
@@ -567,23 +506,26 @@ class TestPatchedCacheKey(unittest.TestCase):
         _P["_qo_orig_cache_key"] = self._saved_orig
 
     def _set_orig(self, fn):
-        """Replace the orig function seen by the patched closure."""
+        """Replace the orig function seen by the patched closure.
+
+        Args:
+            fn: The stand-in to install.
+        """
         _P["_qo_orig_cache_key"] = fn
 
     def _make_obj(self, metrics=None, columns=None, orderby=None, slm=None):
-        """Create a minimal stub that patched_cache_key can operate on."""
+        """Create a minimal stub that patched_cache_key can operate on.
 
-        class Obj:
-            """Minimal QueryObject stub."""
+        Args:
+            metrics: Value for the metrics attribute.
+            columns: Value for the columns attribute.
+            orderby: Value for the orderby attribute.
+            slm: Value for the series_limit_metric attribute.
 
-            def __init__(self):
-                """Initialise stub with None defaults for all QueryObject fields."""
-                self.metrics = None
-                self.columns = None
-                self.orderby = None
-                self.series_limit_metric = None
-
-        obj = Obj()
+        Returns:
+            A QueryObject stub with a Trino datasource.
+        """
+        obj = _mk_query_object(backend="trino", db_id=99)
         obj.metrics = metrics if metrics is not None else []
         obj.columns = columns if columns is not None else []
         obj.orderby = orderby if orderby is not None else []
@@ -593,15 +535,15 @@ class TestPatchedCacheKey(unittest.TestCase):
     # ---- Restore behaviour --------------------------------------------- #
 
     def test_metrics_restored_after_call(self):
-        """Original metrics list and dict objects are restored after hashing."""
-        metric = _mk_metric("SUM( x + y )")
+        """Original metrics list and dict objects are restored."""
+        metric = _mk_metric("sum( x + y )")
         obj = self._make_obj(metrics=[metric])
         self._set_orig(_orig_returning_h)
 
         _patched_ck(obj)
 
         self.assertIs(obj.metrics[0], metric)
-        self.assertEqual(obj.metrics[0]["sqlExpression"], "SUM( x + y )")
+        self.assertEqual(obj.metrics[0]["sqlExpression"], "sum( x + y )")
 
     def test_columns_restored_after_call(self):
         """Original columns are restored after hashing."""
@@ -613,8 +555,7 @@ class TestPatchedCacheKey(unittest.TestCase):
 
     def test_orderby_restored_after_call(self):
         """Original orderby is restored after hashing."""
-        metric = _mk_metric("SUM( x )")
-        ob = [metric, True]
+        ob = [_mk_metric("SUM( x )"), True]
         obj = self._make_obj(orderby=[ob])
         self._set_orig(_orig_returning_h)
         _patched_ck(obj)
@@ -629,7 +570,7 @@ class TestPatchedCacheKey(unittest.TestCase):
         self.assertIs(obj.series_limit_metric, slm)
 
     def test_none_series_limit_metric_stays_none(self):
-        """None series_limit_metric is not normalised and stays None."""
+        """None series_limit_metric is left alone and stays None."""
         obj = self._make_obj(slm=None)
         self._set_orig(_orig_returning_h)
         _patched_ck(obj)
@@ -637,7 +578,7 @@ class TestPatchedCacheKey(unittest.TestCase):
 
     def test_attributes_restored_even_when_orig_raises(self):
         """Attributes are restored via finally even if orig raises."""
-        metric = _mk_metric("SUM( x + y )")
+        metric = _mk_metric("sum( x + y )")
         obj = self._make_obj(metrics=[metric])
 
         def exploding(*args, **kwargs):
@@ -659,12 +600,12 @@ class TestPatchedCacheKey(unittest.TestCase):
             _patched_ck(obj)
 
         self.assertIs(obj.metrics[0], metric)
-        self.assertEqual(obj.metrics[0]["sqlExpression"], "SUM( x + y )")
+        self.assertEqual(obj.metrics[0]["sqlExpression"], "sum( x + y )")
 
-    # ---- Normalised SQL seen during the call ---------------------------- #
+    # ---- Rendered SQL seen during the call ------------------------------ #
 
-    def test_normalise_sql_seen_during_call(self):
-        """The orig receives normalised SQL, not the original strings."""
+    def test_rendered_sql_seen_during_call(self):
+        """The orig receives rendered SQL, not the original strings."""
         seen: dict = {}
 
         def recording_orig(s, **e):
@@ -686,17 +627,17 @@ class TestPatchedCacheKey(unittest.TestCase):
             return "H"
 
         self._set_orig(recording_orig)
-        metric = _mk_metric("SUM( a + b )")
+        metric = _mk_metric("sum(a)+sum(b)")
         obj = self._make_obj(metrics=[metric], orderby=[[metric, True]])
 
         _patched_ck(obj)
 
-        self.assertEqual(seen["metrics"], ["SUM(a+b)"])
-        self.assertEqual(seen["orderby"], ["SUM(a+b)"])
+        self.assertEqual(seen["metrics"], ["SUM(a) + SUM(b)"])
+        self.assertEqual(seen["orderby"], ["SUM(a) + SUM(b)"])
 
     def test_original_dict_not_mutated_by_call(self):
-        """The original metric dict is not modified in place during hashing."""
-        original_sql = "SUM( a + b )"
+        """The original metric dict is not modified in place."""
+        original_sql = "sum( a + b )"
         metric = _mk_metric(original_sql)
         obj = self._make_obj(metrics=[metric])
         self._set_orig(_orig_returning_h)
@@ -714,8 +655,8 @@ class TestPatchedCacheKey(unittest.TestCase):
         self.assertEqual(_patched_ck(obj), "H")
         self.assertEqual(obj.metrics, [])
 
-    def test_none_metrics_treated_as_empty(self):
-        """None attributes are treated as empty during hashing, then restored."""
+    def test_none_attributes_treated_as_empty(self):
+        """None attributes are treated as empty, then restored."""
         obj = self._make_obj()
         obj.metrics = None
         obj.columns = None
@@ -771,11 +712,10 @@ class TestPatchedCacheKey(unittest.TestCase):
             return "abc123"
 
         self._set_orig(returning_specific)
-        obj = self._make_obj()
-        self.assertEqual(_patched_ck(obj), "abc123")
+        self.assertEqual(_patched_ck(self._make_obj()), "abc123")
 
     def test_extra_kwargs_forwarded(self):
-        """Keyword arguments such as datasource and rls are forwarded to orig."""
+        """Keyword arguments such as datasource and rls reach orig."""
         received: dict = {}
 
         def capturing_orig(s, **e):
@@ -793,104 +733,111 @@ class TestPatchedCacheKey(unittest.TestCase):
             return "H"
 
         self._set_orig(capturing_orig)
-        obj = self._make_obj()
-        _patched_ck(obj, datasource="ds:1", rls="[]", changed_on="2026-01-01")
+        _patched_ck(
+            self._make_obj(),
+            datasource="ds:1",
+            rls="[]",
+            changed_on="2026-01-01",
+        )
         self.assertEqual(received["datasource"], "ds:1")
         self.assertEqual(received["rls"], "[]")
 
 
 # ---------------------------------------------------------------------------
-# End-to-end convergence
+# End-to-end convergence of the worker and UI SQL forms
 # ---------------------------------------------------------------------------
 
 
 class TestConvergence(unittest.TestCase):
-    """Tests that worker and UI SQL forms converge to the same normalised hash input."""
+    """The worker and UI SQL forms must hash identically.
 
-    def _normalise(self, sql):
-        """Normalise an sqlExpression string via the adhoc dict wrapper."""
-        d = {"expressionType": "SQL", "sqlExpression": sql}
-        return _norm_expr(d)["sqlExpression"]
+    Each pair is a (worker, ui) sqlExpression: the raw text the Celery
+    worker receives, and what Superset's QueryContext-cache rebuild
+    produces from it for the UI. Both must reduce to one hash input.
+    """
 
-    def test_multiline_case_worker_vs_ui(self):
-        """Worker (multiline) and UI (single-line) CASE converge."""
-        worker_sql = (
-            "SUM(CASE \n        WHEN \"Stage\" = 'Closed Won' \n"
-            "        AND amount > 0\n    END)\n\n    "
-        )
-        ui_sql = "SUM(CASE WHEN \"Stage\" = 'Closed Won' AND amount>0 END)"
-        self.assertEqual(self._normalise(worker_sql), self._normalise(ui_sql))
+    def _assert_converges(self, worker_sql, ui_sql):
+        """Assert both sides render to the same hash input.
 
-    def test_operator_spacing_worker_vs_ui(self):
-        """Worker (no spaces around +) and UI (with spaces) converge."""
-        worker_sql = 'SUM("Y1 Renewal"+"Y1 Not Renewal")'
-        ui_sql = 'SUM("Y1 Renewal" + "Y1 Not Renewal")'
-        self.assertEqual(self._normalise(worker_sql), self._normalise(ui_sql))
+        Args:
+            worker_sql: The raw SQL the Celery worker received.
+            ui_sql: The SQL the UI held after its rebuild.
+        """
+        self.assertEqual(_render(worker_sql, TRINO), _render(ui_sql, TRINO))
 
-    def test_crlf_vs_lf(self):
-        """CRLF and LF line endings produce the same normalised form."""
-        crlf = "SUM(CASE\r\n  WHEN x > 0\r\n  THEN 1\r\nEND)"
-        lf = "SUM(CASE\n  WHEN x > 0\n  THEN 1\nEND)"
-        self.assertEqual(self._normalise(crlf), self._normalise(lf))
-
-    def test_indentation_variants(self):
-        """Tab-indented and space-indented SQL produce the same normalised form."""
-        tab = "SUM(CASE\n\tWHEN x > 0\n\tTHEN 1\nEND)"
-        spaces = "SUM(CASE\n    WHEN x > 0\n    THEN 1\nEND)"
-        self.assertEqual(self._normalise(tab), self._normalise(spaces))
-
-    def test_trailing_whitespace_variants(self):
-        """All trailing-whitespace variants produce the same normalised form."""
-        forms = [
-            "SUM(x)",
-            "SUM(x)   ",
-            "SUM(x)\n",
-            "SUM(x)\n\n    ",
-            "SUM(x)\t\t",
-        ]
-        normed = {self._normalise(f) for f in forms}
-        self.assertEqual(
-            len(normed), 1, f"Trailing whitespace forms diverged: {normed}"
+    def test_case_and_operator_spacing(self):
+        """Lowercase function names and operator spacing converge."""
+        self._assert_converges(
+            "sum(opp_new_pipeline)+sum(opp_expansion_pipeline)\r\n",
+            "SUM(opp_new_pipeline) + SUM(opp_expansion_pipeline)",
         )
 
-    def test_orderby_and_metric_converge(self):
-        """pivot_table_v2 sets orderby[0][0] = metrics[0]; both must converge."""
-        sql = "SUM(CASE \n        WHEN \"Stage\" = 'Closed Won'\n    END)\n\n    "
-        metric = {"expressionType": "SQL", "sqlExpression": sql, "label": "m"}
-        ob_item = [metric, True]
-        self.assertEqual(
-            _norm_expr(metric)["sqlExpression"],
-            _norm_ob(ob_item)[0]["sqlExpression"],
+    def test_multiline_case_collapsed(self):
+        """Internal newlines and indentation converge."""
+        self._assert_converges(
+            "SUM(CASE \n WHEN \"Stage\" = 'Closed Won' \n THEN 1\n END)",
+            "SUM(CASE WHEN \"Stage\" = 'Closed Won' THEN 1 END)",
         )
 
-    def test_five_metrics_all_converge(self):
-        """Five SQL metric pairs (worker vs UI forms) all converge."""
-        pairs = [
-            (
-                "SUM(CASE \n  WHEN s = 'Won'\n  THEN a\n  ELSE 0\nEND)\n\n    ",
-                "SUM(CASE WHEN s='Won' THEN a ELSE 0 END)",
-            ),
-            ('SUM("Y1"+"Y2")', 'SUM("Y1" + "Y2")'),
-            ("MAX( amount )", "MAX(amount)"),
-            ("COUNT(DISTINCT   stage)", "COUNT(DISTINCT stage)"),
-            ("SUM(target_amount\n  * 1.1)", "SUM(target_amount*1.1)"),
-        ]
-        for worker_sql, ui_sql in pairs:
-            with self.subTest(worker_sql=worker_sql[:40]):
-                self.assertEqual(
-                    self._normalise(worker_sql), self._normalise(ui_sql)
-                )
+    def test_structural_rewrite_is_not_null(self):
+        """IS NOT NULL rewritten as NOT ... IS NULL converges."""
+        self._assert_converges(
+            "COUNT(DISTINCT CASE\r\n WHEN lead_product IS NOT NULL\r\n"
+            " THEN lead_id\r\nEND)",
+            "COUNT(DISTINCT CASE WHEN NOT lead_product IS NULL "
+            "THEN lead_id END)",
+        )
 
-    def test_different_literals_do_not_collide(self):
-        """Two queries differing only in a string value must not collide."""
-        sql_a = "CASE WHEN stage = 'Closed - Won' THEN 1 END"
-        sql_b = "CASE WHEN stage = 'ClosedWon' THEN 1 END"
-        self.assertNotEqual(self._normalise(sql_a), self._normalise(sql_b))
+    def test_string_literal_recased(self):
+        """A date-part literal recased by the render converges."""
+        self._assert_converges(
+            "AVG(DATE_DIFF('day', submitted_date, approved_date))",
+            "AVG(DATE_DIFF('DAY', submitted_date, approved_date))",
+        )
 
-    def test_different_sql_does_not_collide(self):
-        """Two semantically distinct queries must produce different normalised forms."""
+    def test_unparseable_orderby_trailing_space(self):
+        """An item list sqlglot cannot parse converges via the trim."""
+        self._assert_converges("br_year DESC, br_num ", "br_year DESC, br_num")
+
+    def test_quoted_identifier_operator_spacing(self):
+        """Spacing around + between quoted identifiers converges."""
+        self._assert_converges(
+            'SUM("Y1 Renewal"+"Y1 Not Renewal")',
+            'SUM("Y1 Renewal" + "Y1 Not Renewal")',
+        )
+
+
+# ---------------------------------------------------------------------------
+# Collision safety
+# ---------------------------------------------------------------------------
+
+
+class TestNoCollision(unittest.TestCase):
+    """Distinct queries must not be rendered into the same hash input."""
+
+    def test_different_functions(self):
+        """SUM and COUNT do not collide."""
         self.assertNotEqual(
-            self._normalise("SUM(amount)"), self._normalise("COUNT(amount)")
+            _render("SUM(amount)", TRINO), _render("COUNT(amount)", TRINO)
+        )
+
+    def test_different_string_literals(self):
+        """Two queries differing only in a literal do not collide."""
+        self.assertNotEqual(
+            _render("CASE WHEN s = 'Closed - Won' THEN 1 END", TRINO),
+            _render("CASE WHEN s = 'ClosedWon' THEN 1 END", TRINO),
+        )
+
+    def test_different_columns(self):
+        """Different column references do not collide."""
+        self.assertNotEqual(
+            _render("SUM(revenue)", TRINO), _render("SUM(cost)", TRINO)
+        )
+
+    def test_literal_case_is_significant(self):
+        """A literal that is not a date part keeps its case."""
+        self.assertNotEqual(
+            _render("MAX('abc')", TRINO), _render("MAX('ABC')", TRINO)
         )
 
 

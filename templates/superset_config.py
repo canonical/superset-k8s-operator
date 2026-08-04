@@ -372,164 +372,158 @@ def FLASK_APP_MUTATOR(app):
 
 
 # =============================================================================
-# Fix: QueryObject cache-key SQL normalisation (Apache Superset issue #37114)
+# Fix: QueryObject cache-key SQL rendering (Apache Superset issue #37114)
 # =============================================================================
 #
 # Under GLOBAL_ASYNC_QUERIES the Celery worker and the UI gunicorn process both
-# independently compute QueryObject.cache_key() for the same chart request.
-# When custom SQL expressions contain inconsistent whitespace — multi-line CASE
-# blocks, trailing newlines, or varying spaces around arithmetic operators — the
-# two sides produce different SHA-256 hashes and the UI gets HTTP 422
-# "Error loading data from cache".
+# independently compute QueryObject.cache_key() for the same chart request. The
+# two sides produce different SHA-256 hashes for the same chart and the UI gets
+# HTTP 422 "Error loading data from cache".
 #
-# Root cause: the QueryContext cache (Redis DB0) stores a round-tripped
-# serialisation of the form_data. On the worker side the raw form_data is used
-# directly; on the UI side the round-tripped form is used. Two schema paths
-# that differ in whitespace produce different hashes even for identical queries.
+# Root cause: the worker hashes the raw form_data it received; the UI hashes the
+# form_data rebuilt from the QueryContext cache (Redis DB0). On that rebuild
+# path Superset re-renders every adhoc SQL expression through sqlglot
+# (parse -> generate), so the UI's SQL text differs from the worker's even
+# though both describe the same query. Confirmed rewrites, all observed in prod:
 #
-# The error manifests in charts with metrics with custom SQL expressions such as:
-#   1. Multi-line CASE expressions in orderby: worker retains raw `\n`-indented
-#      SQL while the UI gets a single-line version after QC-cache round-trip.
-#   2. Arithmetic operator spacing: worker receives `SUM("a"+"b")` while the UI
-#      reconstructs `SUM("a" + "b")` after round-trip through the schema.
+#   worker (raw)                       ui (after sqlglot render)
+#   ---------------------------------  ---------------------------------
+#   sum(a)+sum(b)                      SUM(a) + SUM(b)         case, spacing
+#   SUM(CASE \n WHEN ... \n END)       SUM(CASE WHEN ... END)  newlines
+#   x IS NOT NULL                      NOT x IS NULL           structure
+#   DATE_DIFF('day', a, b)             DATE_DIFF('DAY', a, b)  literal case
 #
-# Fix:
-#   * HASH-ONLY. We patch cache_key(), not __init__. The normalised SQL is
-#     used solely to compute the hash; the QueryObject's real sqlExpression is
-#     saved and restored around the call, so the SQL actually sent to the
-#     database is NEVER modified. The worst a bug here can cause is a cache
-#     miss, never altered query results.
-#   * LITERAL/COMMENT SAFE. The normaliser is a small scanner that copies
-#     string literals ('...'), quoted identifiers ("...", `...`) and comments
-#     (-- ..., /* ... */) through verbatim, and only collapses whitespace and
-#     strips spacing around operators/punctuation in actual SQL code. So a
-#     value like 'Closed - Won' or an identifier like "Gross - Net" is never
-#     rewritten.
-#   * The only equivalences collapsed are insignificant inter-token whitespace
-#     and whitespace around operators/punctuation (both semantic no-ops in
-#     SQL) so two expressions that map to the same hash are the same query.
+# Fix: put both sides through the same transform before hashing by rendering each
+# SQL expression with sqlglot using the datasource's own dialect. The worker's
+# raw text then renders to exactly the string the UI already holds, so the two
+# hashes agree.
 #
-# Upstream reference: Apache Superset PR #38227 performs only CRLF to LF and
-# leading/trailing strip, which is insufficient for internal newlines and
-# operator spacing. This normalisation is a strict superset of PR #38227.
+#   * HASH-ONLY. We patch cache_key(), not __init__. The rendered SQL is used
+#     solely to compute the hash; the QueryObject's real sqlExpression is saved
+#     and restored around the call, so the SQL actually sent to the database is
+#     NEVER modified. The worst a bug here can cause is a cache miss, never
+#     altered query results.
+#   * DIALECT MATTERS. Rendering under the wrong dialect does not converge, it
+#     invents a third spelling: under sqlglot's default dialect DATE_DIFF comes
+#     back as DATEDIFF and an identifier is uppercased. The dialect is resolved
+#     from the query's own database and never guessed.
+#   * MINIMAL FALLBACK. When the dialect cannot be resolved, or sqlglot has no
+#     grammar for the expression, only line endings and surrounding whitespace
+#     are normalised. An orderby carrying an item list, `col1 DESC, col2`, is not
+#     a parsable expression so whitespace diffs would not be fixed by sqlglot.
 #
-# Remove this block once a Superset release with full normalisation is deployed.
+# Upstream reference: Apache Superset PR #38227 performs only CRLF to LF and a
+# leading/trailing strip, which addresses only a subset of the divergences.
+#
+# Remove this block once a Superset release fixes the divergence at source.
 # =============================================================================
 from superset.common.query_object import QueryObject as _QO
 
-# Characters around which whitespace is insignificant in SQL code (outside of
-# string literals / quoted identifiers / comments, which are copied verbatim).
-_QO_TIGHT = set("+-*/%(),.=<>!|&~^:[]")
-_QO_COMMENT_MARKERS = ("--", "/*", "*/")
+_QO_DIALECTS = {}  # database id -> sqlglot dialect (or None if unresolvable)
+_QO_RENDER_CACHE = {}  # (sql, dialect) -> rendered sql (or None if unparsable)
+_QO_RENDER_CACHE_MAX = 4096
+
+# SQLAlchemy backend names that sqlglot spells differently. Only consulted when
+# Superset's own engine -> dialect mapping is unavailable.
+_QO_BACKEND_ALIASES = {
+    "postgresql": "postgres",
+    "mssql": "tsql",
+    "awsathena": "athena",
+}
 
 
-def _qo_norm_sql_str(sql):
-    """Normalise whitespace in a SQL expression, for cache-key hashing only.
+def _qo_dialect(query_object):
+    """Resolve the sqlglot dialect for this query's database, or None.
 
-    Collapses runs of insignificant whitespace to a single space and removes
-    whitespace around operators/punctuation, while copying string literals,
-    quoted identifiers and comments through unchanged so their contents are
-    never altered. Returns the input untouched on any unexpected error, this
-    only feeds the hash, so a fallback can at worst miss the cache.
+    Both sides resolve identically, same code, same datasource, so the two
+    hashes agree. A dialect sqlglot does not recognise is treated as
+    unresolvable rather than guessed.
     """
     try:
-        s = sql.replace("\r\n", "\n").replace("\r", "\n")
-        n = len(s)
-        out = []
-        pending_ws = False  # whitespace seen since the last emitted character
+        database = getattr(getattr(query_object, "datasource", None), "database", None)
+        if database is None:
+            return None
+        key = getattr(database, "id", None) or id(database)
+        if key in _QO_DIALECTS:
+            return _QO_DIALECTS[key]
 
-        def last():
-            return out[-1] if out else ""
+        import sqlglot
 
-        def emit_value(text):
-            # identifier / literal / comment / word run: keep a single
-            # separating space if whitespace preceded it and the previous
-            # emitted char is not a tight operator/punctuation.
-            nonlocal pending_ws
-            if out and pending_ws and last() not in _QO_TIGHT:
-                out.append(" ")
-            out.append(text)
-            pending_ws = False
+        candidates = []
+        try:
+            # Superset's own engine -> sqlglot mapping
+            try:
+                from superset.sql.parse import SQLGLOT_DIALECTS
+            except Exception:
+                from superset.sql_parse import SQLGLOT_DIALECTS
+            candidates.append(SQLGLOT_DIALECTS.get(database.db_engine_spec.engine))
+        except Exception:
+            pass
+        try:
+            # SQLAlchemy backend name, e.g. "trino"
+            backend = database.url_object.get_backend_name()
+            candidates.append(_QO_BACKEND_ALIASES.get(backend, backend))
+        except Exception:
+            pass
 
-        def emit_tight(ch):
-            # operator / punctuation: no surrounding space, but never fuse two
-            # chars into a comment marker (e.g. `-` `-` -> `--`).
-            nonlocal pending_ws
-            if out and (last() + ch) in _QO_COMMENT_MARKERS:
-                out.append(" ")
-            out.append(ch)
-            pending_ws = False
-
-        i = 0
-        while i < n:
-            c = s[i]
-            # comments take priority over the operator chars that open them
-            if c == "-" and i + 1 < n and s[i + 1] == "-":
-                j = s.find("\n", i)
-                j = n if j == -1 else j
-                emit_value(s[i:j])
-                i = j
+        dialect = None
+        for candidate in candidates:
+            if not candidate:
                 continue
-            if c == "/" and i + 1 < n and s[i + 1] == "*":
-                j = s.find("*/", i + 2)
-                j = n if j == -1 else j + 2
-                emit_value(s[i:j])
-                i = j
+            try:
+                sqlglot.Dialect.get_or_raise(candidate)
+                dialect = candidate
+                break
+            except Exception:
                 continue
-            # quoted regions copied verbatim (handle doubled-quote escapes)
-            if c in ("'", '"', "`"):
-                j = i + 1
-                while j < n:
-                    if s[j] == c:
-                        if j + 1 < n and s[j + 1] == c:
-                            j += 2
-                            continue
-                        j += 1
-                        break
-                    j += 1
-                else:
-                    j = n
-                emit_value(s[i:j])
-                i = j
-                continue
-            if c.isspace():
-                pending_ws = True
-                i += 1
-                continue
-            if c in _QO_TIGHT:
-                emit_tight(c)
-                i += 1
-                continue
-            # ordinary code: consume a maximal run of word characters
-            j = i
-            while (
-                j < n
-                and not s[j].isspace()
-                and s[j] not in _QO_TIGHT
-                and s[j] not in ("'", '"', "`")
-            ):
-                j += 1
-            emit_value(s[i:j])
-            i = j
-        return "".join(out)
-    except Exception:  # pragma: no cover
-        return sql
+        _QO_DIALECTS[key] = dialect
+        return dialect
+    except Exception:  # pragma: no cover - never break cache_key()
+        return None
 
 
-def _qo_norm(expr):
-    """Return a copy of an adhoc SQL dict with a normalised sqlExpression."""
+def _qo_trim(sql):
+    """Line endings and surrounding whitespace only."""
+    return sql.replace("\r\n", "\n").replace("\r", "\n").strip()
+
+
+def _qo_render_sql(sql, dialect):
+    """Render one SQL expression the way the UI holds it, for hashing only.
+
+    Falls back to trimming the ends when there is no dialect to render with,
+    or when sqlglot cannot parse the expression.
+    """
+    if dialect is None:
+        return _qo_trim(sql)
+    key = (sql, str(dialect))
+    if key not in _QO_RENDER_CACHE:
+        try:
+            import sqlglot
+
+            rendered = sqlglot.parse_one(sql, read=dialect).sql(dialect=dialect)
+        except Exception:
+            rendered = None
+        if len(_QO_RENDER_CACHE) >= _QO_RENDER_CACHE_MAX:
+            _QO_RENDER_CACHE.clear()
+        _QO_RENDER_CACHE[key] = rendered
+    rendered = _QO_RENDER_CACHE[key]
+    return _qo_trim(sql) if rendered is None else rendered
+
+
+def _qo_render_expr(expr, dialect):
+    """Return a copy of an adhoc SQL dict with its sqlExpression rendered."""
     if isinstance(expr, dict) and expr.get("expressionType") == "SQL":
         sql = expr.get("sqlExpression")
         if isinstance(sql, str):
             patched = dict(expr)
-            patched["sqlExpression"] = _qo_norm_sql_str(sql)
+            patched["sqlExpression"] = _qo_render_sql(sql, dialect)
             return patched
     return expr
 
 
-def _qo_norm_orderby(item):
+def _qo_render_orderby(item, dialect):
     if isinstance(item, (list, tuple)) and item:
-        return [_qo_norm(item[0])] + list(item[1:])
+        return [_qo_render_expr(item[0], dialect)] + list(item[1:])
     return item
 
 
@@ -537,15 +531,16 @@ _qo_orig_cache_key = _QO.cache_key
 
 
 def _qo_patched_cache_key(self, **extra):
-    # Swap in normalised SQL only for the duration of the hash computation,
-    # then restore the originals so the executed query is left untouched.
+    # Swap in rendered SQL only for the duration of the hash computation, then
+    # restore the originals so the executed query is left untouched.
     saved = (self.metrics, self.columns, self.orderby, self.series_limit_metric)
     try:
-        self.metrics = [_qo_norm(m) for m in (self.metrics or [])]
-        self.columns = [_qo_norm(c) for c in (self.columns or [])]
-        self.orderby = [_qo_norm_orderby(ob) for ob in (self.orderby or [])]
+        dialect = _qo_dialect(self)
+        self.metrics = [_qo_render_expr(m, dialect) for m in (self.metrics or [])]
+        self.columns = [_qo_render_expr(c, dialect) for c in (self.columns or [])]
+        self.orderby = [_qo_render_orderby(o, dialect) for o in (self.orderby or [])]
         if self.series_limit_metric is not None:
-            self.series_limit_metric = _qo_norm(self.series_limit_metric)
+            self.series_limit_metric = _qo_render_expr(self.series_limit_metric, dialect)
         return _qo_orig_cache_key(self, **extra)
     finally:
         (
@@ -558,5 +553,5 @@ def _qo_patched_cache_key(self, **extra):
 
 _QO.cache_key = _qo_patched_cache_key
 # =============================================================================
-# End fix: QueryObject cache-key SQL normalisation
+# End fix: QueryObject cache-key SQL rendering
 # =============================================================================
