@@ -182,8 +182,8 @@ class TestCharm(TestCase):  # pylint: disable=too-many-public-methods
                     "startup": "enabled",
                     "environment": {
                         "ALLOW_IMAGE_DOMAINS": "assets.ubuntu.com",
-                        "SUPERSET_SECRET_KEY": "example-pass",
-                        "ADMIN_PASSWORD": "secure-pass",
+                        "SUPERSET_SECRET_KEY": "example-pass",  # nosec B105
+                        "ADMIN_PASSWORD": "secure-pass",  # nosec B105
                         "ADMIN_USER": "unique-user",
                         "CHARM_FUNCTION": "app-gunicorn",
                         "SQL_ALCHEMY_URI": "postgresql://postgres_user:admin@myhost:5432/superset",
