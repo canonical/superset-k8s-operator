@@ -82,16 +82,34 @@ class CustomSecurityManager(SupersetSecurityManager):
         return super().raise_for_access(*args, **kwargs)
 
     def oauth_user_info(self, provider, response=None):
-        if provider == "google":
+        """Map standard OIDC claims to Superset user fields.
+
+        Args:
+            provider: OAuth provider name.
+            response: Optional OAuth response passed by Flask-AppBuilder.
+
+        Returns:
+            Superset user information for the authenticated identity.
+
+        Raises:
+            ValueError: If the OIDC provider does not return an email claim.
+        """
+        if provider == "oidc":
             me = self.appbuilder.sm.oauth_remotes[provider].get(
-                "https://openidconnect.googleapis.com/v1/userinfo"
+                os.environ["OAUTH_USERINFO_ENDPOINT"]
             )
             data = me.json()
+            email = data.get("email")
+            if not email:
+                raise ValueError(
+                    "OIDC user info response does not include an email claim"
+                )
             return {
-                "name": data["name"],
-                "email": data["email"],
-                "id": data["sub"],
-                "username": data["email"],
-                "first_name": data["given_name"],
-                "last_name": data["family_name"],
+                "name": data.get("name") or email,
+                "email": email,
+                "id": data.get("sub") or email,
+                "username": email,
+                "first_name": data.get("given_name", ""),
+                "last_name": data.get("family_name", ""),
             }
+        return super().oauth_user_info(provider, response)

@@ -299,27 +299,34 @@ HTML_SANITIZATION_SCHEMA_EXTENSIONS = yaml.safe_load(os.getenv("HTML_SANITIZATIO
 # postgresql metadata db
 SQLALCHEMY_DATABASE_URI = os.getenv("SQL_ALCHEMY_URI")
 
-# OAUTH configuration
-required_auth_vars = ["GOOGLE_KEY", "GOOGLE_SECRET", "OAUTH_DOMAIN"]
+# OAuth configuration
+required_auth_vars = [
+    "OAUTH_CLIENT_ID",
+    "OAUTH_CLIENT_SECRET",
+    "OAUTH_ISSUER_URL",
+    "OAUTH_AUTHORIZATION_ENDPOINT",
+    "OAUTH_TOKEN_ENDPOINT",
+    "OAUTH_USERINFO_ENDPOINT",
+    "OAUTH_JWKS_ENDPOINT",
+]
 
 CUSTOM_SECURITY_MANAGER = CustomSecurityManager
 if all(os.getenv(var) for var in required_auth_vars):
     AUTH_TYPE = AUTH_OAUTH
     OAUTH_PROVIDERS = [
         {
-            "name": "google",
-            "icon": "fa-google",
+            "name": "oidc",
+            "icon": "fa-openid",
             "token_key": "access_token",
             "remote_app": {
-                "client_id": os.getenv("GOOGLE_KEY"),
-                "client_secret": os.getenv("GOOGLE_SECRET"),
-                "api_base_url": "https://www.googleapis.com/oauth2/v2/",
-                "client_kwargs": {"scope": "email profile openid"},
+                "client_id": os.getenv("OAUTH_CLIENT_ID"),
+                "client_secret": os.getenv("OAUTH_CLIENT_SECRET"),
+                "api_base_url": os.getenv("OAUTH_ISSUER_URL"),
+                "client_kwargs": {"scope": os.getenv("OAUTH_SCOPE", "openid email profile")},
                 "request_token_url": None,
-                "access_token_url": "https://accounts.google.com/o/oauth2/token",
-                "authorize_url": "https://accounts.google.com/o/oauth2/auth",
-                "authorize_params": {"hd": os.getenv("OAUTH_DOMAIN", "")},
-                "jwks_uri": "https://www.googleapis.com/oauth2/v3/certs",
+                "access_token_url": os.getenv("OAUTH_TOKEN_ENDPOINT"),
+                "authorize_url": os.getenv("OAUTH_AUTHORIZATION_ENDPOINT"),
+                "jwks_uri": os.getenv("OAUTH_JWKS_ENDPOINT"),
             },
         },
     ]
@@ -334,7 +341,7 @@ if all(os.getenv(var) for var in required_auth_vars):
         f"contains(['{admin_users}'], email) && 'Admin' || '{default_role}'"
     )
 
-    # For Google https redirect
+    # Respect the original HTTPS request when TLS terminates at ingress.
     ENABLE_PROXY_FIX = True
 
 # Dashboard size limitation

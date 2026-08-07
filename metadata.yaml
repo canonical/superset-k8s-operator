@@ -44,6 +44,10 @@ requires:
     interface: trino_catalog
     optional: true
     limit: 1
+  oauth:
+    interface: oauth
+    optional: true
+    limit: 1
 
 provides:
   grafana-dashboard:
