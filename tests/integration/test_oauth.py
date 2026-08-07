@@ -47,10 +47,16 @@ async def deploy_oauth(ops_test: OpsTest, deploy) -> None:
         config=OAUTH_STUB_CONFIG,
     )
     await ops_test.model.wait_for_idle(
-        apps=[UI_NAME, OAUTH_INTEGRATOR_NAME],
+        apps=[UI_NAME],
         status="active",
         raise_on_blocked=False,
         timeout=2000,
+    )
+    await ops_test.model.wait_for_idle(
+        apps=[OAUTH_INTEGRATOR_NAME],
+        status="blocked",
+        raise_on_blocked=False,
+        timeout=1200,
     )
 
     await ops_test.model.integrate(
