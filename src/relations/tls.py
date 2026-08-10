@@ -14,6 +14,7 @@ referenced from a Superset database connection's ``connect_args.ssl_cert``.
 """
 
 import logging
+from typing import Optional
 
 import ops
 from charms.tls_certificates_interface.v4.tls_certificates import (
@@ -30,6 +31,10 @@ from literals import (
 from log import log_event_handler
 
 logger = logging.getLogger(__name__)
+
+
+class CertificateInstallError(Exception):
+    """Raised when the workload CA trust store could not be updated."""
 
 
 class Certificates(ops.Object):
@@ -75,37 +80,66 @@ class Certificates(ops.Object):
     ) -> None:
         """Handle the certificate-available event.
 
-        Installs the CA certificate into the workload container.
-
         Args:
             event: The event emitted when a certificate becomes available.
         """
-        container = self.charm.unit.get_container(self.charm.name)
-        if not container.can_connect():
-            logger.debug("Container not ready, deferring CA installation.")
-            event.defer()
-            return
-
-        self._write_ca(container, event.ca.raw)
+        self.charm.reconcile_certificates()
 
     @log_event_handler(logger)
-    def _on_certificates_broken(
-        self, event: ops.RelationBrokenEvent
-    ) -> None:
+    def _on_certificates_broken(self, event: ops.RelationBrokenEvent) -> None:
         """Handle the certificates-relation-broken event.
-
-        Removes the CA certificate from the workload container.
 
         Args:
             event: The event emitted when the relation is broken.
         """
-        container = self.charm.unit.get_container(self.charm.name)
-        if not container.can_connect():
-            logger.debug("Container not ready, deferring CA removal.")
-            event.defer()
-            return
+        self.charm.reconcile_certificates(relation_broken=True)
 
-        self._remove_ca(container)
+    def reconcile(
+        self, container: ops.Container, relation_broken: bool = False
+    ) -> bool:
+        """Align the container trust store with the relation state.
+
+        Args:
+            container: The workload container.
+            relation_broken: Whether the relation is being removed, in which
+                case the assigned certificate is treated as gone even though
+                the relation data is still readable.
+
+        Returns:
+            True if the trust store was modified, False if it was up to date.
+        """
+        desired = None if relation_broken else self._assigned_ca()
+        if desired == self._installed_ca(container):
+            return False
+
+        if desired is None:
+            self._remove_ca(container)
+        else:
+            self._write_ca(container, desired)
+        return True
+
+    def _assigned_ca(self) -> Optional[str]:
+        """Return the CA assigned by the provider, if any."""
+        provider_certificate, _ = self.certificates.get_assigned_certificate(
+            certificate_request=self._certificate_request
+        )
+        if not provider_certificate:
+            return None
+        return _normalise_pem(provider_certificate.ca.raw)
+
+    def _installed_ca(self, container: ops.Container) -> Optional[str]:
+        """Return the CA currently installed in the container, if any.
+
+        Args:
+            container: The workload container.
+
+        Returns:
+            The installed CA in PEM format, or None if no CA is installed.
+        """
+        try:
+            return _normalise_pem(container.pull(CA_CERT_PATH).read())
+        except ops.pebble.PathError:
+            return None
 
     def _write_ca(self, container: ops.Container, ca: str) -> None:
         """Install the CA certificate into the container trust store.
@@ -114,13 +148,9 @@ class Certificates(ops.Object):
             container: The workload container.
             ca: The CA certificate in PEM format.
         """
-        ca_pem = ca if ca.endswith("\n") else f"{ca}\n"
-        container.push(CA_CERT_PATH, ca_pem, make_dirs=True, permissions=0o644)
-        container.push(
-            CA_CERT_LOCAL_PATH, ca_pem, make_dirs=True, permissions=0o644
-        )
+        for path in (CA_CERT_PATH, CA_CERT_LOCAL_PATH):
+            container.push(path, ca, make_dirs=True, permissions=0o644)
         self._update_ca_certificates(container)
-        self._restart_workload(container)
 
     def _remove_ca(self, container: ops.Container) -> None:
         """Remove the charm-managed CA certificate from the container.
@@ -135,7 +165,6 @@ class Certificates(ops.Object):
                 logger.debug("CA file %s already absent.", path)
 
         self._update_ca_certificates(container, fresh=True)
-        self._restart_workload(container)
 
     def _update_ca_certificates(
         self, container: ops.Container, fresh: bool = False
@@ -145,6 +174,10 @@ class Certificates(ops.Object):
         Args:
             container: The workload container.
             fresh: Whether to regenerate the trust store from scratch.
+
+        Raises:
+            CertificateInstallError: So callers do not report a healthy unit
+                while the trust store is actually stale.
         """
         command = ["update-ca-certificates"]
         if fresh:
@@ -152,17 +185,18 @@ class Certificates(ops.Object):
         try:
             container.exec(command).wait_output()
         except ops.pebble.ExecError as e:
-            logger.error("Failed to update CA certificates: %s", e.stderr)
+            raise CertificateInstallError(
+                f"failed to update CA trust store: {e.stderr}"
+            ) from e
 
-    def _restart_workload(self, container: ops.Container) -> None:
-        """Restart the workload so new TLS material is picked up.
 
-        Args:
-            container: The workload container.
-        """
-        try:
-            container.get_service(self.charm.name)
-        except ops.ModelError:
-            logger.debug("Workload service not present yet, skipping restart.")
-            return
-        container.restart(self.charm.name)
+def _normalise_pem(pem: str) -> str:
+    """Return the PEM material with a single trailing newline.
+
+    Args:
+        pem: The PEM-encoded material.
+
+    Returns:
+        The normalised PEM material.
+    """
+    return f"{pem.strip()}\n"
