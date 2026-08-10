@@ -67,6 +67,40 @@ TLS:
 Charmed Superset accepts OIDC provider details through the standard `oauth`
 relation. It can relate directly to Hydra in the Canonical Identity Platform or
 to an `oauth-external-idp-integrator` that represents an external provider.
+## Trust a certificate authority
+The sections above secure inbound traffic to the Superset UI. To secure *outbound* connections, Superset needs to trust the certificate authority (CA) of the data sources it queries, for example a TLS-enabled Kyuubi or Hive Thrift endpoint.
+
+Relate Superset to any charm providing the `tls-certificates` interface, such as [self-signed-certificates](https://charmhub.io/self-signed-certificates):
+
+```bash
+juju deploy self-signed-certificates
+juju relate superset-k8s:certificates self-signed-certificates:certificates
+```
+
+The charm installs the provider CA into the workload's system trust store and restarts the application, so most libraries validate the data source certificate without further configuration.
+
+Some drivers do not read the system trust store and require an explicit CA file. For those, the same CA is also written to a stable path inside the container:
+
+```
+/etc/ssl/certs/charm-ca.pem
+```
+
+Reference this path in the **Advanced**/**Other**/**Engine Parameters** field of the Superset database connection, for example:
+
+```json
+{
+  "connect_args": {
+    "ssl_cert": "/etc/ssl/certs/charm-ca.pem"
+  }
+}
+```
+
+[note]
+The path is managed by the charm. It is re-created whenever the certificate is renewed or the pod is respawned, and removed when the `certificates` relation is broken.
+[/note]
+
+## Enable Google Oauth
+Enabling Google Oauth for Charmed Superset allows users to authenticate using their Google accounts, streamlining login and increasing security.
 
 The provider must register this callback URL:
 `https://<external-hostname>/oauth-authorized/oidc`.

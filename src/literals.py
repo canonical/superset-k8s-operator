@@ -19,7 +19,9 @@ CERTIFICATES_RELATION_NAME = "certificates"
 # The CA received over the `certificates` relation is installed into the
 # system trust store (so outbound TLS to e.g. Kyuubi/Hive validates) and is
 # also written to a stable PEM path that can be referenced from a Superset
-# database connection's `connect_args.ssl_cert`.
+# database connection's `connect_args.ssl_cert`. Changing CA_CERT_PATH is a
+# breaking change for users: it is documented in
+# documentation/how-to/enable-superset-security-features.md.
 CA_CERT_LOCAL_PATH = "/usr/local/share/ca-certificates/juju-charm-ca.crt"
 CA_CERT_PATH = "/etc/ssl/certs/charm-ca.pem"
 SUPERSET_VERSION = "6.1.0"
