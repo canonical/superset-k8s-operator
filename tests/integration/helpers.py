@@ -15,7 +15,11 @@ logger = logging.getLogger(__name__)
 NGINX_NAME = "nginx-ingress-integrator"
 POSTGRES_NAME = "postgresql-k8s"
 REDIS_NAME = "redis-k8s"
+TLS_NAME = "self-signed-certificates"
 UI_NAME = "superset-k8s-ui"
+# Mirrors CA_CERT_PATH in src/literals.py; hard-coded because it is part of
+# the charm's user-facing contract.
+CA_CERT_PATH = "/etc/ssl/certs/charm-ca.pem"
 CHARM_FUNCTIONS = {"app-gunicorn": "ui", "beat": "beat", "worker": "worker"}
 SCALABLE_SERVICES = {"app-gunicorn": "ui", "worker": "worker"}
 API_AUTH_PAYLOAD = {
@@ -122,6 +126,23 @@ async def restart_application(ops_test: OpsTest):
         .run_action("restart")
     )
     await action.wait()
+
+
+async def read_workload_file(ops_test: OpsTest, unit: str, path: str):
+    """Read a file from the Superset workload container.
+
+    Args:
+        ops_test: PyTest object.
+        unit: Name of the unit, e.g. `superset-k8s-ui/0`.
+        path: Absolute path of the file inside the container.
+
+    Returns:
+        A tuple of the command return code and the file contents.
+    """
+    return_code, stdout, _ = await ops_test.juju(
+        "ssh", "--container", "superset", unit, "cat", path
+    )
+    return return_code, stdout
 
 
 async def api_authentication(ops_test, base_url):
