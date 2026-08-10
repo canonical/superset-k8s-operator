@@ -40,6 +40,8 @@ charm-libs:
     version: "0"
   - lib: "redis_k8s.redis"
     version: "0"
+  - lib: "tls_certificates_interface.tls_certificates"
+    version: "4"
   - lib: "trino_k8s.trino_catalog"
     version: "0"
   - lib: "hydra.oauth"
