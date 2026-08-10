@@ -63,38 +63,51 @@ TLS:
   superset-tls terminates superset-k8s.com
 ```
 
-## Enable Google Oauth
-Enabling Google Oauth for Charmed Superset allows users to authenticate using their Google accounts, streamlining login and increasing security.
+## Enable OIDC authentication
+Charmed Superset accepts OIDC provider details through the standard `oauth`
+relation. It can relate directly to Hydra in the Canonical Identity Platform or
+to an `oauth-external-idp-integrator` that represents an external provider.
 
-To enable Google Oauth, you need a Google project. You can create one [here](https://console.cloud.google.com/projectcreate).
+The provider must register this callback URL:
+`https://<external-hostname>/oauth-authorized/oidc`.
 
-#### Obtain Oauth2 credentials
-If you do not already have Oauth2 credentials set up then follow the steps below:
-1. Navigate to https://console.cloud.google.com/apis/credentials.
-2. Click `+ Create Credentials`.
-3. Select `Oauth client ID`.
-4. Select application type (`Web application`).
-5. Name the application.
-6. Add an Authorized redirect URI (`https://<host>:8088/oauth-authorized/google`).
-7. Create and download your client ID and client secret.
+For example, configure an external provider integrator using a file such as:
 
-### Apply Oauth configuration to Superset charm
-Create a file `oauth.yaml` using the Oauth2 credentials you obtained from Google, following the example below and replacing the values:
 ```yaml
-superset-k8s:
-  google-client-id: "client_id"
-  google-client-secret: "client_secret"
-  oauth-domain: "companydomain.com"
-  oauth-admin-email: "user@companydomain.com"
+issuer_url: https://accounts.google.com
+authorization_endpoint: https://accounts.google.com/o/oauth2/auth
+token_endpoint: https://oauth2.googleapis.com/token
+introspection_endpoint: https://oauth2.googleapis.com/tokeninfo
+userinfo_endpoint: https://openidconnect.googleapis.com/v1/userinfo
+jwks_endpoint: https://www.googleapis.com/oauth2/v3/certs
+scope: "openid email profile"
+client_id: <client-id>
+client_secret: <client-secret>
 ```
-This file can now be applied to Charmed Superset with:
+
+Deploy and integrate it with Superset:
 
 ```bash
-juju config superset-k8s --file=path/to/oauth.yaml
+juju deploy oauth-external-idp-integrator --config=idp-config.yaml
+juju integrate superset-k8s:oauth oauth-external-idp-integrator:oauth
+```
+
+When using the Canonical Identity Platform, integrate Superset directly with
+Hydra instead. Client registration and credential exchange happen over the
+relation; no client secret is stored in the Superset charm configuration.
+
+Provider-specific restrictions, such as limiting authentication to an email
+domain, should be configured in the provider or integrator.
+
+To give selected users the Admin role when they first sign in, configure
+`oauth-admin-email` with one address or a comma-separated list:
+
+```bash
+juju config superset-k8s oauth-admin-email=user@companydomain.com
 ```
 
 ### Configure the self-registraton role
-By default, with Google Oauth, a Superset user account is automatically created following successful authentication. This user is provided the least privileged role of `Public`, this role can then be elevated in the UI or via Application Programming Interface (API) by an `Admin` user. 
+By default, a Superset user account is automatically created following successful OIDC authentication. This user is provided the least privileged role of `Public`; the role can then be elevated in the UI or via the Application Programming Interface (API) by an `Admin` user.
 
 To change the role that is applied on self-registration, simply pass the role via the configuration parameter `self-registration-role`. Superset's standard roles and their associated permissions can be found [here](https://github.com/apache/superset/blob/master/RESOURCES/STANDARD_ROLES.md).
 

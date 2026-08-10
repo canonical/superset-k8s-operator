@@ -56,18 +56,6 @@ options:
         beyond the pool size when the pool is exhausted.
     default: 5
     type: int
-  google-client-id:
-    description: |
-      Client id from Google Oauth setup
-    type: string
-  google-client-secret:
-    description: |
-      Client password from Google Oauth setup
-    type: string
-  oauth-domain:
-    description: |
-      The domain for which to allow Google authentication i.e. canonical.com
-    type: string
   oauth-admin-email:
     description: |
       Email(s) to be given an Admin role on initialization.
@@ -77,7 +65,7 @@ options:
     default: admin@superset.com
   self-registration-role:
     description: |
-      The default role to be provided to users that self-register via Oauth.
+      The default role to be provided to users that self-register via OAuth.
       This role must exist already in Superset and is case sensitive.
     type: string
     default: Public

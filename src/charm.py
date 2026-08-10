@@ -47,6 +47,7 @@ from literals import (
     UI_FUNCTIONS,
 )
 from log import log_event_handler
+from relations.oauth import ClientConfigError, OAuthRelation
 from relations.postgresql import Database
 from relations.redis import Redis
 from relations.trino_catalog import TrinoCatalogRelationHandler
@@ -91,6 +92,9 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         # Handle trino-catalog relation
         self.trino_catalog_handler = TrinoCatalogRelationHandler(self)
+
+        # Handle OAuth relation
+        self.oauth = OAuthRelation(self)
 
         # Handle basic charm lifecycle
         self.framework.observe(self.on.install, self._on_install)
@@ -423,9 +427,6 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "SQLALCHEMY_POOL_SIZE": self.config["sqlalchemy-pool-size"],
             "SQLALCHEMY_POOL_TIMEOUT": self.config["sqlalchemy-pool-timeout"],
             "SQLALCHEMY_MAX_OVERFLOW": self.config["sqlalchemy-max-overflow"],
-            "GOOGLE_KEY": self.config["google-client-id"],
-            "GOOGLE_SECRET": self.config["google-client-secret"],
-            "OAUTH_DOMAIN": self.config["oauth-domain"],
             "OAUTH_ADMIN_EMAIL": self.config["oauth-admin-email"],
             "SELF_REGISTRATION_ROLE": self.config["self-registration-role"],
             "SUPERSET_LOAD_EXAMPLES": self.config["load-examples"],
@@ -470,6 +471,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         }
         if self.config["feature-flags"]:
             env.update(self.config["feature-flags"])
+        env.update(self._get_oauth_config())
         env.update(self._get_smtp_config())
 
         http_proxy = os.environ.get("JUJU_CHARM_HTTP_PROXY")
@@ -487,12 +489,38 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         return env
 
+    def _get_oauth_config(self):
+        """Return OAuth provider information as workload environment values."""
+        provider = self.oauth.provider_info
+        if provider is None:
+            return {}
+
+        return {
+            "OAUTH_ISSUER_URL": provider.issuer_url,
+            "OAUTH_AUTHORIZATION_ENDPOINT": provider.authorization_endpoint,
+            "OAUTH_TOKEN_ENDPOINT": provider.token_endpoint,
+            "OAUTH_USERINFO_ENDPOINT": provider.userinfo_endpoint,
+            "OAUTH_JWKS_ENDPOINT": provider.jwks_endpoint,
+            "OAUTH_SCOPE": provider.scope,
+            "OAUTH_CLIENT_ID": provider.client_id,
+            "OAUTH_CLIENT_SECRET": provider.client_secret,
+        }
+
     def _update(self, event):
         """Update the application server configuration and replan its execution.
 
         Args:
             event: The event triggered when the relation changed.
         """
+        try:
+            self.oauth.publish_client_config()
+        except ClientConfigError as exc:
+            logger.error("Invalid OAuth client configuration: %s", exc)
+            self.unit.status = BlockedStatus(
+                "invalid OAuth client configuration"
+            )
+            return
+
         container = self.unit.get_container(self.name)
         if not container.can_connect():
             return

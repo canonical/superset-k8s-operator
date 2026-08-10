@@ -206,17 +206,14 @@ juju remove-application trino-k8s
 This relation makes use of the `trino_k8s.v0.trino_catalog` library. The charm can be found on [Charmhub](https://charmhub.io/trino-k8s) and on [github](https://github.com/canonical/trino-k8s-operator).
 
 ### Authentication
-To validate Google Oauth authentication:
-```
-# Port forward the web server
-kubectl port-forward pod/superset-k8s-0 8088:8088 -n superset-k8s
+To validate OIDC authentication, deploy Hydra or an
+`oauth-external-idp-integrator`, configure `external-hostname` for the Superset
+ingress, and integrate the provider with `superset-k8s:oauth`. The callback URL
+registered by the charm is
+`https://<external-hostname>/oauth-authorized/oidc`.
 
-```
-You can then follow instructions in the [README.md](README.md) to set up the Google `redirect_uri` to  `http://localhost:8088/oauth-authorized/google`.
-
-Please note: `redirect_uri` should be updated to `https://<host>/oauth-authorized/google` when deploying to production.
-
-Once you have authenticated with Google, to verify the user credentials that have been created you can access these through the PostgreSQL charm as follows:
+Once you have authenticated, verify the user credentials created in Superset
+through the PostgreSQL charm as follows:
 ```
 # Get the postgresql password
 juju run postgresql-k8s/leader get-password

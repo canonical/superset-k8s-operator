@@ -51,9 +51,6 @@ class CharmConfig(BaseConfigModel):
     sqlalchemy_max_overflow: int
     self_registration_role: str
     oauth_admin_email: str
-    google_client_id: Optional[str]
-    google_client_secret: Optional[str]
-    oauth_domain: Optional[str]
     http_proxy: Optional[str]
     https_proxy: Optional[str]
     no_proxy: Optional[str]

@@ -42,3 +42,5 @@ charm-libs:
     version: "0"
   - lib: "trino_k8s.trino_catalog"
     version: "0"
+  - lib: "hydra.oauth"
+    version: "0"

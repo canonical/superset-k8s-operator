@@ -8,6 +8,7 @@
 
 # pylint:disable=protected-access
 
+import json
 import logging
 from unittest import TestCase, mock
 
@@ -24,7 +25,7 @@ mock_incomplete_pebble_plan = {
 }
 
 
-class TestCharm(TestCase):
+class TestCharm(TestCase):  # pylint: disable=too-many-public-methods
     """Unit tests.
 
     Attrs:
@@ -93,9 +94,6 @@ class TestCharm(TestCase):
                         "SQLALCHEMY_POOL_SIZE": 5,
                         "SQLALCHEMY_POOL_TIMEOUT": 300,
                         "SQLALCHEMY_MAX_OVERFLOW": 5,
-                        "GOOGLE_KEY": None,  # nosec
-                        "GOOGLE_SECRET": None,  # nosec
-                        "OAUTH_DOMAIN": None,
                         "OAUTH_ADMIN_EMAIL": "admin@superset.com",
                         "SELF_REGISTRATION_ROLE": "Public",
                         "SUPERSET_LOAD_EXAMPLES": False,
@@ -184,8 +182,8 @@ class TestCharm(TestCase):
                     "startup": "enabled",
                     "environment": {
                         "ALLOW_IMAGE_DOMAINS": "assets.ubuntu.com",
-                        "SUPERSET_SECRET_KEY": "example-pass",
-                        "ADMIN_PASSWORD": "secure-pass",
+                        "SUPERSET_SECRET_KEY": "example-pass",  # nosec B105
+                        "ADMIN_PASSWORD": "secure-pass",  # nosec B105
                         "ADMIN_USER": "unique-user",
                         "CHARM_FUNCTION": "app-gunicorn",
                         "SQL_ALCHEMY_URI": "postgresql://postgres_user:admin@myhost:5432/superset",
@@ -196,9 +194,6 @@ class TestCharm(TestCase):
                         "SQLALCHEMY_POOL_SIZE": 5,
                         "SQLALCHEMY_POOL_TIMEOUT": 300,
                         "SQLALCHEMY_MAX_OVERFLOW": 5,
-                        "GOOGLE_KEY": None,  # nosec
-                        "GOOGLE_SECRET": None,  # nosec
-                        "OAUTH_DOMAIN": None,
                         "OAUTH_ADMIN_EMAIL": "admin@superset.com",
                         "SELF_REGISTRATION_ROLE": "Public",
                         "SUPERSET_LOAD_EXAMPLES": False,
@@ -296,6 +291,154 @@ class TestCharm(TestCase):
             "backend-protocol": "HTTP",
             "tls-secret-name": "superset-tls",
         }
+
+    def test_oauth_leader_publishes_client_config(self):
+        """The leader registers Superset's OIDC callback with the provider."""
+        self.harness.update_config({"external-hostname": "superset.example"})
+        relation_id = self.harness.add_relation("oauth", "hydra")
+
+        relation_data = self.harness.get_relation_data(
+            relation_id, self.harness.charm.app
+        )
+        assert relation_data["redirect_uri"] == (
+            "https://superset.example/oauth-authorized/oidc"
+        )
+        assert relation_data["scope"] == "openid email profile"
+        assert json.loads(relation_data["grant_types"]) == [
+            "authorization_code"
+        ]
+
+    def test_oauth_non_leader_does_not_publish_client_config(self):
+        """Only the leader writes OAuth client registration data."""
+        self.harness.update_config({"external-hostname": "superset.example"})
+        self.harness.set_leader(False)
+        relation_id = self.harness.add_relation("oauth", "hydra")
+
+        assert (
+            self.harness.get_relation_data(relation_id, self.harness.charm.app)
+            == {}
+        )
+
+    def test_oauth_provider_populates_environment(self):
+        """Provider relation data and its secret configure Superset OIDC."""
+        self._add_oauth_provider()
+        simulate_lifecycle(self.harness)
+
+        environment = self._superset_environment()
+        assert environment["OAUTH_ISSUER_URL"] == "https://idp.example"
+        assert environment["OAUTH_AUTHORIZATION_ENDPOINT"] == (
+            "https://idp.example/authorize"
+        )
+        assert environment["OAUTH_TOKEN_ENDPOINT"] == (
+            "https://idp.example/token"
+        )
+        assert environment["OAUTH_USERINFO_ENDPOINT"] == (
+            "https://idp.example/userinfo"
+        )
+        assert environment["OAUTH_JWKS_ENDPOINT"] == (
+            "https://idp.example/jwks"
+        )
+        assert environment["OAUTH_SCOPE"] == "openid email profile"
+        assert environment["OAUTH_CLIENT_ID"] == "superset-client"
+        assert environment["OAUTH_CLIENT_SECRET"] == "secret-value"
+
+    def test_oauth_incomplete_registration_is_not_enabled(self):
+        """A relation without provider credentials leaves OAuth disabled."""
+        self.harness.update_config({"external-hostname": "superset.example"})
+        self.harness.add_relation("oauth", "hydra")
+        simulate_lifecycle(self.harness)
+
+        assert not [
+            key
+            for key in self._superset_environment()
+            if key.startswith("OAUTH_") and key != "OAUTH_ADMIN_EMAIL"
+        ]
+
+    def test_oauth_inaccessible_secret_is_not_enabled(self):
+        """Wait safely while OAuth provider credentials are inaccessible."""
+        self.harness.update_config({"external-hostname": "superset.example"})
+        relation_id = self.harness.add_relation("oauth", "hydra")
+        secret_id = self.harness.add_model_secret(
+            "hydra", {"secret": "secret-value"}  # nosec B105
+        )
+        self.harness.update_relation_data(
+            relation_id,
+            "hydra",
+            {
+                "issuer_url": "https://idp.example",
+                "authorization_endpoint": "https://idp.example/authorize",
+                "token_endpoint": "https://idp.example/token",  # nosec B105
+                "introspection_endpoint": "https://idp.example/introspect",
+                "userinfo_endpoint": "https://idp.example/userinfo",
+                "jwks_endpoint": "https://idp.example/jwks",
+                "scope": "openid email profile",
+                "client_id": "superset-client",
+                "client_secret_id": secret_id,
+            },
+        )
+        simulate_lifecycle(self.harness)
+
+        assert "OAUTH_CLIENT_ID" not in self._superset_environment()
+
+    def test_oauth_relation_removal_clears_environment(self):
+        """Removing the provider relation removes workload OAuth settings."""
+        relation_id, _ = self._add_oauth_provider()
+        simulate_lifecycle(self.harness)
+        assert "OAUTH_CLIENT_ID" in self._superset_environment()
+
+        self.harness.remove_relation(relation_id)
+
+        assert "OAUTH_CLIENT_ID" not in self._superset_environment()
+
+    def test_oauth_secret_change_refreshes_credentials(self):
+        """A provider credential update is reflected in the workload."""
+        _, secret_id = self._add_oauth_provider()
+        simulate_lifecycle(self.harness)
+        assert (
+            self._superset_environment()["OAUTH_CLIENT_SECRET"]
+            == "secret-value"
+        )
+
+        self.harness.set_secret_content(
+            secret_id, {"secret": "rotated-secret"}  # nosec B105
+        )
+        self.harness.charm.on.secret_changed.emit(secret_id, None)
+
+        assert (
+            self._superset_environment()["OAUTH_CLIENT_SECRET"]
+            == "rotated-secret"
+        )
+
+    def _add_oauth_provider(self):
+        """Add complete provider relation data and an accessible secret."""
+        self.harness.update_config({"external-hostname": "superset.example"})
+        relation_id = self.harness.add_relation("oauth", "hydra")
+        secret_id = self.harness.add_model_secret(
+            "hydra", {"secret": "secret-value"}  # nosec B105
+        )
+        self.harness.grant_secret(secret_id, self.harness.charm.app)
+        self.harness.update_relation_data(
+            relation_id,
+            "hydra",
+            {
+                "issuer_url": "https://idp.example",
+                "authorization_endpoint": "https://idp.example/authorize",
+                "token_endpoint": "https://idp.example/token",  # nosec B105
+                "introspection_endpoint": "https://idp.example/introspect",
+                "userinfo_endpoint": "https://idp.example/userinfo",
+                "jwks_endpoint": "https://idp.example/jwks",
+                "scope": "openid email profile",
+                "client_id": "superset-client",
+                "client_secret_id": secret_id,
+            },
+        )
+        return relation_id, secret_id
+
+    def _superset_environment(self):
+        """Return the current Superset service environment."""
+        return self.harness.get_container_pebble_plan("superset").to_dict()[
+            "services"
+        ]["superset"]["environment"]
 
     def test_update_status_up(self):
         """The charm updates the unit status to active based on UP status."""
