@@ -234,10 +234,10 @@ async def execute_report(ops_test: OpsTest, report_id: int) -> str:
         '"from datetime import datetime; '
         "from uuid import uuid4; "
         "from superset.app import create_app; "
-        "from superset.commands.report.execute import "
-        "AsyncExecuteReportScheduleCommand; "
         "app = create_app(); "
         "app.app_context().push(); "
+        "from superset.commands.report.execute import "
+        "AsyncExecuteReportScheduleCommand; "
         "AsyncExecuteReportScheduleCommand("
         f'str(uuid4()), {report_id}, datetime.utcnow()).run()"'
     )
