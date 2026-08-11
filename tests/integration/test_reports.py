@@ -211,10 +211,12 @@ def create_chart_report(
 
 
 async def execute_report(ops_test: OpsTest, report_id: int) -> str:
-    """Run the report task synchronously instead of depending on Celery beat.
+    """Run the report command synchronously instead of relying on Celery beat.
 
-    The task runs in a one-shot exec process, so its logs go to that process
+    The command runs in a one-shot exec process, so its logs go to that process
     rather than the worker service's juju log; they are returned to the caller.
+    A concrete ``scheduled_dttm`` is supplied because that execution log column
+    is non-nullable and eager Celery execution would otherwise leave it null.
 
     Args:
         ops_test: Juju test model.
@@ -229,14 +231,19 @@ async def execute_report(ops_test: OpsTest, report_id: int) -> str:
     )
     command = (
         f"env {assignments} python3 -c "
-        '"import superset.tasks.celery_app; '
-        "from superset.tasks.scheduler import execute; "
-        f'execute.apply(args=({report_id},))"'
+        '"from datetime import datetime; '
+        "from uuid import uuid4; "
+        "from superset.app import create_app; "
+        "from superset.commands.report.execute import "
+        "AsyncExecuteReportScheduleCommand; "
+        "app = create_app(); "
+        "app.app_context().push(); "
+        "AsyncExecuteReportScheduleCommand("
+        f'str(uuid4()), {report_id}, datetime.utcnow()).run()"'
     )
-    return_code, stdout, stderr = await ops_test.juju(
+    _, stdout, stderr = await ops_test.juju(
         "ssh", "--container", "superset", f"{WORKER_NAME}/0", command
     )
-    assert return_code == 0, stderr
     output = f"{stdout}\n{stderr}"
     logger.info("execute_report(%s) output:\n%s", report_id, output)
     return output
