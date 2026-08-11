@@ -237,7 +237,9 @@ async def execute_report(ops_test: OpsTest, report_id: int) -> str:
         "ssh", "--container", "superset", f"{WORKER_NAME}/0", command
     )
     assert return_code == 0, stderr
-    return f"{stdout}\n{stderr}"
+    output = f"{stdout}\n{stderr}"
+    logger.info("execute_report(%s) output:\n%s", report_id, output)
+    return output
 
 
 async def wait_for_report(
