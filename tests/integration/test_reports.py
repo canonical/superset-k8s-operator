@@ -289,6 +289,31 @@ with sync_playwright() as playwright:
     print("PROBE session_len:", len(minted.get("session", "")))
     import requests
 
+    serializer = app.session_interface.get_signing_serializer(app)
+    try:
+        decoded = serializer.loads(minted.get("session", ""))
+        print("PROBE session_keys:", sorted(decoded.keys()))
+        print("PROBE session_user_id:", decoded.get("_user_id"))
+    except Exception as exc:
+        print("PROBE session_decode_error:", exc)
+    login_url = headless_url("/login/")
+    try:
+        anon = requests.get(login_url, allow_redirects=False, timeout=30)
+        ui_session = anon.cookies.get("session")
+        print("PROBE ui_session_present:", ui_session is not None)
+        if ui_session is not None:
+            try:
+                serializer.loads(ui_session)
+                print("PROBE ui_session_verifies_with_worker_key:", True)
+            except Exception as exc:
+                print(
+                    "PROBE ui_session_verifies_with_worker_key:",
+                    False,
+                    type(exc).__name__,
+                )
+    except Exception as exc:
+        print("PROBE ui_login_error:", exc)
+
     api_url = headless_url("/api/v1/chart/")
     try:
         resp = requests.get(
