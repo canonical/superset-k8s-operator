@@ -325,6 +325,32 @@ with sync_playwright() as playwright:
 """
 
 
+_UI_SECRET_SCRIPT = """
+import subprocess
+import os
+import hashlib
+
+plan = subprocess.run(
+    ["/charm/bin/pebble", "plan"], capture_output=True, text=True
+).stdout
+for line in plan.splitlines():
+    stripped = line.strip()
+    if ":" not in stripped:
+        continue
+    key, _, val = stripped.partition(":")
+    if key and key.replace("_", "").isalnum() and key.isupper():
+        os.environ[key] = val.strip().strip("'").strip('"')
+
+from superset.app import create_app
+
+app = create_app()
+app.app_context().push()
+secret = app.config.get("SECRET_KEY") or ""
+secret = secret.encode() if isinstance(secret, str) else secret
+print("PROBE ui_secret_sha:", hashlib.sha256(secret).hexdigest()[:12])
+"""
+
+
 async def probe_screenshot_page(ops_test: OpsTest, chart_id: int) -> str:
     """Diagnose why a report screenshot failed to render.
 
@@ -351,13 +377,11 @@ async def probe_screenshot_page(ops_test: OpsTest, chart_id: int) -> str:
     _, stdout, stderr = await ops_test.juju(
         "ssh", "--container", "superset", f"{WORKER_NAME}/0", command
     )
-    ui_secret_script = (
-        "import hashlib, os; "
-        "s = (os.getenv('SUPERSET_SECRET_KEY') or '').encode(); "
-        "print('PROBE ui_secret_sha:', "
-        "hashlib.sha256(s).hexdigest()[:12])"
+    ui_encoded = base64.b64encode(_UI_SECRET_SCRIPT.encode()).decode()
+    ui_runner = (
+        f"import base64; exec(base64.b64decode('{ui_encoded}').decode())"
     )
-    ui_command = f"python3 -c {shlex.quote(ui_secret_script)}"
+    ui_command = f"python3 -c {shlex.quote(ui_runner)}"
     _, ui_out, _ = await ops_test.juju(
         "ssh", "--container", "superset", f"{UI_NAME}/0", ui_command
     )
