@@ -281,6 +281,19 @@ with sync_playwright() as playwright:
     provider = machine_auth_provider_factory.instance
     minted = provider.get_cookies(user)
     print("PROBE minted_cookies:", list(minted.keys()))
+    print("PROBE session_len:", len(minted.get("session", "")))
+    import requests
+
+    api_url = headless_url("/api/v1/me/")
+    try:
+        resp = requests.get(
+            api_url, cookies=minted, allow_redirects=False, timeout=30
+        )
+        print("PROBE api_status:", resp.status_code)
+        print("PROBE api_location:", resp.headers.get("Location"))
+        print("PROBE api_body:", resp.text[:200].replace(chr(10), " "))
+    except Exception as exc:
+        print("PROBE api_error:", exc)
     provider.authenticate_browser_context(context, user)
     print(
         "PROBE ctx_cookies:",
