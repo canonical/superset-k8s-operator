@@ -5,6 +5,7 @@
 """Mail-free integration tests for alert and report screenshot rendering."""
 
 import asyncio
+import base64
 import json
 import logging
 import re
@@ -148,9 +149,9 @@ def api_post(
         The created resource ID.
     """
     response = session.post(f"{url}{path}", json=data, timeout=30)
-    assert response.ok, (
-        f"POST {path} failed ({response.status_code}): {response.text}"
-    )
+    assert (
+        response.ok
+    ), f"POST {path} failed ({response.status_code}): {response.text}"
     return response.json()["id"]
 
 
@@ -247,6 +248,83 @@ async def execute_report(ops_test: OpsTest, report_id: int) -> str:
     output = f"{stdout}\n{stderr}"
     logger.info("execute_report(%s) output:\n%s", report_id, output)
     return output
+
+
+_SCREENSHOT_PROBE_SCRIPT = """
+import json
+from superset.app import create_app
+
+app = create_app()
+app.app_context().push()
+
+from playwright.sync_api import sync_playwright
+from superset.extensions import (
+    machine_auth_provider_factory,
+    security_manager,
+)
+from superset.utils.urls import headless_url
+
+chart_id = __CHART_ID__
+user = security_manager.find_user(username="admin")
+print("PROBE user:", getattr(user, "username", None))
+form_data = json.dumps({"slice_id": chart_id})
+url = headless_url("/explore/?form_data=" + form_data + "&standalone=true")
+print("PROBE url:", url)
+args = app.config["WEBDRIVER_OPTION_ARGS"]
+with sync_playwright() as playwright:
+    browser = playwright.chromium.launch(args=args)
+    context = browser.new_context()
+    context.set_default_timeout(30000)
+    provider = machine_auth_provider_factory.instance
+    provider.authenticate_browser_context(context, user)
+    page = context.new_page()
+    try:
+        page.goto(url, wait_until="load")
+    except Exception as exc:
+        print("PROBE goto_error:", exc)
+    print("PROBE final_url:", page.url)
+    try:
+        print("PROBE title:", page.title())
+    except Exception as exc:
+        print("PROBE title_error:", exc)
+    print("PROBE password_inputs:", page.locator("input[type=password]").count())
+    print("PROBE chart_containers:", page.locator(".chart-container").count())
+    try:
+        body = page.locator("body").inner_text(timeout=5000)
+    except Exception as exc:
+        body = "body_error: %s" % exc
+    print("PROBE body_snippet:", body[:300].replace(chr(10), " "))
+    browser.close()
+"""
+
+
+async def probe_screenshot_page(ops_test: OpsTest, chart_id: int) -> str:
+    """Diagnose why a report screenshot failed to render.
+
+    Authenticates a Playwright browser as the admin user exactly as the report
+    worker does, navigates to the chart's standalone URL, and reports what the
+    browser actually sees. This distinguishes a login-page redirect (browser
+    auth/cookie problem) from a chart that simply does not render.
+
+    Args:
+        ops_test: Juju test model.
+        chart_id: Chart whose standalone page should be probed.
+
+    Returns:
+        Combined stdout and stderr from the in-container probe.
+    """
+    environment = await worker_environment(ops_test)
+    assignments = " ".join(
+        f"{key}={shlex.quote(value)}" for key, value in environment.items()
+    )
+    script = _SCREENSHOT_PROBE_SCRIPT.replace("__CHART_ID__", str(chart_id))
+    encoded = base64.b64encode(script.encode()).decode()
+    runner = f"import base64; exec(base64.b64decode('{encoded}').decode())"
+    command = f"env {assignments} python3 -c {shlex.quote(runner)}"
+    _, stdout, stderr = await ops_test.juju(
+        "ssh", "--container", "superset", f"{WORKER_NAME}/0", command
+    )
+    return f"{stdout}\n{stderr}"
 
 
 async def wait_for_report(
@@ -369,7 +447,17 @@ class TestReports:
         )
         try:
             output = await execute_report(ops_test, report_id)
-            log = await wait_for_report(session, url, report_id, "Success")
+            try:
+                log = await wait_for_report(session, url, report_id, "Success")
+            except TimeoutError:
+                try:
+                    probe = await probe_screenshot_page(
+                        ops_test, charts[0]["id"]
+                    )
+                    logger.info("screenshot probe:\n%s", probe)
+                except Exception:  # noqa: BLE001
+                    logger.exception("screenshot probe failed")
+                raise
             assert log["state"] == "Success"
             assert "ALERT_REPORTS_NOTIFICATION_DRY_RUN is enabled" in output
         finally:
@@ -393,7 +481,7 @@ class TestReports:
             log = await wait_for_report(session, url, report_id, "Error")
             error = log.get("error_message", "")
             assert "Timeout 1000ms exceeded" in error
-            assert ".standalone" in error
+            assert ".chart-container" in error
         finally:
             api_delete(session, url, "/api/v1/report", report_id)
             api_delete(session, url, "/api/v1/chart", chart_id)
