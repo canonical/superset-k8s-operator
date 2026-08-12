@@ -270,6 +270,11 @@ print("PROBE user:", getattr(user, "username", None))
 auth_func = app.config.get("WEBDRIVER_AUTH_FUNC")
 print("PROBE auth_func:", getattr(auth_func, "__name__", auth_func))
 print("PROBE baseurl:", app.config.get("WEBDRIVER_BASEURL"))
+import hashlib
+
+secret = app.config.get("SECRET_KEY") or ""
+secret = secret.encode() if isinstance(secret, str) else secret
+print("PROBE worker_secret_sha:", hashlib.sha256(secret).hexdigest()[:12])
 form_data = json.dumps({"slice_id": chart_id})
 url = headless_url("/explore/?form_data=" + form_data + "&standalone=true")
 print("PROBE url:", url)
@@ -284,7 +289,7 @@ with sync_playwright() as playwright:
     print("PROBE session_len:", len(minted.get("session", "")))
     import requests
 
-    api_url = headless_url("/api/v1/me/")
+    api_url = headless_url("/api/v1/chart/")
     try:
         resp = requests.get(
             api_url, cookies=minted, allow_redirects=False, timeout=30
@@ -346,7 +351,17 @@ async def probe_screenshot_page(ops_test: OpsTest, chart_id: int) -> str:
     _, stdout, stderr = await ops_test.juju(
         "ssh", "--container", "superset", f"{WORKER_NAME}/0", command
     )
-    return f"{stdout}\n{stderr}"
+    ui_secret_script = (
+        "import hashlib, os; "
+        "s = (os.getenv('SUPERSET_SECRET_KEY') or '').encode(); "
+        "print('PROBE ui_secret_sha:', "
+        "hashlib.sha256(s).hexdigest()[:12])"
+    )
+    ui_command = f"python3 -c {shlex.quote(ui_secret_script)}"
+    _, ui_out, _ = await ops_test.juju(
+        "ssh", "--container", "superset", f"{UI_NAME}/0", ui_command
+    )
+    return f"{stdout}\n{stderr}\n{ui_out}"
 
 
 async def wait_for_report(
