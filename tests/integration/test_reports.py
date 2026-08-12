@@ -267,6 +267,9 @@ from superset.utils.urls import headless_url
 chart_id = __CHART_ID__
 user = security_manager.find_user(username="admin")
 print("PROBE user:", getattr(user, "username", None))
+auth_func = app.config.get("WEBDRIVER_AUTH_FUNC")
+print("PROBE auth_func:", getattr(auth_func, "__name__", auth_func))
+print("PROBE baseurl:", app.config.get("WEBDRIVER_BASEURL"))
 form_data = json.dumps({"slice_id": chart_id})
 url = headless_url("/explore/?form_data=" + form_data + "&standalone=true")
 print("PROBE url:", url)
@@ -276,7 +279,13 @@ with sync_playwright() as playwright:
     context = browser.new_context()
     context.set_default_timeout(30000)
     provider = machine_auth_provider_factory.instance
+    minted = provider.get_cookies(user)
+    print("PROBE minted_cookies:", list(minted.keys()))
     provider.authenticate_browser_context(context, user)
+    print(
+        "PROBE ctx_cookies:",
+        [(c.get("name"), c.get("domain")) for c in context.cookies()],
+    )
     page = context.new_page()
     try:
         page.goto(url, wait_until="load")
