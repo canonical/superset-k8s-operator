@@ -29,8 +29,14 @@ logger = logging.getLogger(__name__)
 WORKER_NAME = f"superset-k8s-{CHARM_FUNCTIONS['worker']}"
 BEAT_NAME = f"superset-k8s-{CHARM_FUNCTIONS['beat']}"
 REPORT_APPS = [UI_NAME, BEAT_NAME, WORKER_NAME]
+# GLOBAL_ASYNC_QUERIES is intentionally omitted: it renders charts via
+# async queries whose results are delivered by polling/websocket after the
+# page loads. The headless screenshot browser used for reports is short lived
+# and never receives that delivery, so the chart's loading spinner ("Waiting
+# on <database>") never detaches and the screenshot times out. Reports only
+# need ALERT_REPORTS; charts must render synchronously for the screenshot.
 REPORT_CONFIG = {
-    "feature-flags": "GLOBAL_ASYNC_QUERIES,ALERT_REPORTS",
+    "feature-flags": "ALERT_REPORTS",
     "report-dry-run": "true",
 }
 POLL_INTERVAL = 5
