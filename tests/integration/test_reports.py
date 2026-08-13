@@ -299,6 +299,9 @@ else:
         "len",
         len(run_secret),
     )
+    app.secret_key = run_secret
+    app.config["SECRET_KEY"] = run_secret
+    print("PROBE signing_key_overridden_to_running:", True)
 form_data = json.dumps({"slice_id": chart_id})
 url = headless_url("/explore/?form_data=" + form_data + "&standalone=true")
 print("PROBE url:", url)
@@ -365,6 +368,25 @@ with sync_playwright() as playwright:
         print("PROBE title_error:", exc)
     print("PROBE password_inputs:", page.locator("input[type=password]").count())
     print("PROBE chart_containers:", page.locator(".chart-container").count())
+    try:
+        page.locator(".chart-container").first.wait_for(
+            state="visible", timeout=60000
+        )
+        print("PROBE chart_visible_after_wait:", True)
+    except Exception as exc:
+        print("PROBE chart_wait_error:", type(exc).__name__)
+    print(
+        "PROBE chart_containers_after_wait:",
+        page.locator(".chart-container").count(),
+    )
+    print(
+        "PROBE loading_indicators:",
+        page.locator(".loading, .ant-spin, [role=status]").count(),
+    )
+    print(
+        "PROBE error_elements:",
+        page.locator(".alert-danger, .ant-alert-error, .error").count(),
+    )
     try:
         body = page.locator("body").inner_text(timeout=5000)
     except Exception as exc:
