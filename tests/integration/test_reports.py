@@ -8,7 +8,6 @@ import asyncio
 import base64
 import json
 import logging
-import re
 import shlex
 import time
 import uuid
@@ -97,11 +96,32 @@ async def worker_exec(
     return stdout.strip()
 
 
+_WORKER_ENV_SCRIPT = """
+import base64
+import glob
+
+blob = b""
+for env_path in glob.glob("/proc/[0-9]*/environ"):
+    try:
+        with open(env_path, "rb") as handle:
+            raw = handle.read()
+    except OSError:
+        continue
+    if b"SUPERSET_SECRET_KEY=" in raw and b"CHARM_FUNCTION=" in raw:
+        blob = raw
+        break
+print(base64.b64encode(blob).decode())
+"""
+
+
 async def worker_environment(ops_test: OpsTest) -> dict[str, str]:
-    """Read the worker service environment from its Pebble plan.
+    """Read the worker service environment from its running process.
 
     Charm-set variables live in the Pebble service environment, which an exec
-    shell does not inherit, so they are read from the rendered plan instead.
+    shell does not inherit. Parsing the rendered Pebble plan text mangles some
+    values (notably the secret key), which would sign report screenshots with
+    the wrong key and get them rejected at the UI. The real environment is read
+    straight from the running service process via ``/proc/<pid>/environ``.
 
     Args:
         ops_test: Juju test model.
@@ -109,11 +129,17 @@ async def worker_environment(ops_test: OpsTest) -> dict[str, str]:
     Returns:
         Mapping of environment variable names to their configured values.
     """
-    plan = await worker_exec(ops_test, "/charm/bin/pebble plan")
-    entries = re.findall(
-        r"^\s*([A-Z][A-Z0-9_]*):\s*(.+?)\s*$", plan, re.MULTILINE
-    )
-    return {key: value.strip("'\"") for key, value in entries}
+    encoded = base64.b64encode(_WORKER_ENV_SCRIPT.encode()).decode()
+    runner = f"import base64; exec(base64.b64decode('{encoded}').decode())"
+    output = await worker_exec(ops_test, f'python3 -c "{runner}"')
+    raw = base64.b64decode(output.strip())
+    environment: dict[str, str] = {}
+    for entry in raw.split(bytes(1)):
+        if not entry or b"=" not in entry:
+            continue
+        key, value = entry.split(b"=", 1)
+        environment[key.decode()] = value.decode(errors="replace")
+    return environment
 
 
 async def assert_worker_config(
