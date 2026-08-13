@@ -275,6 +275,30 @@ import hashlib
 secret = app.config.get("SECRET_KEY") or ""
 secret = secret.encode() if isinstance(secret, str) else secret
 print("PROBE worker_secret_sha:", hashlib.sha256(secret).hexdigest()[:12])
+import glob
+
+run_secret = None
+for env_path in glob.glob("/proc/[0-9]*/environ"):
+    try:
+        with open(env_path, "rb") as handle:
+            raw = handle.read()
+    except OSError:
+        continue
+    for entry in raw.split(bytes(1)):
+        if entry.startswith(b"SUPERSET_SECRET_KEY="):
+            run_secret = entry.split(b"=", 1)[1]
+            break
+    if run_secret is not None:
+        break
+if run_secret is None:
+    print("PROBE run_worker_secret_sha:", "not_found")
+else:
+    print(
+        "PROBE run_worker_secret_sha:",
+        hashlib.sha256(run_secret).hexdigest()[:12],
+        "len",
+        len(run_secret),
+    )
 form_data = json.dumps({"slice_id": chart_id})
 url = headless_url("/explore/?form_data=" + form_data + "&standalone=true")
 print("PROBE url:", url)
@@ -351,28 +375,33 @@ with sync_playwright() as playwright:
 
 
 _UI_SECRET_SCRIPT = """
-import subprocess
-import os
+import glob
 import hashlib
+import os
 
-plan = subprocess.run(
-    ["/charm/bin/pebble", "plan"], capture_output=True, text=True
-).stdout
-for line in plan.splitlines():
-    stripped = line.strip()
-    if ":" not in stripped:
+target = None
+for env_path in glob.glob("/proc/[0-9]*/environ"):
+    try:
+        with open(env_path, "rb") as handle:
+            raw = handle.read()
+    except OSError:
         continue
-    key, _, val = stripped.partition(":")
-    if key and key.replace("_", "").isalnum() and key.isupper():
-        os.environ[key] = val.strip().strip("'").strip('"')
+    for entry in raw.split(bytes(1)):
+        if entry.startswith(b"SUPERSET_SECRET_KEY="):
+            target = entry.split(b"=", 1)[1]
+            break
+    if target is not None:
+        break
 
-from superset.app import create_app
-
-app = create_app()
-app.app_context().push()
-secret = app.config.get("SECRET_KEY") or ""
-secret = secret.encode() if isinstance(secret, str) else secret
-print("PROBE ui_secret_sha:", hashlib.sha256(secret).hexdigest()[:12])
+if target is None:
+    print("PROBE run_ui_secret_sha:", "not_found")
+else:
+    print(
+        "PROBE run_ui_secret_sha:",
+        hashlib.sha256(target).hexdigest()[:12],
+        "len",
+        len(target),
+    )
 """
 
 
