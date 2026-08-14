@@ -100,6 +100,7 @@ _WORKER_ENV_SCRIPT = """
 import base64
 import glob
 
+markers = (b"SUPERSET_SECRET_KEY=", b"CHARM_FUNCTION=", b"SCREENSHOT_TIMEOUT=")
 blob = b""
 for env_path in glob.glob("/proc/[0-9]*/environ"):
     try:
@@ -107,9 +108,8 @@ for env_path in glob.glob("/proc/[0-9]*/environ"):
             raw = handle.read()
     except OSError:
         continue
-    if b"SUPERSET_SECRET_KEY=" in raw and b"CHARM_FUNCTION=" in raw:
+    if all(marker in raw for marker in markers) and len(raw) > len(blob):
         blob = raw
-        break
 print(base64.b64encode(blob).decode())
 """
 
