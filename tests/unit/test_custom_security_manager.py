@@ -89,6 +89,18 @@ def _setup_stubs():  # pylint: disable=too-many-locals
             """
             return self._is_admin
 
+        def oauth_user_info(self, provider, response=None):
+            """Return a marker for non-OIDC providers.
+
+            Args:
+                provider: Provider name.
+                response: Optional OAuth response.
+
+            Returns:
+                Provider and response marker values.
+            """
+            return {"provider": provider, "response": response}
+
     security_mod = types.ModuleType("superset.security")
     security_mod.SupersetSecurityManager = SupersetSecurityManager
 
@@ -225,6 +237,82 @@ class TestRaiseForAccessPatchDisabled(_StubbedTestCase):
         _, kw = mgr._last_call
         self.assertIs(kw["datasource"], q)
         self.assertNotIn("query", kw)
+
+
+class TestOAuthUserInfo(_StubbedTestCase):
+    """Verify generic OIDC user-info claim mapping."""
+
+    def _manager_with_user_info(self, data):
+        """Return a manager whose OIDC remote returns the supplied claims."""
+        response = mock.Mock()
+        response.json.return_value = data
+        remote = mock.Mock()
+        remote.get.return_value = response
+        manager = _make_manager()
+        manager.appbuilder = types.SimpleNamespace(
+            sm=types.SimpleNamespace(oauth_remotes={"oidc": remote})
+        )
+        return manager, remote
+
+    def test_maps_standard_oidc_claims(self):
+        """Standard OIDC claims map to Superset's user fields."""
+        manager, remote = self._manager_with_user_info(
+            {
+                "sub": "user-1",
+                "email": "user@example.com",
+                "name": "Example User",
+                "given_name": "Example",
+                "family_name": "User",
+            }
+        )
+
+        with mock.patch.dict(
+            os.environ,
+            {"OAUTH_USERINFO_ENDPOINT": "https://idp.example/userinfo"},
+        ):
+            result = manager.oauth_user_info("oidc")
+
+        remote.get.assert_called_once_with("https://idp.example/userinfo")
+        self.assertEqual(result["id"], "user-1")
+        self.assertEqual(result["username"], "user@example.com")
+        self.assertEqual(result["first_name"], "Example")
+        self.assertEqual(result["last_name"], "User")
+
+    def test_optional_name_claims_fall_back_safely(self):
+        """Missing optional name claims do not prevent authentication."""
+        manager, _ = self._manager_with_user_info(
+            {"sub": "user-1", "email": "user@example.com"}
+        )
+
+        with mock.patch.dict(
+            os.environ,
+            {"OAUTH_USERINFO_ENDPOINT": "https://idp.example/userinfo"},
+        ):
+            result = manager.oauth_user_info("oidc")
+
+        self.assertEqual(result["name"], "user@example.com")
+        self.assertEqual(result["first_name"], "")
+        self.assertEqual(result["last_name"], "")
+
+    def test_email_claim_is_required(self):
+        """OIDC identities without email are rejected."""
+        manager, _ = self._manager_with_user_info({"sub": "user-1"})
+
+        with mock.patch.dict(
+            os.environ,
+            {"OAUTH_USERINFO_ENDPOINT": "https://idp.example/userinfo"},
+        ):
+            with self.assertRaisesRegex(ValueError, "email claim"):
+                manager.oauth_user_info("oidc")
+
+    def test_other_providers_delegate_to_superset(self):
+        """Providers configured outside this integration use base behavior."""
+        manager = _make_manager()
+
+        self.assertEqual(
+            manager.oauth_user_info("other", response="response"),
+            {"provider": "other", "response": "response"},
+        )
 
 
 class TestRaiseForAccessQueryRerouting(_StubbedTestCase):

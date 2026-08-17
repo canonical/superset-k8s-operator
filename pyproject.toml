@@ -14,6 +14,7 @@ dependencies = [
     "requests==2.32.0",
     "pyjwt==2.11.0",
     "psycopg2-binary",
+    "jsonschema==4.26.0",
 ]
 
 [tool.bandit]
@@ -115,6 +116,7 @@ dev = [
     "ipdb",
     "pytest>=7.4.0,<8",
     "psycopg2-binary",
+    "sqlglot>=28.10.0,<29",
     # Integration
     "juju",
     "pytest-asyncio",
