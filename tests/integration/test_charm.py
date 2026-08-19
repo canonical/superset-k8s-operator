@@ -10,13 +10,16 @@ import pytest
 import requests
 from integration.conftest import deploy  # noqa: F401, pylint: disable=W0611
 from integration.helpers import (
+    CA_CERT_PATH,
     POSTGRES_NAME,
     REDIS_NAME,
+    TLS_NAME,
     UI_NAME,
     api_authentication,
     delete_chart,
     get_chart_count,
     get_unit_url,
+    read_workload_file,
     restart_application,
     simulate_crash,
 )
@@ -77,6 +80,51 @@ class TestDeployment:
             ops_test.model.applications[UI_NAME].units[0].workload_status
             == "maintenance"
         )
+
+    async def test_certificates_relation(self, ops_test: OpsTest):
+        """Relating a TLS provider installs its CA in the workload container."""
+        await ops_test.model.deploy(TLS_NAME, channel="1/stable")
+        await ops_test.model.wait_for_idle(
+            apps=[TLS_NAME],
+            status="active",
+            raise_on_blocked=False,
+            timeout=1000,
+        )
+
+        await ops_test.model.integrate(
+            f"{UI_NAME}:certificates", f"{TLS_NAME}:certificates"
+        )
+        await ops_test.model.wait_for_idle(
+            apps=[UI_NAME, TLS_NAME],
+            status="active",
+            raise_on_blocked=False,
+            timeout=1000,
+        )
+
+        return_code, contents = await read_workload_file(
+            ops_test, f"{UI_NAME}/0", CA_CERT_PATH
+        )
+        assert return_code == 0, f"{CA_CERT_PATH} was not created"
+        assert "BEGIN CERTIFICATE" in contents
+
+    async def test_certificates_relation_removal(self, ops_test: OpsTest):
+        """Removing the TLS relation removes the CA from the container."""
+        await ops_test.juju(
+            "remove-relation",
+            f"{UI_NAME}:certificates",
+            f"{TLS_NAME}:certificates",
+        )
+        await ops_test.model.wait_for_idle(
+            apps=[UI_NAME],
+            status="active",
+            raise_on_blocked=False,
+            timeout=1000,
+        )
+
+        return_code, _ = await read_workload_file(
+            ops_test, f"{UI_NAME}/0", CA_CERT_PATH
+        )
+        assert return_code != 0, f"{CA_CERT_PATH} was not removed"
 
     async def test_redis_relation_removal(self, ops_test: OpsTest):
         """Removes Superset/Redis relation."""

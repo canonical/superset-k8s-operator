@@ -17,9 +17,13 @@ from ops.pebble import CheckStatus
 from ops.testing import Harness
 
 from charm import SupersetK8SCharm
+from literals import CA_CERT_LOCAL_PATH, CA_CERT_PATH
 
 SERVER_PORT = "8088"
 logger = logging.getLogger(__name__)
+CA_PEM = (
+    "-----BEGIN CERTIFICATE-----\nMIIBexample\n-----END CERTIFICATE-----\n"
+)
 mock_incomplete_pebble_plan = {
     "services": {"superset": {"override": "replace"}}
 }
@@ -109,6 +113,7 @@ class TestCharm(TestCase):  # pylint: disable=too-many-public-methods
                         "SENTRY_SAMPLE_RATE": 1.0,
                         "SERVER_ALIAS": "superset-k8s",
                         "APPLICATION_PORT": 8088,
+                        "SUPERSET_PORT": 8088,
                         "WEBSERVER_TIMEOUT": 180,
                         "SERVER_WORKER_AMOUNT": 1,
                         "GUNICORN_TIMEOUT": 60,
@@ -210,6 +215,7 @@ class TestCharm(TestCase):  # pylint: disable=too-many-public-methods
                         "SENTRY_SAMPLE_RATE": 1.0,
                         "SERVER_ALIAS": "superset-k8s",
                         "APPLICATION_PORT": 8088,
+                        "SUPERSET_PORT": 8088,
                         "WEBSERVER_TIMEOUT": 180,
                         "SERVER_WORKER_AMOUNT": 1,
                         "GUNICORN_TIMEOUT": 60,
@@ -755,6 +761,101 @@ class TestCharm(TestCase):  # pylint: disable=too-many-public-methods
                 "SMTP secret with ID 'i-dont-exist' cannot be found."
             ),
         )
+
+    def test_certificates_reconcile_installs_ca(self):
+        """The CA is installed into the container when a cert is assigned."""
+        harness = self.harness
+        simulate_lifecycle(harness)
+
+        exec_calls = []
+        harness.handle_exec(
+            "superset",
+            ["update-ca-certificates"],
+            handler=lambda args: exec_calls.append(args.command),
+        )
+
+        with mock.patch.object(
+            harness.charm.certificates_handler,
+            "_assigned_ca",
+            return_value=CA_PEM,
+        ):
+            self.assertTrue(harness.charm.reconcile_certificates())
+
+        container = harness.model.unit.get_container("superset")
+        self.assertEqual(container.pull(CA_CERT_PATH).read(), CA_PEM)
+        self.assertEqual(container.pull(CA_CERT_LOCAL_PATH).read(), CA_PEM)
+        self.assertEqual(exec_calls, [["update-ca-certificates"]])
+
+    def test_certificates_reconcile_is_idempotent(self):
+        """An already installed CA is not re-installed on every reconcile."""
+        harness = self.harness
+        simulate_lifecycle(harness)
+
+        exec_calls = []
+        harness.handle_exec(
+            "superset",
+            ["update-ca-certificates"],
+            handler=lambda args: exec_calls.append(args.command),
+        )
+
+        with mock.patch.object(
+            harness.charm.certificates_handler,
+            "_assigned_ca",
+            return_value=CA_PEM,
+        ):
+            harness.charm.reconcile_certificates()
+            harness.charm.reconcile_certificates()
+
+        self.assertEqual(exec_calls, [["update-ca-certificates"]])
+
+    def test_certificates_reconcile_reinstalls_wiped_ca(self):
+        """The CA is re-installed after a pod respawn wipes the filesystem."""
+        harness = self.harness
+        simulate_lifecycle(harness)
+        harness.handle_exec("superset", ["update-ca-certificates"], result=0)
+
+        container = harness.model.unit.get_container("superset")
+        with mock.patch.object(
+            harness.charm.certificates_handler,
+            "_assigned_ca",
+            return_value=CA_PEM,
+        ):
+            harness.charm.reconcile_certificates()
+            container.remove_path(CA_CERT_PATH)
+            container.remove_path(CA_CERT_LOCAL_PATH)
+            harness.charm.reconcile_certificates()
+
+        self.assertEqual(container.pull(CA_CERT_PATH).read(), CA_PEM)
+
+    def test_certificates_trust_store_failure_blocks_unit(self):
+        """A failing trust store update blocks the unit instead of passing."""
+        harness = self.harness
+        simulate_lifecycle(harness)
+        harness.handle_exec("superset", ["update-ca-certificates"], result=1)
+
+        with mock.patch.object(
+            harness.charm.certificates_handler,
+            "_assigned_ca",
+            return_value=CA_PEM,
+        ):
+            self.assertFalse(harness.charm.reconcile_certificates())
+
+        self.assertIsInstance(harness.model.unit.status, BlockedStatus)
+
+    def test_certificates_relation_broken_removes_ca(self):
+        """The CA is removed from the container when the relation breaks."""
+        harness = self.harness
+        simulate_lifecycle(harness)
+        harness.handle_exec("superset", ["update-ca-certificates"], result=0)
+
+        container = harness.model.unit.get_container("superset")
+        container.push(CA_CERT_PATH, CA_PEM, make_dirs=True)
+        container.push(CA_CERT_LOCAL_PATH, CA_PEM, make_dirs=True)
+
+        harness.charm.reconcile_certificates(relation_broken=True)
+
+        self.assertFalse(container.exists(CA_CERT_PATH))
+        self.assertFalse(container.exists(CA_CERT_LOCAL_PATH))
 
 
 @mock.patch("charm.Redis.get_redis_relation_data")

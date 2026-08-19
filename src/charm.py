@@ -50,6 +50,7 @@ from log import log_event_handler
 from relations.oauth import ClientConfigError, OAuthRelation
 from relations.postgresql import Database
 from relations.redis import Redis
+from relations.tls import CertificateInstallError, Certificates
 from relations.trino_catalog import TrinoCatalogRelationHandler
 from structured_config import CharmConfig
 from utils import load_superset_files, query_metadata_database
@@ -95,6 +96,8 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         # Handle OAuth relation
         self.oauth = OAuthRelation(self)
+        # Handle tls-certificates relation
+        self.certificates_handler = Certificates(self)
 
         # Handle basic charm lifecycle
         self.framework.observe(self.on.install, self._on_install)
@@ -210,6 +213,9 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             self._update(event)
             return
 
+        if not self.reconcile_certificates():
+            return
+
         if self.config["charm-function"] in UI_FUNCTIONS:
             check = container.get_check("up")
             if check.status != CheckStatus.UP:
@@ -222,6 +228,40 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         self.unit.set_workload_version(f"v{SUPERSET_VERSION}")
         self.unit.status = ActiveStatus("Status check: UP")
+
+    def reconcile_certificates(self, relation_broken: bool = False):
+        """Sync the workload CA trust store with the certificates relation.
+
+        The trust store is filesystem state rather than Pebble plan state, so
+        a replan is a no-op after a certificate change and the workload must
+        be restarted explicitly to pick up the new material. Calling this from
+        every reconcile point also re-installs the CA after a pod respawn has
+        wiped the container filesystem.
+
+        Args:
+            relation_broken: Whether the certificates relation is being removed.
+
+        Returns:
+            True if the trust store is in the expected state, False if it
+            could not be updated.
+        """
+        container = self.unit.get_container(self.name)
+        if not container.can_connect():
+            return True
+
+        try:
+            changed = self.certificates_handler.reconcile(
+                container, relation_broken=relation_broken
+            )
+        except CertificateInstallError as e:
+            logger.error("CA trust store update failed: %s", e)
+            self.unit.status = BlockedStatus(str(e))
+            return False
+
+        if changed and self.name in container.get_services():
+            self._restart_application(container)
+
+        return True
 
     def _validate_pebble_plan(self, container):
         """Validate Superset pebble plan.
@@ -448,6 +488,11 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "SENTRY_SAMPLE_RATE": self.config["sentry-sample-rate"],
             "SERVER_ALIAS": self.config["server-alias"],
             "APPLICATION_PORT": APPLICATION_PORT,
+            # Explicitly set SUPERSET_PORT so the charm-supplied value always
+            # overrides the service-discovery variable Kubernetes injects for a
+            # service named "superset" (e.g. SUPERSET_PORT=tcp://10.x.x.x:65535),
+            # which would otherwise break gunicorn's --bind. See issue #108.
+            "SUPERSET_PORT": APPLICATION_PORT,
             "WEBSERVER_TIMEOUT": self.config["webserver-timeout"],
             "SERVER_WORKER_AMOUNT": self.config["server-worker-amount"],
             "GUNICORN_TIMEOUT": self.config["gunicorn-timeout"],
@@ -533,6 +578,9 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             env = self._create_env()
         except ValueError as e:
             self.unit.status = BlockedStatus(str(e))
+            return
+
+        if not self.reconcile_certificates():
             return
 
         load_superset_files(container)
