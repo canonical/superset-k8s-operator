@@ -15,6 +15,7 @@ from typing import Any, Mapping
 
 import pytest
 import requests
+import yaml
 from integration.conftest import deploy  # noqa: F401, pylint: disable=W0611
 from integration.helpers import (
     CHARM_FUNCTIONS,
@@ -96,32 +97,21 @@ async def worker_exec(
     return stdout.strip()
 
 
-_WORKER_ENV_SCRIPT = """
-import base64
-import glob
-
-markers = (b"SUPERSET_SECRET_KEY=", b"CHARM_FUNCTION=", b"SCREENSHOT_TIMEOUT=")
-blob = b""
-for env_path in glob.glob("/proc/[0-9]*/environ"):
-    try:
-        with open(env_path, "rb") as handle:
-            raw = handle.read()
-    except OSError:
-        continue
-    if all(marker in raw for marker in markers) and len(raw) > len(blob):
-        blob = raw
-print(base64.b64encode(blob).decode())
-"""
+# The charm's Pebble layer defines its managed service under APP_NAME
+# ("superset"). The rock's base layer also ships a disabled "superset-ui"
+# service whose environment carries a different secret key, so the service
+# must be selected by name rather than scanning the whole rendered plan.
+WORKER_SERVICE = "superset"
 
 
 async def worker_environment(ops_test: OpsTest) -> dict[str, str]:
-    """Read the worker service environment from its running process.
+    """Read the worker service environment from the running Pebble plan.
 
     Charm-set variables live in the Pebble service environment, which an exec
-    shell does not inherit. Parsing the rendered Pebble plan text mangles some
-    values (notably the secret key), which would sign report screenshots with
-    the wrong key and get them rejected at the UI. The real environment is read
-    straight from the running service process via ``/proc/<pid>/environ``.
+    shell does not inherit. They are read from the rendered plan and scoped to
+    the charm-managed ``superset`` service: the plan also lists a disabled
+    ``superset-ui`` service whose secret key differs, so selecting by service
+    name is required to sign report screenshots with the key the UI accepts.
 
     Args:
         ops_test: Juju test model.
@@ -129,17 +119,15 @@ async def worker_environment(ops_test: OpsTest) -> dict[str, str]:
     Returns:
         Mapping of environment variable names to their configured values.
     """
-    encoded = base64.b64encode(_WORKER_ENV_SCRIPT.encode()).decode()
-    runner = f"import base64; exec(base64.b64decode('{encoded}').decode())"
-    output = await worker_exec(ops_test, f'python3 -c "{runner}"')
-    raw = base64.b64decode(output.strip())
-    environment: dict[str, str] = {}
-    for entry in raw.split(bytes(1)):
-        if not entry or b"=" not in entry:
-            continue
-        key, value = entry.split(b"=", 1)
-        environment[key.decode()] = value.decode(errors="replace")
-    return environment
+    plan_text = await worker_exec(
+        ops_test, "/charm/bin/pebble plan 2>/dev/null || pebble plan"
+    )
+    plan = yaml.safe_load(plan_text)
+    environment = plan["services"][WORKER_SERVICE]["environment"]
+    return {
+        key: "" if value is None else str(value)
+        for key, value in environment.items()
+    }
 
 
 async def assert_worker_config(
