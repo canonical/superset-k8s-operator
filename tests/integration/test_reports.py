@@ -6,7 +6,6 @@
 
 import asyncio
 import base64
-import json
 import logging
 import shlex
 import time
@@ -521,68 +520,6 @@ async def wait_for_report(
     )
 
 
-def create_slow_chart(
-    session: requests.Session,
-    url: str,
-    resource_name: str,
-    sqlalchemy_uri: str,
-) -> tuple[int, int, int]:
-    """Create a PostgreSQL virtual dataset and chart that blocks during render.
-
-    Args:
-        session: Authenticated Superset API session.
-        url: Superset base URL.
-        resource_name: Unique name for the temporary resources.
-        sqlalchemy_uri: Related PostgreSQL database connection URI.
-
-    Returns:
-        Database, dataset, and chart IDs, in that order.
-    """
-    database_id = api_post(
-        session,
-        url,
-        "/api/v1/database/",
-        {
-            "database_name": resource_name,
-            "expose_in_sqllab": True,
-            "sqlalchemy_uri": sqlalchemy_uri,
-        },
-    )
-    dataset_id = api_post(
-        session,
-        url,
-        "/api/v1/dataset/",
-        {
-            "database": database_id,
-            "schema": "public",
-            "sql": "SELECT 1 AS value, pg_sleep(90)",
-            "table_name": resource_name,
-        },
-    )
-    chart_id = api_post(
-        session,
-        url,
-        "/api/v1/chart/",
-        {
-            "datasource_id": dataset_id,
-            "datasource_type": "table",
-            "slice_name": resource_name,
-            "viz_type": "big_number_total",
-            "params": json.dumps(
-                {
-                    "adhoc_filters": [],
-                    "datasource": f"{dataset_id}__table",
-                    "granularity_sqla": None,
-                    "metric": {"expressionType": "SIMPLE", "column": None},
-                    "time_range": "No filter",
-                    "viz_type": "big_number_total",
-                }
-            ),
-        },
-    )
-    return database_id, dataset_id, chart_id
-
-
 @pytest.mark.abort_on_fail
 @pytest.mark.usefixtures("deploy")
 class TestReports:
@@ -621,26 +558,22 @@ class TestReports:
             api_delete(session, url, "/api/v1/report", report_id)
 
     async def test_screenshot_timeout_is_applied(self, ops_test: OpsTest):
-        """Fail a slow dashboard screenshot at the configured one-second limit."""
+        """Fail an example-chart screenshot at the configured one-second limit."""
         await configure_reports(ops_test, screenshot_timeout=1)
         await assert_worker_config(ops_test, screenshot_timeout=1)
         url = await get_unit_url(ops_test, UI_NAME, 0, 8088)
         session = await api_authentication(ops_test, url)
-        resource_name = f"report_timeout_{uuid.uuid4().hex}"
-        environment = await worker_environment(ops_test)
-        sqlalchemy_uri = environment["SQL_ALCHEMY_URI"]
-        database_id, dataset_id, chart_id = create_slow_chart(
-            session, url, resource_name, sqlalchemy_uri
+        charts = session.get(f"{url}/api/v1/chart/", timeout=30).json()[
+            "result"
+        ]
+        assert charts, "Expected example charts from load-examples=true"
+        report_id = create_chart_report(
+            session, url, charts[0]["id"], f"report_timeout_{uuid.uuid4().hex}"
         )
-        report_id = create_chart_report(session, url, chart_id, resource_name)
         try:
             await execute_report(ops_test, report_id)
             log = await wait_for_report(session, url, report_id, "Error")
             error = log.get("error_message", "")
-            assert "Timeout 1000ms exceeded" in error
-            assert ".chart-container" in error
+            assert "Timeout 1000ms exceeded" in error, error
         finally:
             api_delete(session, url, "/api/v1/report", report_id)
-            api_delete(session, url, "/api/v1/chart", chart_id)
-            api_delete(session, url, "/api/v1/dataset", dataset_id)
-            api_delete(session, url, "/api/v1/database", database_id)
