@@ -183,32 +183,6 @@ if os.getenv("ALERT_REPORTS", "").lower() == "true":
 
     WEBDRIVER_BASEURL_USER_FRIENDLY = os.getenv("SMTP_SUPERSET_EXTERNAL_URL")
 
-    def _authenticate_report_browser(browser_context, user):
-        """Scope the report user's session cookie to the host, not host:port.
-
-        Superset's default machine auth sets the browser cookie ``domain`` to
-        WEBDRIVER_BASEURL's netloc, which here includes the ``:APPLICATION_PORT``
-        port. Chromium never sends a cookie whose domain carries a port to the
-        port-bearing screenshot URL, so reports render the login page instead of
-        the chart. Passing Playwright the URL form scopes the cookie to the host
-        only, so it is sent to the screenshot request.
-        """
-        from superset.extensions import machine_auth_provider_factory
-        from superset.utils.urls import headless_url
-
-        page = browser_context.new_page()
-        page.goto(headless_url("/login/"))
-        cookies = machine_auth_provider_factory.instance.get_cookies(user)
-        browser_context.clear_cookies()
-        browser_context.add_cookies(
-            [
-                {"name": name, "value": value, "url": headless_url("/")}
-                for name, value in cookies.items()
-            ]
-        )
-        return browser_context
-
-    WEBDRIVER_AUTH_FUNC = _authenticate_report_browser
 
 # Celery cache warm-up
 class CeleryConfig(object):

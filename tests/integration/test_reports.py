@@ -5,6 +5,7 @@
 """Mail-free integration tests for alert and report screenshot rendering."""
 
 import asyncio
+import json
 import logging
 import shlex
 import time
@@ -12,6 +13,7 @@ import uuid
 from typing import Any, Mapping
 
 import pytest
+import pytest_asyncio
 import requests
 import yaml
 from integration.conftest import deploy  # noqa: F401, pylint: disable=W0611
@@ -27,30 +29,32 @@ logger = logging.getLogger(__name__)
 WORKER_NAME = f"superset-k8s-{CHARM_FUNCTIONS['worker']}"
 BEAT_NAME = f"superset-k8s-{CHARM_FUNCTIONS['beat']}"
 REPORT_APPS = [UI_NAME, BEAT_NAME, WORKER_NAME]
-# GLOBAL_ASYNC_QUERIES is intentionally omitted: it renders charts via
-# async queries whose results are delivered by polling/websocket after the
-# page loads. The headless screenshot browser used for reports is short lived
-# and never receives that delivery, so the chart's loading spinner ("Waiting
-# on <database>") never detaches and the screenshot times out. Reports only
-# need ALERT_REPORTS; charts must render synchronously for the screenshot.
-REPORT_CONFIG = {
-    "feature-flags": "ALERT_REPORTS",
-    "report-dry-run": "true",
-}
+SHARED_DATABASE_NAME = "superset-metadata"
+SHARED_SCHEMA = "public"
+SHARED_TABLE = "ab_user"
 POLL_INTERVAL = 5
 REPORT_TIMEOUT = 180
 
 
 async def configure_reports(
-    ops_test: OpsTest, screenshot_timeout: int
+    ops_test: OpsTest, screenshot_timeout: int, global_async_queries: bool
 ) -> None:
     """Configure every report component and wait for it to settle.
 
     Args:
         ops_test: Juju test model.
         screenshot_timeout: Screenshot renderer timeout in seconds.
+        global_async_queries: Whether to enable the GLOBAL_ASYNC_QUERIES flag.
     """
-    config = {**REPORT_CONFIG, "screenshot-timeout": str(screenshot_timeout)}
+    feature_flags = ["ALERT_REPORTS"]
+    if global_async_queries:
+        feature_flags.append("GLOBAL_ASYNC_QUERIES")
+
+    config = {
+        "feature-flags": ",".join(feature_flags),
+        "report-dry-run": "true",
+        "screenshot-timeout": str(screenshot_timeout),
+    }
     for app_name in REPORT_APPS:
         await ops_test.model.applications[app_name].set_config(config)
 
@@ -188,6 +192,77 @@ def api_delete(
     assert response.status_code in (200, 404), response.text
 
 
+@pytest_asyncio.fixture(name="report_chart", scope="module")
+async def report_chart_fixture(  # pylint: disable=redefined-outer-name
+    ops_test: OpsTest, deploy  # noqa: F811
+):
+    """Create a chart whose data source every unit can reach.
+
+    Superset's bundled examples live in a SQLite file written during UI
+    bootstrap, so they exist only on the UI unit's filesystem. Under
+    GLOBAL_ASYNC_QUERIES the chart query is executed by the worker, which has no
+    such file, so no example chart can ever render for a report. The Superset
+    metadata database is reachable from every unit, so it backs the chart here.
+
+    Args:
+        ops_test: Juju test model.
+        deploy: Deployment fixture.
+
+    Yields:
+        The created chart ID.
+    """
+    url = await get_unit_url(ops_test, UI_NAME, 0, 8088)
+    session = await api_authentication(ops_test, url)
+    environment = await worker_environment(ops_test)
+
+    database_id = api_post(
+        session,
+        url,
+        "/api/v1/database/",
+        {
+            "database_name": SHARED_DATABASE_NAME,
+            "sqlalchemy_uri": environment["SQL_ALCHEMY_URI"],
+            "expose_in_sqllab": True,
+        },
+    )
+    dataset_id = api_post(
+        session,
+        url,
+        "/api/v1/dataset/",
+        {
+            "database": database_id,
+            "schema": SHARED_SCHEMA,
+            "table_name": SHARED_TABLE,
+        },
+    )
+    chart_id = api_post(
+        session,
+        url,
+        "/api/v1/chart/",
+        {
+            "slice_name": f"report-source-{uuid.uuid4()}",
+            "viz_type": "big_number_total",
+            "datasource_id": dataset_id,
+            "datasource_type": "table",
+            "params": json.dumps(
+                {
+                    "datasource": f"{dataset_id}__table",
+                    "viz_type": "big_number_total",
+                    "metric": "count",
+                    "adhoc_filters": [],
+                    "time_range": "No filter",
+                }
+            ),
+        },
+    )
+
+    yield chart_id
+
+    api_delete(session, url, "/api/v1/chart", chart_id)
+    api_delete(session, url, "/api/v1/dataset", dataset_id)
+    api_delete(session, url, "/api/v1/database", database_id)
+
+
 def create_chart_report(
     session: requests.Session, url: str, chart_id: int, name: str
 ) -> int:
@@ -310,19 +385,27 @@ async def wait_for_report(
 class TestReports:
     """Exercise report rendering without requiring an SMTP deployment."""
 
-    async def test_dry_run_report_succeeds(self, ops_test: OpsTest):
-        """Render an example chart and suppress its notification delivery."""
-        await configure_reports(ops_test, screenshot_timeout=600)
+    @pytest.mark.parametrize(
+        "global_async_queries", [False, True], ids=["sync", "async"]
+    )
+    async def test_dry_run_report_succeeds(
+        self,
+        ops_test: OpsTest,
+        report_chart: int,
+        global_async_queries: bool,
+    ):
+        """Render a chart and suppress its notification delivery."""
+        await configure_reports(
+            ops_test,
+            screenshot_timeout=600,
+            global_async_queries=global_async_queries,
+        )
         await assert_worker_config(ops_test, screenshot_timeout=600)
         url = await get_unit_url(ops_test, UI_NAME, 0, 8088)
         session = await api_authentication(ops_test, url)
-        charts = session.get(f"{url}/api/v1/chart/", timeout=30).json()[
-            "result"
-        ]
-        assert charts, "Expected example charts from load-examples=true"
 
         report_id = create_chart_report(
-            session, url, charts[0]["id"], f"dry-run-{uuid.uuid4()}"
+            session, url, report_chart, f"dry-run-{uuid.uuid4()}"
         )
         try:
             output = await execute_report(ops_test, report_id)
@@ -332,18 +415,29 @@ class TestReports:
         finally:
             api_delete(session, url, "/api/v1/report", report_id)
 
-    async def test_screenshot_timeout_is_applied(self, ops_test: OpsTest):
-        """Fail an example-chart screenshot at the configured one-second limit."""
-        await configure_reports(ops_test, screenshot_timeout=1)
+    @pytest.mark.parametrize(
+        "global_async_queries", [False, True], ids=["sync", "async"]
+    )
+    async def test_screenshot_timeout_is_applied(
+        self,
+        ops_test: OpsTest,
+        report_chart: int,
+        global_async_queries: bool,
+    ):
+        """Fail a chart screenshot at the configured one-second limit."""
+        await configure_reports(
+            ops_test,
+            screenshot_timeout=1,
+            global_async_queries=global_async_queries,
+        )
         await assert_worker_config(ops_test, screenshot_timeout=1)
         url = await get_unit_url(ops_test, UI_NAME, 0, 8088)
         session = await api_authentication(ops_test, url)
-        charts = session.get(f"{url}/api/v1/chart/", timeout=30).json()[
-            "result"
-        ]
-        assert charts, "Expected example charts from load-examples=true"
         report_id = create_chart_report(
-            session, url, charts[0]["id"], f"report_timeout_{uuid.uuid4().hex}"
+            session,
+            url,
+            report_chart,
+            f"report_timeout_{uuid.uuid4().hex}",
         )
         try:
             await execute_report(ops_test, report_id)
