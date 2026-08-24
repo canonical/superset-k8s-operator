@@ -45,7 +45,7 @@ async def charm_fixture(
         charm = await ops_test.build_charm(".")
         assert charm, "Charm not built"
         return charm
-    return charms[0]
+    return Path(charms[0]).resolve()
 
 
 @pytest.mark.skip_if_deployed
@@ -82,9 +82,15 @@ async def deploy(ops_test: OpsTest, charm: str, charm_image: str):
                 "feature-flags": "GLOBAL_ASYNC_QUERIES",
             }
 
-            # Load examples for the UI charm
+            # Load examples and enable MCP for the UI charm
             if app_name == UI_NAME:
-                superset_config.update({"load-examples": "True"})
+                superset_config.update({
+                    "load-examples": "True",
+                    "mcp-enabled": "True",
+                    "mcp-auth-enabled": "True",
+                    "mcp-jwt-secret": "a" * 64,
+                    "feature-flags": "GLOBAL_ASYNC_QUERIES,RLS_IN_SQLLAB",
+                })
 
             await deploy_and_relate_superset_charm(
                 ops_test, app_name, superset_config, charm, resources
