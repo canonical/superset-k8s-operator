@@ -129,6 +129,16 @@ options:
     description: The time in seconds the server can maintain a database connection.
     default: 180
     type: int
+  screenshot-timeout:
+    description: Maximum time in seconds to wait for report and alert screenshots to render.
+    default: 600
+    type: int
+  report-dry-run:
+    description: >
+      When true, render alert and report screenshots but do not deliver email or Slack
+      notifications. Intended for testing the rendering pipeline; leave false in production.
+    default: false
+    type: boolean
   server-worker-amount:
     description: "Number of Gunicorn worker processes per UI pod. Valid range: 1-32."
     default: 1

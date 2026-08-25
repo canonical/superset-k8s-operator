@@ -66,6 +66,8 @@ class CharmConfig(BaseConfigModel):
     sentry_sample_rate: Optional[str]
     server_alias: str
     webserver_timeout: int
+    screenshot_timeout: int
+    report_dry_run: bool
     server_worker_amount: int
     gunicorn_timeout: int
     celery_worker_concurrency: int
@@ -212,6 +214,25 @@ class CharmConfig(BaseConfigModel):
         if 60 <= int_value <= 300:
             return int_value
         raise ValueError("Value out of range.")
+
+    @validator("screenshot_timeout")
+    @classmethod
+    def screenshot_timeout_validator(cls, value: str) -> int:
+        """Check validity of `screenshot_timeout` field.
+
+        Args:
+            value: screenshot-timeout value
+
+        Returns:
+            Integer screenshot timeout in seconds
+
+        Raises:
+            ValueError: if the value is not positive
+        """
+        int_value = int(value)
+        if int_value >= 1:
+            return int_value
+        raise ValueError("Value must be positive.")
 
     @validator("server_worker_amount")
     @classmethod
