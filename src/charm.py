@@ -12,22 +12,25 @@ https://discourse.charmhub.io/t/4208
 
 import logging
 import os
+from typing import Optional
 
+import ops
 from charms.data_platform_libs.v0.data_models import TypedCharmBase
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
 from charms.loki_k8s.v1.loki_push_api import LogForwarder
-from charms.nginx_ingress_integrator.v0.nginx_route import require_nginx_route
 from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointProvider
 from charms.redis_k8s.v0.redis import RedisRelationCharmEvents
-from ops import ModelError, SecretNotFoundError, pebble
-from ops.charm import ConfigChangedEvent, PebbleReadyEvent
-from ops.main import main
-from ops.model import (
+from charms.traefik_k8s.v2.ingress import IngressPerAppRequirer
+from ops import (
     ActiveStatus,
     BlockedStatus,
     MaintenanceStatus,
+    ModelError,
+    SecretNotFoundError,
     WaitingStatus,
+    pebble,
 )
+from ops.charm import ConfigChangedEvent, PebbleReadyEvent
 from ops.pebble import CheckStatus
 from pydantic import ValidationError
 
@@ -37,6 +40,7 @@ from literals import (
     CONFIG_PATH,
     DB_RELATION_NAME,
     DEFAULT_ROLES,
+    INGRESS_RELATION_NAME,
     LOG_FILE,
     PROMETHEUS_METRICS_PORT,
     REDIS_RELATION_NAME,
@@ -63,7 +67,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
     """Charm the service.
 
     Attrs:
-        external_hostname: DNS listing used for external connections.
+        https_ingress_url: external HTTPS URL published by the ingress provider
         on: redis relation events from redis_k8s library
         config_type: the charm structured config
     """
@@ -72,17 +76,25 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
     on = RedisRelationCharmEvents()
 
     @property
-    def external_hostname(self):
-        """Return the DNS listing used for external connections."""
-        return self.config["external-hostname"] or self.app.name
+    def https_ingress_url(self) -> Optional[str]:
+        """Return the external HTTPS URL published by the ingress provider.
 
-    def __init__(self, *args):
+        Returns:
+            The URL without any trailing slash, or None when no ingress
+            provider has published one over HTTPS yet.
+        """
+        url = self.ingress.url
+        if not url or not url.startswith("https://"):
+            return None
+        return url.rstrip("/")
+
+    def __init__(self, framework: ops.Framework):
         """Construct.
 
         Args:
-            args: Ignore.
+            framework: The ops framework.
         """
-        super().__init__(*args)
+        super().__init__(framework)
         self.name = APP_NAME
 
         # Handle postgresql relation
@@ -113,7 +125,18 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         self.framework.observe(self.on.secret_changed, self._on_secret_changed)
 
         # Handle Ingress
-        self._require_nginx_route()
+        self.ingress = IngressPerAppRequirer(
+            self,
+            relation_name=INGRESS_RELATION_NAME,
+            port=APPLICATION_PORT,
+            scheme="http",
+            strip_prefix=True,
+            redirect_https=True,
+        )
+        self.framework.observe(self.ingress.on.ready, self._on_ingress_changed)
+        self.framework.observe(
+            self.ingress.on.revoked, self._on_ingress_changed
+        )
 
         # Loki
         self._log_forwarder = LogForwarder(self, relation_name="logging")
@@ -137,18 +160,14 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             refresh_event=self.on.config_changed,
         )
 
-    def _require_nginx_route(self):
-        """Require nginx-route relation based on current configuration."""
-        require_nginx_route(
-            charm=self,
-            service_hostname=self.model.config.get(
-                "external-hostname", self.app.name
-            ),
-            service_name=self.app.name,
-            service_port=APPLICATION_PORT,
-            tls_secret_name=self.model.config.get("tls-secret-name", ""),
-            backend_protocol="HTTP",
-        )
+    @log_event_handler(logger)
+    def _on_ingress_changed(self, event):
+        """Handle the external URL being granted or revoked by the provider.
+
+        Args:
+            event: The ingress ready or revoked event.
+        """
+        self._update(event)
 
     @log_event_handler(logger)
     def _on_install(self, event):
@@ -352,6 +371,12 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         if self.model.get_relation(REDIS_RELATION_NAME) is None:
             self.unit.status = BlockedStatus("Needs a Redis relation")
+            return False
+
+        if self.oauth.is_related and self.https_ingress_url is None:
+            self.unit.status = BlockedStatus(
+                "OAuth requires an HTTPS ingress URL"
+            )
             return False
 
         return True
@@ -649,4 +674,4 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
 
 if __name__ == "__main__":
-    main(SupersetK8SCharm)
+    ops.main(SupersetK8SCharm)

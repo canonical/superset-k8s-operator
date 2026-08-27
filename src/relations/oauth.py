@@ -68,14 +68,17 @@ class OAuthRelation(Object):
         )
 
     @property
-    def _client_config(self) -> ClientConfig:
-        """Build the client registration data from charm configuration."""
-        external_hostname = (
-            self.charm.model.config.get("external-hostname")
-            or self.charm.app.name
-        )
+    def _client_config(self) -> Optional[ClientConfig]:
+        """Build the client registration data from the ingress URL.
+
+        The external URL is published by the ingress provider, so it is only
+        known once that relation is ready.
+        """
+        ingress_url = self.charm.https_ingress_url
+        if ingress_url is None:
+            return None
         return ClientConfig(
-            redirect_uri=(f"https://{external_hostname}{OAUTH_CALLBACK_PATH}"),
+            redirect_uri=f"{ingress_url}{OAUTH_CALLBACK_PATH}",
             scope=OAUTH_SCOPE,
             grant_types=OAUTH_GRANT_TYPES,
         )
@@ -113,7 +116,14 @@ class OAuthRelation(Object):
         """Publish current client registration data on the relation."""
         if not self.is_related:
             return
-        self.requirer.update_client_config(self._client_config)
+        client_config = self._client_config
+        if client_config is None:
+            logger.info(
+                "OAuth client config not published: "
+                "waiting for an HTTPS ingress URL"
+            )
+            return
+        self.requirer.update_client_config(client_config)
 
     def _on_oauth_relation_created(self, event) -> None:
         """Publish client data when a provider relation is created.

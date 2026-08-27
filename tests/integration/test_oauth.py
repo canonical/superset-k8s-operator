@@ -10,11 +10,17 @@ import pytest
 import pytest_asyncio
 import requests
 import yaml
-from integration.helpers import UI_NAME, get_unit_url
+from integration.helpers import (
+    TLS_NAME,
+    TRAEFIK_CONFIG,
+    TRAEFIK_NAME,
+    UI_NAME,
+    get_unit_url,
+)
 from pytest_operator.plugin import OpsTest
 
+TRAEFIK_DOMAIN = TRAEFIK_CONFIG["external_hostname"]
 OAUTH_INTEGRATOR_NAME = "oauth-external-idp-integrator"
-OAUTH_EXTERNAL_HOSTNAME = "superset.example"
 OAUTH_STUB_CONFIG = {
     "issuer_url": "https://accounts.google.com",
     "authorization_endpoint": "https://accounts.google.com/o/oauth2/auth",
@@ -38,8 +44,21 @@ async def deploy_oauth(ops_test: OpsTest, deploy) -> None:
         deploy: Shared deployment fixture from the integration conftest.
     """
     del deploy
-    await ops_test.model.applications[UI_NAME].set_config(
-        {"external-hostname": OAUTH_EXTERNAL_HOSTNAME}
+    await ops_test.model.deploy(TLS_NAME, channel="1/stable")
+    await ops_test.model.wait_for_idle(
+        apps=[TLS_NAME],
+        status="active",
+        raise_on_blocked=False,
+        timeout=1200,
+    )
+    await ops_test.model.integrate(
+        f"{TRAEFIK_NAME}:certificates", f"{TLS_NAME}:certificates"
+    )
+    await ops_test.model.wait_for_idle(
+        apps=[TRAEFIK_NAME, UI_NAME],
+        status="active",
+        raise_on_blocked=False,
+        timeout=1200,
     )
     await ops_test.model.deploy(
         OAUTH_INTEGRATOR_NAME,
@@ -98,8 +117,9 @@ class TestOAuth:
         """Register the HTTPS OIDC callback and requested client settings."""
         relation_data = await _oauth_client_relation_data(ops_test)
 
+        expected_host = f"{ops_test.model_name}-{UI_NAME}.{TRAEFIK_DOMAIN}"
         assert relation_data["redirect_uri"] == (
-            f"https://{OAUTH_EXTERNAL_HOSTNAME}/oauth-authorized/oidc"
+            f"https://{expected_host}/oauth-authorized/oidc"
         )
         assert relation_data["scope"] == "openid email profile"
         assert json.loads(relation_data["grant_types"]) == [

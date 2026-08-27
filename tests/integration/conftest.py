@@ -11,10 +11,11 @@ import pytest
 import pytest_asyncio
 from integration.helpers import (
     CHARM_FUNCTIONS,
-    NGINX_NAME,
     POSTGRES_NAME,
     REDIS_NAME,
     SUPERSET_SECRET_KEY,
+    TRAEFIK_CONFIG,
+    TRAEFIK_NAME,
     UI_NAME,
     deploy_and_relate_superset_charm,
 )
@@ -54,7 +55,12 @@ async def deploy(ops_test: OpsTest, charm: str, charm_image: str):
     await asyncio.gather(
         ops_test.model.deploy(POSTGRES_NAME, channel="14", trust=True),
         ops_test.model.deploy(REDIS_NAME, channel="edge", trust=True),
-        ops_test.model.deploy(NGINX_NAME, trust=True),
+        ops_test.model.deploy(
+            TRAEFIK_NAME,
+            channel="latest/stable",
+            config=TRAEFIK_CONFIG,
+            trust=True,
+        ),
     )
 
     async with ops_test.fast_forward():
@@ -64,13 +70,6 @@ async def deploy(ops_test: OpsTest, charm: str, charm_image: str):
             raise_on_blocked=False,
             timeout=2000,
         )
-        await ops_test.model.wait_for_idle(
-            apps=[NGINX_NAME],
-            status="waiting",
-            raise_on_blocked=False,
-            timeout=200,
-        )
-
         resources = {"superset-image": charm_image}
 
         # Iterate through UI, worker and beat charms
@@ -91,9 +90,11 @@ async def deploy(ops_test: OpsTest, charm: str, charm_image: str):
                 ops_test, app_name, superset_config, charm, resources
             )
 
-        await ops_test.model.integrate(UI_NAME, NGINX_NAME)
+        await ops_test.model.integrate(
+            f"{UI_NAME}:ingress", f"{TRAEFIK_NAME}:ingress"
+        )
         await ops_test.model.wait_for_idle(
-            apps=[NGINX_NAME, UI_NAME],
+            apps=[TRAEFIK_NAME, UI_NAME],
             status="active",
             raise_on_blocked=False,
             timeout=300,

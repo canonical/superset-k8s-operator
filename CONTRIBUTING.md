@@ -207,10 +207,11 @@ This relation makes use of the `trino_k8s.v0.trino_catalog` library. The charm c
 
 ### Authentication
 To validate OIDC authentication, deploy Hydra or an
-`oauth-external-idp-integrator`, configure `external-hostname` for the Superset
-ingress, and integrate the provider with `superset-k8s:oauth`. The callback URL
-registered by the charm is
-`https://<external-hostname>/oauth-authorized/oidc`.
+`oauth-external-idp-integrator`, relate Superset to an ingress provider that
+publishes an `https://` URL, and integrate the provider with
+`superset-k8s:oauth`. The callback URL registered by the charm is the ingress
+URL plus `/oauth-authorized/oidc`; until an HTTPS ingress URL exists the charm
+blocks with `OAuth requires an HTTPS ingress URL`.
 
 Once you have authenticated, verify the user credentials created in Superset
 through the PostgreSQL charm as follows:
