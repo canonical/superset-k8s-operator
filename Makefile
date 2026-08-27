@@ -204,5 +204,4 @@ import-rock: $(ROCK_FILE)
 
 .PHONY: venv
 venv:
-	uv venv --clear venv
-	uv pip install --python venv/bin/python -r requirements.txt
+	uv sync

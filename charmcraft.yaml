@@ -6,17 +6,25 @@
 type: charm
 parts:
   charm:
+    plugin: uv
+    source: .
+    uv-groups:
+      - charmlibs-pydeps
+    build-snaps:
+      - astral-uv
     build-packages:
       - libffi-dev
       - libssl-dev
       # Pin to prevent pulling incompatible `maturin` version
       - "rustc-1.85"
       - "cargo-1.85"
-    charm-binary-python-packages:
-      - psycopg2-binary
-      - cryptography
     stage:
       - "-superset_rock"
+  templates-dump:
+    plugin: dump
+    source: .
+    stage:
+      - templates/
 bases:
   - build-on:
     - name: ubuntu
@@ -34,14 +42,14 @@ charm-libs:
     version: "0"
   - lib: "loki_k8s.loki_push_api"
     version: "1"
-  - lib: "nginx_ingress_integrator.nginx_route"
-    version: "0"
   - lib: "prometheus_k8s.prometheus_scrape"
     version: "0"
   - lib: "redis_k8s.redis"
     version: "0"
   - lib: "tls_certificates_interface.tls_certificates"
     version: "4"
+  - lib: "traefik_k8s.ingress"
+    version: "2"
   - lib: "trino_k8s.trino_catalog"
     version: "0"
   - lib: "hydra.oauth"
