@@ -2,9 +2,13 @@ header:
   license:
     spdx-id: Apache-2.0
     copyright-owner: Canonical Ltd.
-    copyright-year: 2023
     content: |
       Copyright [year] [owner]
+      See LICENSE file for licensing details.
+    # License year is supposed to be the year where a file is first created.
+    # But the workflow does not check it correctly, so we change the pattern.
+    pattern: |
+      Copyright \d{4} Canonical Ltd.
       See LICENSE file for licensing details.
   paths:
     - '**'
@@ -35,5 +39,6 @@ header:
     - 'trivy.yaml'
     - 'lib/**'
     - 'templates/*'
+    - 'uv.lock'
     - 'superset_rock/startup-scripts/**'
   comment: on-failure
