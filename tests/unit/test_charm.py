@@ -8,891 +8,643 @@
 
 # pylint:disable=protected-access
 
+import dataclasses
 import json
 import logging
-from unittest import TestCase, mock
+from unittest import mock
 
-from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus
-from ops.pebble import CheckStatus
-from ops.testing import Harness
+from ops import ActiveStatus, BlockedStatus, MaintenanceStatus
+from ops.pebble import CheckStatus, Layer
+from ops.testing import CheckInfo, Secret, State
 
-from charm import SupersetK8SCharm
 from literals import CA_CERT_LOCAL_PATH, CA_CERT_PATH
-
-SERVER_PORT = "8088"
-logger = logging.getLogger(__name__)
-CA_PEM = (
-    "-----BEGIN CERTIFICATE-----\nMIIBexample\n-----END CERTIFICATE-----\n"
+from tests.unit.helpers import (
+    CA_PEM,
+    INCOMPLETE_PEBBLE_PLAN,
+    MODEL_NAME,
+    SECRET_KEY,
+    SERVER_PORT,
+    SMTP_SECRET_CONTENTS,
+    build_state,
+    ingress_relation,
+    oauth_relation,
+    oauth_secret,
+    superset_container,
+    superset_environment,
 )
-mock_incomplete_pebble_plan = {
-    "services": {"superset": {"override": "replace"}}
+
+logger = logging.getLogger(__name__)
+
+WANT_ENVIRONMENT = {
+    "ALLOW_IMAGE_DOMAINS": None,
+    "SUPERSET_SECRET_KEY": SECRET_KEY,
+    "ADMIN_PASSWORD": "admin",  # nosec B105
+    "CHARM_FUNCTION": "app-gunicorn",
+    "SQL_ALCHEMY_URI": "postgresql://postgres_user:admin@myhost:5432/superset",
+    "REDIS_HOST": "redis-host",
+    "REDIS_PORT": 6379,
+    "REDIS_TIMEOUT": 300,
+    "SQLALCHEMY_POOL_SIZE": 5,
+    "SQLALCHEMY_POOL_TIMEOUT": 300,
+    "SQLALCHEMY_MAX_OVERFLOW": 5,
+    "OAUTH_ADMIN_EMAIL": "admin@superset.com",
+    "SELF_REGISTRATION_ROLE": "Public",
+    "SUPERSET_LOAD_EXAMPLES": False,
+    "PYTHONPATH": "/app/pythonpath",
+    "HTML_SANITIZATION": True,
+    "HTML_SANITIZATION_SCHEMA_EXTENSIONS": None,
+    "GLOBAL_ASYNC_QUERIES_JWT": (
+        "18b2f8fcd0d708d270c00508da6e8dfc7a21eff14ea438056809805150439a04"
+    ),
+    "GLOBAL_ASYNC_QUERIES_POLLING_DELAY": 500,
+    "SENTRY_DSN": None,
+    "SENTRY_ENVIRONMENT": None,
+    "SENTRY_RELEASE": None,
+    "SENTRY_REDACT_PARAMS": False,
+    "SENTRY_SAMPLE_RATE": 1.0,
+    "SERVER_ALIAS": "superset-k8s",
+    "APPLICATION_PORT": 8088,
+    "SUPERSET_PORT": 8088,
+    "WEBSERVER_TIMEOUT": 180,
+    "SCREENSHOT_TIMEOUT": 600,
+    "ALERT_REPORTS_DRY_RUN": False,
+    "SERVER_WORKER_AMOUNT": 1,
+    "GUNICORN_TIMEOUT": 60,
+    "CELERY_WORKER_CONCURRENCY": 0,
+    "STATSD_PORT": 9125,
+    "LOG_FILE": "/var/log/superset.log",
+    "CACHE_WARMUP": False,
+    "LOG_RETENTION_ENABLED": True,
+    "LOG_RETENTION_DAYS": 730,
+    "DASHBOARD_SIZE_LIMIT": 65535,
+    "MAX_CONTENT_LENGTH": None,
+    "MAX_FORM_MEMORY_SIZE": None,
+    "MAX_FORM_PARTS": None,
+    "DATA_ACCESS_REQUEST_URL": None,
+    "ENABLE_RAISE_FOR_ACCESS_PATCH": False,
 }
 
 
-class TestCharm(TestCase):  # pylint: disable=too-many-public-methods
-    """Unit tests.
+def test_initial_plan(ctx):
+    """The initial pebble plan is empty."""
+    state = State(leader=True, containers={superset_container()})
 
-    Attrs:
-        maxDiff: Specifies max difference shown by failed tests.
+    with ctx(ctx.on.update_status(), state) as manager:
+        container = manager.charm.unit.get_container("superset")
+        assert container.get_plan().to_dict() == {}
+
+
+def test_ready(ctx):
+    """The pebble plan is correctly generated when the charm is ready."""
+    container = superset_container()
+    state_in = build_state(container=container)
+
+    state_out = ctx.run(ctx.on.pebble_ready(container), state_in)
+
+    plan = state_out.get_container("superset").plan.to_dict()
+    assert plan["services"]["superset"] == {
+        "override": "replace",
+        "summary": "superset server",
+        "command": "/app/k8s/k8s-bootstrap.sh",
+        "startup": "enabled",
+        "environment": WANT_ENVIRONMENT,
+        "on-check-failure": {"up": "ignore"},
+    }
+
+    # The service was started.
+    assert (
+        state_out.get_container("superset").services["superset"].is_running()
+    )
+
+    # The MaintenanceStatus is set with replan message.
+    assert state_out.unit_status == MaintenanceStatus("replanning application")
+
+
+def test_config_changed(ctx):
+    """The pebble plan changes according to config changes."""
+    state_in = build_state(
+        config={
+            "admin-password": "secure-pass",
+            "allow-image-domains": "assets.ubuntu.com",
+            "feature-flags": "ALLOW_ADHOC_SUBQUERY, !GLOBAL_ASYNC_QUERIES",
+            "enable-raise-for-access-patch": True,
+        }
+    )
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    want_environment = dict(WANT_ENVIRONMENT)
+    want_environment.update(
+        {
+            "ALLOW_IMAGE_DOMAINS": "assets.ubuntu.com",
+            "ADMIN_PASSWORD": "secure-pass",  # nosec B105
+            "ALLOW_ADHOC_SUBQUERY": True,
+            "GLOBAL_ASYNC_QUERIES": False,
+            "ENABLE_RAISE_FOR_ACCESS_PATCH": True,
+        }
+    )
+    assert superset_environment(state_out) == want_environment
+    assert state_out.unit_status == MaintenanceStatus("replanning application")
+
+
+def test_observability_pebble_layer(ctx):
+    """The metrics exporter service is part of the generated plan."""
+    state_out = ctx.run(ctx.on.config_changed(), build_state())
+
+    plan = state_out.get_container("superset").plan.to_dict()
+    assert plan["services"]["metrics-exporter"] == {
+        "override": "replace",
+        "summary": "metrics exporter",
+        "command": "/usr/bin/statsd_exporter",
+        "startup": "enabled",
+        "after": ["superset"],
+    }
+
+
+def test_ingress_requirer_publishes_databag(ctx):
+    """The charm advertises its workload port to the ingress provider."""
+    ingress = ingress_relation(url=None)
+    state_in = build_state(extra_relations=(ingress,))
+
+    state_out = ctx.run(ctx.on.relation_changed(ingress), state_in)
+
+    databag = state_out.get_relation(ingress.id).local_app_data
+    assert databag["port"] == SERVER_PORT
+    assert databag["strip-prefix"] == "true"
+    assert databag["redirect-https"] == "true"
+    assert json.loads(databag["model"]) == MODEL_NAME
+    assert json.loads(databag["name"]) == "superset-k8s"
+
+
+def test_ingress_url_is_available_to_the_charm(ctx):
+    """A URL published by the provider is readable as the external URL."""
+    state_in = build_state(
+        extra_relations=(ingress_relation("https://superset.example"),)
+    )
+
+    with ctx(ctx.on.config_changed(), state_in) as manager:
+        manager.run()
+        assert manager.charm.https_ingress_url == "https://superset.example"
+
+
+def test_ingress_url_without_tls_is_not_used(ctx):
+    """A plain HTTP URL is not treated as an external HTTPS URL."""
+    state_in = build_state(
+        extra_relations=(ingress_relation("http://superset.example"),)
+    )
+
+    with ctx(ctx.on.config_changed(), state_in) as manager:
+        manager.run()
+        assert manager.charm.https_ingress_url is None
+
+
+def test_ingress_ready_republishes_oauth_client_config(ctx):
+    """A URL arriving from the provider reaches the identity provider."""
+    oauth = oauth_relation()
+    ingress = ingress_relation("https://superset.example")
+    state_in = build_state(extra_relations=(oauth, ingress))
+
+    state_out = ctx.run(ctx.on.relation_changed(ingress), state_in)
+
+    assert state_out.get_relation(oauth.id).local_app_data["redirect_uri"] == (
+        "https://superset.example/oauth-authorized/oidc"
+    )
+
+
+def test_oauth_leader_publishes_client_config(ctx):
+    """The leader registers Superset's OIDC callback with the provider."""
+    oauth = oauth_relation()
+    state_in = build_state(
+        extra_relations=(oauth, ingress_relation("https://superset.example"))
+    )
+
+    state_out = ctx.run(ctx.on.relation_created(oauth), state_in)
+
+    databag = state_out.get_relation(oauth.id).local_app_data
+    assert databag["redirect_uri"] == (
+        "https://superset.example/oauth-authorized/oidc"
+    )
+    assert databag["scope"] == "openid email profile"
+    assert json.loads(databag["grant_types"]) == ["authorization_code"]
+
+
+def test_oauth_redirect_uri_strips_trailing_slash(ctx):
+    """A root-serving provider URL does not yield a double-slash callback."""
+    oauth = oauth_relation()
+    state_in = build_state(
+        extra_relations=(oauth, ingress_relation("https://superset.example/"))
+    )
+
+    state_out = ctx.run(ctx.on.relation_created(oauth), state_in)
+
+    assert state_out.get_relation(oauth.id).local_app_data["redirect_uri"] == (
+        "https://superset.example/oauth-authorized/oidc"
+    )
+
+
+def test_oauth_without_ingress_does_not_publish_client_config(ctx):
+    """Registration waits for the provider to publish an external URL."""
+    oauth = oauth_relation()
+    state_in = build_state(extra_relations=(oauth,))
+
+    state_out = ctx.run(ctx.on.relation_created(oauth), state_in)
+
+    assert (
+        "redirect_uri" not in state_out.get_relation(oauth.id).local_app_data
+    )
+
+
+def test_oauth_without_ingress_blocks_the_unit(ctx):
+    """An OAuth relation without an HTTPS ingress URL blocks the unit."""
+    state_in = build_state(extra_relations=(oauth_relation(),))
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    assert state_out.unit_status == BlockedStatus(
+        "OAuth requires an HTTPS ingress URL"
+    )
+
+
+def test_oauth_non_leader_does_not_publish_client_config(ctx):
+    """Only the leader writes OAuth client registration data."""
+    oauth = oauth_relation()
+    state_in = build_state(
+        leader=False,
+        extra_relations=(oauth, ingress_relation("https://superset.example")),
+    )
+
+    state_out = ctx.run(ctx.on.relation_created(oauth), state_in)
+
+    assert state_out.get_relation(oauth.id).local_app_data == {}
+
+
+def test_oauth_provider_populates_environment(ctx):
+    """Provider relation data and its secret configure Superset OIDC."""
+    secret = oauth_secret()
+    state_in = build_state(
+        extra_relations=(
+            oauth_relation(secret.id),
+            ingress_relation("https://superset.example"),
+        ),
+        secrets=(secret,),
+    )
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    environment = superset_environment(state_out)
+    assert environment["OAUTH_ISSUER_URL"] == "https://idp.example"
+    assert environment["OAUTH_AUTHORIZATION_ENDPOINT"] == (
+        "https://idp.example/authorize"
+    )
+    assert environment["OAUTH_TOKEN_ENDPOINT"] == "https://idp.example/token"
+    assert environment["OAUTH_USERINFO_ENDPOINT"] == (
+        "https://idp.example/userinfo"
+    )
+    assert environment["OAUTH_JWKS_ENDPOINT"] == "https://idp.example/jwks"
+    assert environment["OAUTH_SCOPE"] == "openid email profile"
+    assert environment["OAUTH_CLIENT_ID"] == "superset-client"
+    assert environment["OAUTH_CLIENT_SECRET"] == "secret-value"
+
+
+def test_oauth_incomplete_registration_is_not_enabled(ctx):
+    """A relation without provider credentials leaves OAuth disabled."""
+    state_in = build_state(
+        extra_relations=(
+            oauth_relation(),
+            ingress_relation("https://superset.example"),
+        )
+    )
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    assert not [
+        key
+        for key in superset_environment(state_out)
+        if key.startswith("OAUTH_") and key != "OAUTH_ADMIN_EMAIL"
+    ]
+
+
+def test_oauth_inaccessible_secret_is_not_enabled(ctx):
+    """Wait safely while OAuth provider credentials are inaccessible."""
+    state_in = build_state(
+        extra_relations=(
+            oauth_relation("secret:not-granted-to-superset"),
+            ingress_relation("https://superset.example"),
+        )
+    )
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    assert "OAUTH_CLIENT_ID" not in superset_environment(state_out)
+
+
+def test_oauth_relation_removal_clears_environment(ctx):
+    """Removing the provider relation removes workload OAuth settings."""
+    secret = oauth_secret()
+    oauth = oauth_relation(secret.id)
+    state_in = build_state(
+        extra_relations=(
+            oauth,
+            ingress_relation("https://superset.example"),
+        ),
+        secrets=(secret,),
+    )
+
+    state_mid = ctx.run(ctx.on.config_changed(), state_in)
+    assert "OAUTH_CLIENT_ID" in superset_environment(state_mid)
+
+    state_broken = ctx.run(
+        ctx.on.relation_broken(state_mid.get_relation(oauth.id)), state_mid
+    )
+
+    assert "OAUTH_CLIENT_ID" not in superset_environment(state_broken)
+
+
+def test_oauth_secret_change_refreshes_credentials(ctx):
+    """A provider credential update is reflected in the workload."""
+    secret = oauth_secret(latest_value="rotated-secret")
+    state_in = build_state(
+        extra_relations=(
+            oauth_relation(secret.id),
+            ingress_relation("https://superset.example"),
+        ),
+        secrets=(secret,),
+    )
+
+    state_out = ctx.run(ctx.on.secret_changed(secret), state_in)
+
+    assert superset_environment(state_out)["OAUTH_CLIENT_SECRET"] == (
+        "rotated-secret"
+    )
+
+
+def with_check(state, status):
+    """Return the state with a pebble check reported on the container.
+
+    The check can only be declared once the plan the charm applied carries
+    it, so this is applied to the state a first reconcile produced.
+
+    Args:
+        state: a state whose plan already declares the `up` check.
+        status: the status the check reports.
+
+    Returns:
+        A new `State` whose container reports the check.
     """
-
-    maxDiff = None
-
-    def setUp(self):
-        """Set up for the unit tests."""
-        self.harness = Harness(SupersetK8SCharm)
-        self.addCleanup(self.harness.cleanup)
-
-        patcher_redis = mock.patch(
-            "charm.Redis.get_redis_relation_data",
-            return_value=("redis-host", 6379),
-        )
-        self.mock_redis = patcher_redis.start()
-        self.addCleanup(patcher_redis.stop)
-
-        patcher_db = mock.patch(
-            "charm.query_metadata_database",
-            return_value=["Public", "Gamma", "Alpha", "Admin"],
-        )
-        self.mock_query_metadata_database = patcher_db.start()
-        self.addCleanup(patcher_db.stop)
-
-        # Required config for structured config validation
-        self.harness.update_config({"superset-secret-key": "example-pass"})
-        self.harness.set_can_connect("superset", True)
-        self.harness.set_leader(True)
-        self.harness.set_model_name("superset-model")
-        self.harness.add_network("10.0.0.10", endpoint="peer")
-        self.harness.begin()
-        logging.info("setup complete")
-
-    def test_initial_plan(self):
-        """The initial pebble plan is empty."""
-        harness = self.harness
-        initial_plan = harness.get_container_pebble_plan("superset").to_dict()
-        self.assertEqual(initial_plan, {})
-
-    def test_ready(self):
-        """The pebble plan is correctly generated when the charm is ready."""
-        harness = self.harness
-        simulate_lifecycle(harness)
-
-        # The plan is generated after pebble is ready.
-        want_plan = {
-            "services": {
-                "superset": {
-                    "override": "replace",
-                    "summary": "superset server",
-                    "command": "/app/k8s/k8s-bootstrap.sh",
-                    "startup": "enabled",
-                    "environment": {
-                        "ALLOW_IMAGE_DOMAINS": None,
-                        "SUPERSET_SECRET_KEY": "example-pass",  # nosec
-                        "ADMIN_USER": "unique-user",
-                        "ADMIN_PASSWORD": "admin",  # nosec
-                        "CHARM_FUNCTION": "app-gunicorn",
-                        "SQL_ALCHEMY_URI": "postgresql://postgres_user:admin@myhost:5432/superset",
-                        "REDIS_HOST": "redis-host",
-                        "REDIS_PORT": 6379,
-                        "REDIS_TIMEOUT": 300,
-                        "SQLALCHEMY_POOL_SIZE": 5,
-                        "SQLALCHEMY_POOL_TIMEOUT": 300,
-                        "SQLALCHEMY_MAX_OVERFLOW": 5,
-                        "OAUTH_ADMIN_EMAIL": "admin@superset.com",
-                        "SELF_REGISTRATION_ROLE": "Public",
-                        "SUPERSET_LOAD_EXAMPLES": False,
-                        "PYTHONPATH": "/app/pythonpath",
-                        "HTML_SANITIZATION": True,
-                        "HTML_SANITIZATION_SCHEMA_EXTENSIONS": None,
-                        "GLOBAL_ASYNC_QUERIES_JWT": "18b2f8fcd0d708d270c00508da6e8dfc7a21eff14ea438056809805150439a04",
-                        "GLOBAL_ASYNC_QUERIES_POLLING_DELAY": 500,
-                        "SENTRY_DSN": None,
-                        "SENTRY_ENVIRONMENT": None,
-                        "SENTRY_RELEASE": None,
-                        "SENTRY_REDACT_PARAMS": False,
-                        "SENTRY_SAMPLE_RATE": 1.0,
-                        "SERVER_ALIAS": "superset-k8s",
-                        "APPLICATION_PORT": 8088,
-                        "SUPERSET_PORT": 8088,
-                        "WEBSERVER_TIMEOUT": 180,
-                        "SCREENSHOT_TIMEOUT": 600,
-                        "ALERT_REPORTS_DRY_RUN": False,
-                        "SERVER_WORKER_AMOUNT": 1,
-                        "GUNICORN_TIMEOUT": 60,
-                        "CELERY_WORKER_CONCURRENCY": 0,
-                        "STATSD_PORT": 9125,
-                        "LOG_FILE": "/var/log/superset.log",
-                        "CACHE_WARMUP": False,
-                        "LOG_RETENTION_ENABLED": True,
-                        "LOG_RETENTION_DAYS": 730,
-                        "DASHBOARD_SIZE_LIMIT": 65535,
-                        "MAX_CONTENT_LENGTH": None,
-                        "MAX_FORM_MEMORY_SIZE": None,
-                        "MAX_FORM_PARTS": None,
-                        "DATA_ACCESS_REQUEST_URL": None,
-                        "ENABLE_RAISE_FOR_ACCESS_PATCH": False,
-                    },
-                    "on-check-failure": {"up": "ignore"},
-                }
-            },
-        }
-        got_plan = harness.get_container_pebble_plan("superset").to_dict()
-        got_plan["services"]["superset"]["environment"][
-            "SUPERSET_SECRET_KEY"
-        ] = "example-pass"  # nosec
-        got_plan["services"]["superset"]["environment"][
-            "ADMIN_USER"
-        ] = "unique-user"
-        self.assertEqual(
-            got_plan["services"]["superset"], want_plan["services"]["superset"]
-        )
-
-        # The service was started.
-        service = harness.model.unit.get_container("superset").get_service(
-            "superset"
-        )
-        self.assertTrue(service.is_running())
-
-        # The MaintenanceStatus is set with replan message.
-        self.assertEqual(
-            harness.model.unit.status,
-            MaintenanceStatus("replanning application"),
-        )
-
-    def test_config_changed(self):
-        """The pebble plan changes according to config changes."""
-        harness = self.harness
-        simulate_lifecycle(harness)
-
-        self.assertEqual(
-            harness.model.unit.status,
-            MaintenanceStatus("replanning application"),
-        )
-
-        # Update the config.
-        self.harness.update_config(
-            {
-                "admin-password": "secure-pass",
-                "allow-image-domains": "assets.ubuntu.com",
-                "feature-flags": "ALLOW_ADHOC_SUBQUERY, !GLOBAL_ASYNC_QUERIES",
-                "enable-raise-for-access-patch": True,
-            }
-        )
-
-        # The new plan reflects the change.
-        want_plan = {
-            "services": {
-                "superset": {
-                    "override": "replace",
-                    "summary": "superset server",
-                    "command": "/app/k8s/k8s-bootstrap.sh",
-                    "startup": "enabled",
-                    "environment": {
-                        "ALLOW_IMAGE_DOMAINS": "assets.ubuntu.com",
-                        "SUPERSET_SECRET_KEY": "example-pass",  # nosec B105
-                        "ADMIN_PASSWORD": "secure-pass",  # nosec B105
-                        "ADMIN_USER": "unique-user",
-                        "CHARM_FUNCTION": "app-gunicorn",
-                        "SQL_ALCHEMY_URI": "postgresql://postgres_user:admin@myhost:5432/superset",
-                        "REDIS_HOST": "redis-host",
-                        "REDIS_PORT": 6379,
-                        "REDIS_TIMEOUT": 300,
-                        "ALLOW_ADHOC_SUBQUERY": True,
-                        "SQLALCHEMY_POOL_SIZE": 5,
-                        "SQLALCHEMY_POOL_TIMEOUT": 300,
-                        "SQLALCHEMY_MAX_OVERFLOW": 5,
-                        "OAUTH_ADMIN_EMAIL": "admin@superset.com",
-                        "SELF_REGISTRATION_ROLE": "Public",
-                        "SUPERSET_LOAD_EXAMPLES": False,
-                        "PYTHONPATH": "/app/pythonpath",
-                        "HTML_SANITIZATION": True,
-                        "HTML_SANITIZATION_SCHEMA_EXTENSIONS": None,
-                        "GLOBAL_ASYNC_QUERIES": False,
-                        "GLOBAL_ASYNC_QUERIES_JWT": "18b2f8fcd0d708d270c00508da6e8dfc7a21eff14ea438056809805150439a04",
-                        "GLOBAL_ASYNC_QUERIES_POLLING_DELAY": 500,
-                        "SENTRY_DSN": None,
-                        "SENTRY_ENVIRONMENT": None,
-                        "SENTRY_RELEASE": None,
-                        "SENTRY_REDACT_PARAMS": False,
-                        "SENTRY_SAMPLE_RATE": 1.0,
-                        "SERVER_ALIAS": "superset-k8s",
-                        "APPLICATION_PORT": 8088,
-                        "SUPERSET_PORT": 8088,
-                        "WEBSERVER_TIMEOUT": 180,
-                        "SCREENSHOT_TIMEOUT": 600,
-                        "ALERT_REPORTS_DRY_RUN": False,
-                        "SERVER_WORKER_AMOUNT": 1,
-                        "GUNICORN_TIMEOUT": 60,
-                        "CELERY_WORKER_CONCURRENCY": 0,
-                        "STATSD_PORT": 9125,
-                        "LOG_FILE": "/var/log/superset.log",
-                        "CACHE_WARMUP": False,
-                        "LOG_RETENTION_ENABLED": True,
-                        "LOG_RETENTION_DAYS": 730,
-                        "DASHBOARD_SIZE_LIMIT": 65535,
-                        "MAX_CONTENT_LENGTH": None,
-                        "MAX_FORM_MEMORY_SIZE": None,
-                        "MAX_FORM_PARTS": None,
-                        "DATA_ACCESS_REQUEST_URL": None,
-                        "ENABLE_RAISE_FOR_ACCESS_PATCH": True,
-                    },
-                    "on-check-failure": {"up": "ignore"},
-                },
-            },
-        }
-        got_plan = harness.get_container_pebble_plan("superset").to_dict()
-        got_plan["services"]["superset"]["environment"][
-            "SUPERSET_SECRET_KEY"
-        ] = "example-pass"  # nosec
-        got_plan["services"]["superset"]["environment"][
-            "ADMIN_USER"
-        ] = "unique-user"
-        self.assertEqual(
-            got_plan["services"]["superset"], want_plan["services"]["superset"]
-        )
-
-        # The MaintenanceStatus is set with replan message.
-        self.assertEqual(
-            harness.model.unit.status,
-            MaintenanceStatus("replanning application"),
-        )
-
-    def test_observability_pebble_layer(self):
-        """The pebble plan is correctly generated when the charm is ready."""
-        harness = self.harness
-        simulate_lifecycle(harness)
-
-        # The plan is generated after pebble is ready.
-        want_plan = {
-            "services": {
-                "metrics-exporter": {
-                    "override": "replace",
-                    "summary": "metrics exporter",
-                    "command": "/usr/bin/statsd_exporter",
-                    "startup": "enabled",
-                    "after": ["superset"],
-                },
-            }
-        }
-        got_plan = harness.get_container_pebble_plan("superset").to_dict()
-        self.assertEqual(
-            got_plan["services"]["metrics-exporter"],
-            want_plan["services"]["metrics-exporter"],
-        )
-
-    def test_ingress(self):
-        """The charm relates correctly to the nginx ingress charm."""
-        harness = self.harness
-
-        simulate_lifecycle(harness)
-
-        nginx_route_relation_id = harness.add_relation(
-            "nginx-route", "ingress"
-        )
-        harness.charm._require_nginx_route()
-
-        assert harness.get_relation_data(
-            nginx_route_relation_id, harness.charm.app
-        ) == {
-            "service-namespace": harness.charm.model.name,
-            "service-hostname": harness.charm.app.name,
-            "service-name": harness.charm.app.name,
-            "service-port": SERVER_PORT,
-            "backend-protocol": "HTTP",
-            "tls-secret-name": "superset-tls",
-        }
-
-    def test_oauth_leader_publishes_client_config(self):
-        """The leader registers Superset's OIDC callback with the provider."""
-        self.harness.update_config({"external-hostname": "superset.example"})
-        relation_id = self.harness.add_relation("oauth", "hydra")
-
-        relation_data = self.harness.get_relation_data(
-            relation_id, self.harness.charm.app
-        )
-        assert relation_data["redirect_uri"] == (
-            "https://superset.example/oauth-authorized/oidc"
-        )
-        assert relation_data["scope"] == "openid email profile"
-        assert json.loads(relation_data["grant_types"]) == [
-            "authorization_code"
-        ]
-
-    def test_oauth_non_leader_does_not_publish_client_config(self):
-        """Only the leader writes OAuth client registration data."""
-        self.harness.update_config({"external-hostname": "superset.example"})
-        self.harness.set_leader(False)
-        relation_id = self.harness.add_relation("oauth", "hydra")
-
-        assert (
-            self.harness.get_relation_data(relation_id, self.harness.charm.app)
-            == {}
-        )
-
-    def test_oauth_provider_populates_environment(self):
-        """Provider relation data and its secret configure Superset OIDC."""
-        self._add_oauth_provider()
-        simulate_lifecycle(self.harness)
-
-        environment = self._superset_environment()
-        assert environment["OAUTH_ISSUER_URL"] == "https://idp.example"
-        assert environment["OAUTH_AUTHORIZATION_ENDPOINT"] == (
-            "https://idp.example/authorize"
-        )
-        assert environment["OAUTH_TOKEN_ENDPOINT"] == (
-            "https://idp.example/token"
-        )
-        assert environment["OAUTH_USERINFO_ENDPOINT"] == (
-            "https://idp.example/userinfo"
-        )
-        assert environment["OAUTH_JWKS_ENDPOINT"] == (
-            "https://idp.example/jwks"
-        )
-        assert environment["OAUTH_SCOPE"] == "openid email profile"
-        assert environment["OAUTH_CLIENT_ID"] == "superset-client"
-        assert environment["OAUTH_CLIENT_SECRET"] == "secret-value"
-
-    def test_oauth_incomplete_registration_is_not_enabled(self):
-        """A relation without provider credentials leaves OAuth disabled."""
-        self.harness.update_config({"external-hostname": "superset.example"})
-        self.harness.add_relation("oauth", "hydra")
-        simulate_lifecycle(self.harness)
-
-        assert not [
-            key
-            for key in self._superset_environment()
-            if key.startswith("OAUTH_") and key != "OAUTH_ADMIN_EMAIL"
-        ]
-
-    def test_oauth_inaccessible_secret_is_not_enabled(self):
-        """Wait safely while OAuth provider credentials are inaccessible."""
-        self.harness.update_config({"external-hostname": "superset.example"})
-        relation_id = self.harness.add_relation("oauth", "hydra")
-        secret_id = self.harness.add_model_secret(
-            "hydra", {"secret": "secret-value"}  # nosec B105
-        )
-        self.harness.update_relation_data(
-            relation_id,
-            "hydra",
-            {
-                "issuer_url": "https://idp.example",
-                "authorization_endpoint": "https://idp.example/authorize",
-                "token_endpoint": "https://idp.example/token",  # nosec B105
-                "introspection_endpoint": "https://idp.example/introspect",
-                "userinfo_endpoint": "https://idp.example/userinfo",
-                "jwks_endpoint": "https://idp.example/jwks",
-                "scope": "openid email profile",
-                "client_id": "superset-client",
-                "client_secret_id": secret_id,
-            },
-        )
-        simulate_lifecycle(self.harness)
-
-        assert "OAUTH_CLIENT_ID" not in self._superset_environment()
-
-    def test_oauth_relation_removal_clears_environment(self):
-        """Removing the provider relation removes workload OAuth settings."""
-        relation_id, _ = self._add_oauth_provider()
-        simulate_lifecycle(self.harness)
-        assert "OAUTH_CLIENT_ID" in self._superset_environment()
-
-        self.harness.remove_relation(relation_id)
-
-        assert "OAUTH_CLIENT_ID" not in self._superset_environment()
-
-    def test_oauth_secret_change_refreshes_credentials(self):
-        """A provider credential update is reflected in the workload."""
-        _, secret_id = self._add_oauth_provider()
-        simulate_lifecycle(self.harness)
-        assert (
-            self._superset_environment()["OAUTH_CLIENT_SECRET"]
-            == "secret-value"
-        )
-
-        self.harness.set_secret_content(
-            secret_id, {"secret": "rotated-secret"}  # nosec B105
-        )
-        self.harness.charm.on.secret_changed.emit(secret_id, None)
-
-        assert (
-            self._superset_environment()["OAUTH_CLIENT_SECRET"]
-            == "rotated-secret"
-        )
-
-    def _add_oauth_provider(self):
-        """Add complete provider relation data and an accessible secret."""
-        self.harness.update_config({"external-hostname": "superset.example"})
-        relation_id = self.harness.add_relation("oauth", "hydra")
-        secret_id = self.harness.add_model_secret(
-            "hydra", {"secret": "secret-value"}  # nosec B105
-        )
-        self.harness.grant_secret(secret_id, self.harness.charm.app)
-        self.harness.update_relation_data(
-            relation_id,
-            "hydra",
-            {
-                "issuer_url": "https://idp.example",
-                "authorization_endpoint": "https://idp.example/authorize",
-                "token_endpoint": "https://idp.example/token",  # nosec B105
-                "introspection_endpoint": "https://idp.example/introspect",
-                "userinfo_endpoint": "https://idp.example/userinfo",
-                "jwks_endpoint": "https://idp.example/jwks",
-                "scope": "openid email profile",
-                "client_id": "superset-client",
-                "client_secret_id": secret_id,
-            },
-        )
-        return relation_id, secret_id
-
-    def _superset_environment(self):
-        """Return the current Superset service environment."""
-        return self.harness.get_container_pebble_plan("superset").to_dict()[
-            "services"
-        ]["superset"]["environment"]
-
-    def test_update_status_up(self):
-        """The charm updates the unit status to active based on UP status."""
-        harness = self.harness
-
-        simulate_lifecycle(harness)
-
-        container = harness.model.unit.get_container("superset")
-        container.get_check = mock.Mock(status="up")
-        container.get_check.return_value.status = CheckStatus.UP
-        harness.charm.on.update_status.emit()
-
-        self.assertEqual(
-            harness.model.unit.status, ActiveStatus("Status check: UP")
-        )
-
-    def test_update_status_down(self):
-        """The charm updates the unit status to maintenance based on DOWN status."""
-        harness = self.harness
-
-        simulate_lifecycle(harness)
-
-        container = harness.model.unit.get_container("superset")
-        container.get_check = mock.Mock(status="up")
-        container.get_check.return_value.status = CheckStatus.DOWN
-        harness.charm.on.update_status.emit()
-
-        self.assertEqual(
-            harness.model.unit.status, MaintenanceStatus("Status check: DOWN")
-        )
-
-    def test_incomplete_pebble_plan(self):
-        """The charm re-applies the pebble plan if incomplete."""
-        harness = self.harness
-        simulate_lifecycle(harness)
-
-        container = harness.model.unit.get_container("superset")
-        container.add_layer(
-            "superset", mock_incomplete_pebble_plan, combine=True
-        )
-        harness.charm.on.update_status.emit()
-
-        self.assertEqual(
-            harness.model.unit.status,
-            MaintenanceStatus("replanning application"),
-        )
-        plan = harness.get_container_pebble_plan("superset").to_dict()
-        assert plan != mock_incomplete_pebble_plan
-
-    @mock.patch(
-        "charm.SupersetK8SCharm._validate_pebble_plan", return_value=True
+    container = dataclasses.replace(
+        state.get_container("superset"),
+        check_infos={CheckInfo("up", status=status)},
     )
-    def test_missing_pebble_plan(self, mock_validate_pebble_plan):
-        """The charm re-applies the pebble plan if missing."""
-        harness = self.harness
-        simulate_lifecycle(harness)
+    return dataclasses.replace(state, containers={container})
 
-        mock_validate_pebble_plan.return_value = False
-        harness.charm.on.update_status.emit()
-        self.assertEqual(
-            harness.model.unit.status,
-            MaintenanceStatus("replanning application"),
-        )
-        plan = harness.get_container_pebble_plan("superset").to_dict()
-        assert plan is not None
 
-    def test_secret_key_uses_configured_value(self):
-        """SUPERSET_SECRET_KEY uses the configured value when superset-secret-key is set."""
-        harness = self.harness
-        simulate_lifecycle(harness)
+def test_update_status_up(ctx):
+    """The charm updates the unit status to active based on UP status."""
+    state_mid = ctx.run(ctx.on.config_changed(), build_state())
 
-        env = harness.get_container_pebble_plan("superset").to_dict()[
-            "services"
-        ]["superset"]["environment"]
-        self.assertEqual(env["SUPERSET_SECRET_KEY"], "example-pass")  # nosec
-
-    def test_secret_key_waiting_when_not_configured(self):
-        """The charm sets BlockedStatus when superset-secret-key is missing."""
-        harness = Harness(SupersetK8SCharm)
-        self.addCleanup(harness.cleanup)
-
-        harness.set_can_connect("superset", True)
-        harness.set_leader(True)
-        harness.set_model_name("superset-model")
-        harness.add_network("10.0.0.10", endpoint="peer")
-        harness.begin_with_initial_hooks()
-
-        self.assertEqual(
-            harness.model.unit.status,
-            BlockedStatus("missing required config: superset-secret-key"),
-        )
-
-        harness.charm.on.update_status.emit()
-
-        self.assertEqual(
-            harness.model.unit.status,
-            BlockedStatus("missing required config: superset-secret-key"),
-        )
-
-    def test_beat_deployment(self):
-        """The pebble plan reflects the beat function."""
-        harness = self.harness
-        self.harness.update_config({"charm-function": "beat"})
-
-        simulate_lifecycle(harness)
-
-        # The plan reflects the function.
-        want_function = "beat"
-        got_function = harness.get_container_pebble_plan("superset").to_dict()
-        got_function = got_function["services"]["superset"]["environment"][
-            "CHARM_FUNCTION"
-        ]
-        self.assertEqual(got_function, want_function)
-
-        # The MaintenanceStatus is set with replan message.
-        self.assertEqual(
-            harness.model.unit.status,
-            MaintenanceStatus("replanning application"),
-        )
-
-    def test_worker_deployment(self):
-        """The pebble plan reflects the worker function."""
-        harness = self.harness
-        self.harness.update_config({"charm-function": "worker"})
-
-        simulate_lifecycle(harness)
-
-        # The plan reflects the function.
-        want_function = "worker"
-        got_function = harness.get_container_pebble_plan("superset").to_dict()
-        got_function = got_function["services"]["superset"]["environment"][
-            "CHARM_FUNCTION"
-        ]
-        self.assertEqual(got_function, want_function)
-
-        # The MaintenanceStatus is set with replan message.
-        self.assertEqual(
-            harness.model.unit.status,
-            MaintenanceStatus("replanning application"),
-        )
-
-    def test_invalid_default_role(self):
-        """The pebble plan reflects the worker function."""
-        harness = self.harness
-
-        simulate_lifecycle(harness)
-        self.harness.update_config({"self-registration-role": "InvalidRole"})
-        expected = "The self-registration role InvalidRole is not allowed. Use only ['Public', 'Gamma', 'Alpha', 'Admin']."
-        self.assertEqual(harness.model.unit.status, BlockedStatus(expected))
-
-    def test_smtp_handling_without_secret(self):
-        """Test _handle_smtp_secret with no secret."""
-        harness = self.harness
-        simulate_lifecycle(harness)
-
-        plan = harness.get_container_pebble_plan("superset").to_dict()
-        environment = plan["services"]["superset"]["environment"]
-
-        keys = {
-            "SMTP_HOST",
-            "SMTP_PORT",
-            "SMTP_USERNAME",
-            "SMTP_PASSWORD",
-            "SMTP_EMAIL",
-            "SMTP_SSL",
-            "SMTP_STARTTLS",
-            "SMTP_SSL_SERVER_AUTH",
-            "SMTP_SUPERSET_EXTERNAL_URL",
-            "SMTP_EMAIL_SUBJECT_PREFIX",
-        }
-
-        self.assertTrue(all((k not in environment for k in keys)))
-
-    @mock.patch(
-        "charm.SupersetK8SCharm._validate_self_registration_role",
-        return_value=None,
+    state_out = ctx.run(
+        ctx.on.update_status(), with_check(state_mid, CheckStatus.UP)
     )
-    def test_smtp_handling_with_secret(
-        self, mock_validate_self_registration_role
+
+    assert state_out.unit_status == ActiveStatus("Status check: UP")
+
+
+def test_update_status_down(ctx):
+    """The charm reports maintenance when the pebble check is DOWN."""
+    state_mid = ctx.run(ctx.on.config_changed(), build_state())
+
+    state_out = ctx.run(
+        ctx.on.update_status(), with_check(state_mid, CheckStatus.DOWN)
+    )
+
+    assert state_out.unit_status == MaintenanceStatus("Status check: DOWN")
+
+
+def test_incomplete_pebble_plan(ctx):
+    """The charm re-applies the pebble plan if incomplete."""
+    container = dataclasses.replace(
+        superset_container(),
+        layers={"superset": Layer(INCOMPLETE_PEBBLE_PLAN)},
+    )
+    state_in = build_state(container=container)
+
+    state_out = ctx.run(ctx.on.update_status(), state_in)
+
+    assert state_out.unit_status == MaintenanceStatus("replanning application")
+    assert (
+        state_out.get_container("superset").plan.to_dict()
+        != INCOMPLETE_PEBBLE_PLAN
+    )
+
+
+def test_missing_pebble_plan(ctx):
+    """The charm re-applies the pebble plan if missing."""
+    state_mid = ctx.run(ctx.on.config_changed(), build_state())
+
+    with mock.patch(
+        "charm.SupersetK8SCharm._validate_pebble_plan", return_value=False
     ):
-        """Test _handle_smtp_secret with an SMTP secret set."""
-        harness = self.harness
-        simulate_lifecycle(harness)
+        state_out = ctx.run(ctx.on.update_status(), state_mid)
 
-        secret_contents = {
-            "host": "localhost",
-            "port": "1025",
-            "username": "admin",  # nosec
-            "password": "testpassword",  # nosec
-            "email": "admin@example.com",
-            "ssl": "false",
-            "starttls": "false",
-            "ssl-server-auth": "false",
-            "superset-external-url": "superset.com",
-            "email-subject-prefix": "[Test] ",
-        }
+    assert state_out.unit_status == MaintenanceStatus("replanning application")
+    assert state_out.get_container("superset").plan.to_dict() is not None
 
-        secret_id = harness.add_user_secret(secret_contents)
-        harness.grant_secret(secret_id, "superset-k8s")
-        harness.update_config({"smtp-secret-id": secret_id})
 
-        plan = harness.get_container_pebble_plan("superset").to_dict()
-        environment = plan["services"]["superset"]["environment"]
+def test_secret_key_uses_configured_value(ctx):
+    """SUPERSET_SECRET_KEY uses the value of superset-secret-key."""
+    state_out = ctx.run(ctx.on.config_changed(), build_state())
 
-        want = {
-            "SMTP_HOST": secret_contents["host"],
-            "SMTP_PORT": secret_contents["port"],
-            "SMTP_USERNAME": secret_contents["username"],
-            "SMTP_PASSWORD": secret_contents["password"],
-            "SMTP_EMAIL": secret_contents["email"],
-            "SMTP_SSL": secret_contents["ssl"],
-            "SMTP_STARTTLS": secret_contents["starttls"],
-            "SMTP_SSL_SERVER_AUTH": secret_contents["ssl-server-auth"],
-            "SMTP_SUPERSET_EXTERNAL_URL": secret_contents[
-                "superset-external-url"
-            ],
-            "SMTP_EMAIL_SUBJECT_PREFIX": secret_contents[
-                "email-subject-prefix"
-            ],
-        }
+    assert superset_environment(state_out)["SUPERSET_SECRET_KEY"] == SECRET_KEY
 
-        self.assertTrue(
-            all(
-                (
-                    k in environment and v == environment[k]
-                    for k, v in want.items()
-                )
-            )
-        )
 
-    @mock.patch(
-        "charm.SupersetK8SCharm._validate_self_registration_role",
-        return_value=None,
+def test_secret_key_blocked_when_not_configured(ctx):
+    """The charm sets BlockedStatus when superset-secret-key is missing."""
+    state_in = build_state()
+    state_in = dataclasses.replace(state_in, config={})
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+    assert state_out.unit_status == BlockedStatus(
+        "missing required config: superset-secret-key"
     )
-    def test_smtp_handling_with_inaccessible_secret(
-        self, mock_validate_self_registration_role
-    ):
-        """Test _handle_smtp_secret with an SMTP secret set to an inaccessible secret."""
-        harness = self.harness
-        simulate_lifecycle(harness)
 
-        secret_contents = {
-            "host": "localhost",
-            "port": "1025",
-            "username": "admin",  # nosec
-            "password": "testpassword",  # nosec
-            "email": "admin@example.com",
-            "ssl": "false",
-            "starttls": "false",
-            "ssl-server-auth": "false",
-            "superset-external-url": "superset.com",
-            "email-subject-prefix": "[Test] ",
-        }
-
-        secret_id = harness.add_user_secret(secret_contents)
-        harness.update_config({"smtp-secret-id": secret_id})
-
-        self.assertEqual(
-            harness.model.unit.status,
-            BlockedStatus(
-                f"SMTP secret with ID '{secret_id}' cannot be accessed."
-            ),
-        )
-
-    @mock.patch(
-        "charm.SupersetK8SCharm._validate_self_registration_role",
-        return_value=None,
+    state_out = ctx.run(ctx.on.update_status(), state_out)
+    assert state_out.unit_status == BlockedStatus(
+        "missing required config: superset-secret-key"
     )
-    def test_smtp_handling_with_improper_secret(
-        self, mock_validate_self_registration_role
-    ):
-        """Test _handle_smtp_secret with an SMTP secret set to invalid contents."""
-        harness = self.harness
-        simulate_lifecycle(harness)
 
-        secret_contents = {
-            "port": "1025",
-            "username": "admin",  # nosec
-            "password": "testpassword",  # nosec
-            "email": "admin@example.com",
-            "ssl": "false",
-            "starttls": "false",
-            "ssl-server-auth": "false",
-            "superset-external-url": "superset.com",
-            "email-subject-prefix": "[Test] ",
-        }
 
-        secret_id = harness.add_user_secret(secret_contents)
-        harness.grant_secret(secret_id, "superset-k8s")
-        harness.update_config({"smtp-secret-id": secret_id})
+def test_beat_deployment(ctx):
+    """The pebble plan reflects the beat function."""
+    state_in = build_state(config={"charm-function": "beat"})
 
-        self.assertEqual(
-            harness.model.unit.status,
-            BlockedStatus(
-                f"SMTP secret with ID '{secret_id}' has improper schema. Missing: host"
-            ),
-        )
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
 
-    @mock.patch(
-        "charm.SupersetK8SCharm._validate_self_registration_role",
-        return_value=None,
+    assert superset_environment(state_out)["CHARM_FUNCTION"] == "beat"
+    assert state_out.unit_status == MaintenanceStatus("replanning application")
+
+
+def test_worker_deployment(ctx):
+    """The pebble plan reflects the worker function."""
+    state_in = build_state(config={"charm-function": "worker"})
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    assert superset_environment(state_out)["CHARM_FUNCTION"] == "worker"
+    assert state_out.unit_status == MaintenanceStatus("replanning application")
+
+
+def test_invalid_default_role(ctx):
+    """An unknown self-registration role blocks the unit."""
+    state_in = build_state(config={"self-registration-role": "InvalidRole"})
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    assert state_out.unit_status == BlockedStatus(
+        "The self-registration role InvalidRole is not allowed. "
+        "Use only ['Public', 'Gamma', 'Alpha', 'Admin']."
     )
-    def test_smtp_handling_with_missing_secret(
-        self, mock_validate_self_registration_role
-    ):
-        """Test _handle_smtp_secret with an SMTP secret ID set to a secret that does not exist."""
-        harness = self.harness
-        simulate_lifecycle(harness)
-        harness.update_config({"smtp-secret-id": "i-dont-exist"})
 
-        self.assertEqual(
-            harness.model.unit.status,
-            BlockedStatus(
-                "SMTP secret with ID 'i-dont-exist' cannot be found."
-            ),
-        )
 
-    def test_certificates_reconcile_installs_ca(self):
-        """The CA is installed into the container when a cert is assigned."""
-        harness = self.harness
-        simulate_lifecycle(harness)
+def test_smtp_handling_without_secret(ctx):
+    """No SMTP variables are rendered when no SMTP secret is configured."""
+    state_out = ctx.run(ctx.on.config_changed(), build_state())
 
-        exec_calls = []
-        harness.handle_exec(
-            "superset",
-            ["update-ca-certificates"],
-            handler=lambda args: exec_calls.append(args.command),
-        )
+    environment = superset_environment(state_out)
+    assert not [key for key in environment if key.startswith("SMTP_")]
 
+
+def test_smtp_handling_with_secret(ctx):
+    """A granted SMTP secret is rendered into the workload environment."""
+    secret = Secret(tracked_content=SMTP_SECRET_CONTENTS, owner=None)
+    state_in = build_state(
+        config={"smtp-secret-id": secret.id}, secrets=(secret,)
+    )
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    environment = superset_environment(state_out)
+    assert environment["SMTP_HOST"] == SMTP_SECRET_CONTENTS["host"]
+    assert environment["SMTP_PORT"] == SMTP_SECRET_CONTENTS["port"]
+    assert environment["SMTP_USERNAME"] == SMTP_SECRET_CONTENTS["username"]
+    assert environment["SMTP_PASSWORD"] == SMTP_SECRET_CONTENTS["password"]
+    assert environment["SMTP_EMAIL"] == SMTP_SECRET_CONTENTS["email"]
+    assert environment["SMTP_SSL"] == SMTP_SECRET_CONTENTS["ssl"]
+    assert environment["SMTP_STARTTLS"] == SMTP_SECRET_CONTENTS["starttls"]
+    assert environment["SMTP_SSL_SERVER_AUTH"] == (
+        SMTP_SECRET_CONTENTS["ssl-server-auth"]
+    )
+    assert environment["SMTP_SUPERSET_EXTERNAL_URL"] == (
+        SMTP_SECRET_CONTENTS["superset-external-url"]
+    )
+    assert environment["SMTP_EMAIL_SUBJECT_PREFIX"] == (
+        SMTP_SECRET_CONTENTS["email-subject-prefix"]
+    )
+
+
+def test_smtp_handling_with_improper_secret(ctx):
+    """An SMTP secret missing a required key blocks the unit."""
+    contents = {
+        key: value
+        for key, value in SMTP_SECRET_CONTENTS.items()
+        if key != "host"
+    }
+    secret = Secret(tracked_content=contents, owner=None)
+    state_in = build_state(
+        config={"smtp-secret-id": secret.id}, secrets=(secret,)
+    )
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    assert state_out.unit_status == BlockedStatus(
+        f"SMTP secret with ID '{secret.id}' has improper schema. "
+        "Missing: host"
+    )
+
+
+def test_smtp_handling_with_missing_secret(ctx):
+    """An SMTP secret ID that does not resolve blocks the unit."""
+    state_in = build_state(config={"smtp-secret-id": "i-dont-exist"})
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    assert state_out.unit_status == BlockedStatus(
+        "SMTP secret with ID 'i-dont-exist' cannot be found."
+    )
+
+
+def test_certificates_reconcile_installs_ca(ctx):
+    """The CA is installed into the container when a cert is assigned."""
+    with ctx(ctx.on.config_changed(), build_state()) as manager:
         with mock.patch.object(
-            harness.charm.certificates_handler,
+            manager.charm.certificates_handler,
             "_assigned_ca",
             return_value=CA_PEM,
         ):
-            self.assertTrue(harness.charm.reconcile_certificates())
+            assert manager.charm.reconcile_certificates()
 
-        container = harness.model.unit.get_container("superset")
-        self.assertEqual(container.pull(CA_CERT_PATH).read(), CA_PEM)
-        self.assertEqual(container.pull(CA_CERT_LOCAL_PATH).read(), CA_PEM)
-        self.assertEqual(exec_calls, [["update-ca-certificates"]])
+        container = manager.charm.unit.get_container("superset")
+        assert container.pull(CA_CERT_PATH).read() == CA_PEM
+        assert container.pull(CA_CERT_LOCAL_PATH).read() == CA_PEM
+        assert [args.command for args in ctx.exec_history["superset"]] == [
+            ["update-ca-certificates"]
+        ]
 
-    def test_certificates_reconcile_is_idempotent(self):
-        """An already installed CA is not re-installed on every reconcile."""
-        harness = self.harness
-        simulate_lifecycle(harness)
 
-        exec_calls = []
-        harness.handle_exec(
-            "superset",
-            ["update-ca-certificates"],
-            handler=lambda args: exec_calls.append(args.command),
-        )
-
+def test_certificates_reconcile_is_idempotent(ctx):
+    """An already installed CA is not re-installed on every reconcile."""
+    with ctx(ctx.on.config_changed(), build_state()) as manager:
         with mock.patch.object(
-            harness.charm.certificates_handler,
+            manager.charm.certificates_handler,
             "_assigned_ca",
             return_value=CA_PEM,
         ):
-            harness.charm.reconcile_certificates()
-            harness.charm.reconcile_certificates()
+            manager.charm.reconcile_certificates()
+            manager.charm.reconcile_certificates()
 
-        self.assertEqual(exec_calls, [["update-ca-certificates"]])
+        assert len(ctx.exec_history["superset"]) == 1
 
-    def test_certificates_reconcile_reinstalls_wiped_ca(self):
-        """The CA is re-installed after a pod respawn wipes the filesystem."""
-        harness = self.harness
-        simulate_lifecycle(harness)
-        harness.handle_exec("superset", ["update-ca-certificates"], result=0)
 
-        container = harness.model.unit.get_container("superset")
+def test_certificates_reconcile_reinstalls_wiped_ca(ctx):
+    """The CA is re-installed after a pod respawn wipes the filesystem."""
+    with ctx(ctx.on.config_changed(), build_state()) as manager:
+        container = manager.charm.unit.get_container("superset")
         with mock.patch.object(
-            harness.charm.certificates_handler,
+            manager.charm.certificates_handler,
             "_assigned_ca",
             return_value=CA_PEM,
         ):
-            harness.charm.reconcile_certificates()
+            manager.charm.reconcile_certificates()
             container.remove_path(CA_CERT_PATH)
             container.remove_path(CA_CERT_LOCAL_PATH)
-            harness.charm.reconcile_certificates()
+            manager.charm.reconcile_certificates()
 
-        self.assertEqual(container.pull(CA_CERT_PATH).read(), CA_PEM)
+        assert container.pull(CA_CERT_PATH).read() == CA_PEM
 
-    def test_certificates_trust_store_failure_blocks_unit(self):
-        """A failing trust store update blocks the unit instead of passing."""
-        harness = self.harness
-        simulate_lifecycle(harness)
-        harness.handle_exec("superset", ["update-ca-certificates"], result=1)
 
+def test_certificates_trust_store_failure_blocks_unit(ctx):
+    """A failing trust store update blocks the unit instead of passing."""
+    container = superset_container(exec_return_code=1)
+    state_in = build_state(container=container)
+
+    with ctx(ctx.on.config_changed(), state_in) as manager:
         with mock.patch.object(
-            harness.charm.certificates_handler,
+            manager.charm.certificates_handler,
             "_assigned_ca",
             return_value=CA_PEM,
         ):
-            self.assertFalse(harness.charm.reconcile_certificates())
+            assert not manager.charm.reconcile_certificates()
 
-        self.assertIsInstance(harness.model.unit.status, BlockedStatus)
+        assert isinstance(manager.charm.unit.status, BlockedStatus)
 
-    def test_certificates_relation_broken_removes_ca(self):
-        """The CA is removed from the container when the relation breaks."""
-        harness = self.harness
-        simulate_lifecycle(harness)
-        harness.handle_exec("superset", ["update-ca-certificates"], result=0)
 
-        container = harness.model.unit.get_container("superset")
+def test_certificates_relation_broken_removes_ca(ctx):
+    """The CA is removed from the container when the relation breaks."""
+    with ctx(ctx.on.config_changed(), build_state()) as manager:
+        container = manager.charm.unit.get_container("superset")
         container.push(CA_CERT_PATH, CA_PEM, make_dirs=True)
         container.push(CA_CERT_LOCAL_PATH, CA_PEM, make_dirs=True)
 
-        harness.charm.reconcile_certificates(relation_broken=True)
+        manager.charm.reconcile_certificates(relation_broken=True)
 
-        self.assertFalse(container.exists(CA_CERT_PATH))
-        self.assertFalse(container.exists(CA_CERT_LOCAL_PATH))
-
-
-@mock.patch("charm.Redis.get_redis_relation_data")
-def simulate_lifecycle(harness, get_redis_relation_data):
-    """Simulate a healthy charm life-cycle.
-
-    Args:
-        harness: ops.testing.Harness object used to simulate charm lifecycle.
-        get_redis_relation_data: Mocked method to get redis relation data.
-    """
-    # Simulate redis readiness first and set mocked return so the charm
-    # sees redis data when handling pebble ready.
-    get_redis_relation_data.return_value = ("redis-host", 6379)
-    rel_id = harness.add_relation("redis", "redis-k8s")
-    harness.add_relation_unit(rel_id, "redis-k8s/0")
-
-    # Simulate database readiness.
-    harness.add_relation(
-        "postgresql_db", "superset", app_data=database_provider_databag()
-    )
-
-    # Simulate pebble readiness after relations are in place.
-    container = harness.model.unit.get_container("superset")
-    harness.charm.on.superset_pebble_ready.emit(container)
-
-
-def database_provider_databag():
-    """Create and return mock database info.
-
-    Returns: Relation databag.
-    """
-    return {
-        "endpoints": "myhost:5432,anotherhost:2345",
-        "username": "postgres_user",  # nosec
-        "password": "admin",  # nosec
-    }
+        assert not container.exists(CA_CERT_PATH)
+        assert not container.exists(CA_CERT_LOCAL_PATH)
