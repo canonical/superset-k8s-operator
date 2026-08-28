@@ -1,28 +1,57 @@
 [![Charmhub Badge](https://charmhub.io/superset-k8s/badge.svg)](https://charmhub.io/superset-k8s)
 [![Release Edge](https://github.com/canonical/superset-k8s-operator/actions/workflows/publish_charm.yaml/badge.svg)](https://github.com/canonical/superset-k8s-operator/actions/workflows/publish_charm.yaml)
 
-Charmed Superset is an open-source, production-ready data exploration and visualisation platform based on [Apache Superset<sup>TM</sup>](https://superset.apache.org/).
+# Superset K8s Operator
 
-Superset can replace or augment proprietary business intelligence tools. It integrates with a variety of data sources and provides a powerful SQL editor for advanced querying as well as a low-code interface for building charts and dashboards.
+This is the Kubernetes operator for [Apache Superset](https://superset.apache.org/), available on [Charmhub](https://charmhub.io/superset-k8s).
 
-Charmed Superset provides data insights in a repeatable, governable and flexible manner, contributing to higher data literacy and data-driven business decisions.
+Full documentation for this charm (tutorial, how-to guides, reference, and explanation) lives in the [Canonical Data Mesh documentation](https://canonical-data-mesh-documentation.readthedocs-hosted.com/en/latest/). Configuration options, integrations, and actions are listed on the [Charmhub page](https://charmhub.io/superset-k8s).
 
-It is intended for data practitioners who require advanced visualisation without the complexity of deployment and on-going service management.
+## Description
 
-## In This Documentation
+Charmed Superset is an open-source, production-ready data exploration and visualisation platform. It integrates with a variety of data sources and provides a SQL editor for advanced querying as well as a low-code interface for building charts and dashboards. It is a component of the Canonical Data Mesh solution.
 
-|                                                                                                                                                                                                     |                                                                                                                                                                     |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Tutorial </br> **Get started** - a hands-on [introduction to Charmed Superset](https://discourse.charmhub.io/t/get-started-with-charmed-superset/15641) for new users </br> | How-to guides </br> **Step-by-step guides** covering key operations and common tasks, such as [performance](https://discourse.charmhub.io/t/optimise-your-deployment-performance/15651), [security](https://discourse.charmhub.io/t/enable-security-features/15649) and [observability](https://discourse.charmhub.io/t/observe-key-performance-metrics/15650) |
-| Reference </br> **Technical information**, including [supported feature flags](https://discourse.charmhub.io/t/supported-feature-flags/15647) and [version compatibility](https://discourse.charmhub.io/t/compatible-charm-revisions-and-resources/15648)                                                                              | 
+It is intended for data practitioners who need advanced visualisation without the complexity of deployment and ongoing service management.
 
+## Deployment
+
+A deployment is made up of one or more applications of this charm, each set to a different `charm-function`:
+
+- `app-gunicorn` (default) or `app`: the web server and user interface.
+- `worker`: Celery workers running asynchronous queries, alerts, and reports.
+- `beat`: the Celery scheduler that triggers periodic tasks.
+
+All applications of a deployment integrate with the same PostgreSQL and Redis applications.
+
+## Usage
+
+The charm requires:
+
+- [PostgreSQL](https://charmhub.io/postgresql-k8s), for the metadata database.
+- [Redis](https://charmhub.io/redis-k8s), for caching and the Celery broker.
+
+It optionally integrates with an ingress provider over the `ingress` interface, an identity provider over `oauth`, [Trino](https://charmhub.io/trino-k8s) over `trino-catalog`, a certificate provider over `certificates`, and the Canonical Observability Stack.
+
+```bash
+juju deploy superset-k8s --config superset-secret-key=<YOUR_SECRET_KEY>
+juju integrate superset-k8s postgresql-k8s
+juju integrate superset-k8s redis-k8s
+```
+
+See the [Superset tutorial](https://canonical-data-mesh-documentation.readthedocs-hosted.com/en/latest/tutorials/superset/) for a complete walkthrough, and the [how-to guides](https://canonical-data-mesh-documentation.readthedocs-hosted.com/en/latest/how-to/superset/) for exposing it with ingress, enabling single sign-on, and connecting it to Trino.
+
+## Contributing
+
+Please see [CONTRIBUTING.md](CONTRIBUTING.md) for developer setup, build instructions, and the release process. Security issues are handled as described in [SECURITY.md](SECURITY.md).
 
 ## Project and Community
 
-Charmed Superset is a member of the Ubuntu family. It’s an open source
-project that warmly welcomes community projects, contributions, suggestions,
-fixes and constructive feedback.
+Charmed Superset is a member of the Ubuntu family. It is an open source project that warmly welcomes community projects, contributions, suggestions, fixes and constructive feedback.
 
 - [Read our Code of Conduct](https://ubuntu.com/community/code-of-conduct).
-- [Join the Discourse forum](https://discourse.charmhub.io/tag/trino).
-- [Contribute and report bugs](https://github.com/canonical/trino-k8s-operator).
+- [Join the Discourse forum](https://discourse.charmhub.io/tag/superset).
+- [Contribute and report bugs](https://github.com/canonical/superset-k8s-operator).
+
+## License
+
+Charmed Superset is free software, distributed under the Apache Software License, version 2.0. See [LICENSE](LICENSE) for more information.

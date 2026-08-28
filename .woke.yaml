@@ -1,11 +1,6 @@
 ignore_files:
-  # Ignore ingress charm library as it uses non compliant terminology:
-  # whitelist.
-  - lib/charms/nginx_ingress_integrator/v0/nginx_route.py
+  # Ignore charm libraries as they use non compliant terminology.
   - lib/charms/redis_k8s/v0/redis.py
-  - documentation/reference/feature-flags.md
-  - documentation/how-to/prepare-for-production.md
-  - documentation/how-to/enable-superset-security-features.md
 rules:
   # Ignore "master" - the database relation event received from the library.
   - name: master

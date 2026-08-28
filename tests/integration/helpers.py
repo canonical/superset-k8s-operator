@@ -19,10 +19,17 @@ logger = logging.getLogger(__name__)
 API_READY_TIMEOUT = 300
 API_READY_INTERVAL = 5
 
-NGINX_NAME = "nginx-ingress-integrator"
 POSTGRES_NAME = "postgresql-k8s"
 REDIS_NAME = "redis-k8s"
 TLS_NAME = "self-signed-certificates"
+TRAEFIK_NAME = "traefik-k8s"
+# Serve Superset at the root of a per-application hostname. The `ingress`
+# interface reports whatever URL the provider chooses, and traefik's default
+# path-prefix mode would place the UI under /<model>-<app>.
+TRAEFIK_CONFIG = {
+    "routing_mode": "subdomain",
+    "external_hostname": "superset.test",
+}
 UI_NAME = "superset-k8s-ui"
 # Mirrors CA_CERT_PATH in src/literals.py; hard-coded because it is part of
 # the charm's user-facing contract.
