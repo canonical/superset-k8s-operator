@@ -26,6 +26,8 @@ HYDRA_APP = "hydra"
 HYDRA_CHANNEL = "latest/edge"
 HYDRA_PUBLIC_PORT = 4444
 HYDRA_ADMIN_PORT = 4445
+LOGIN_UI_APP = "identity-platform-login-ui-operator"
+LOGIN_UI_CHANNEL = "latest/stable"
 
 ALPHA_ROLE_ID = 3
 GAMMA_ROLE_ID = 4

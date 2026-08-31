@@ -592,9 +592,29 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         provider = self.oauth.provider_info
         if provider is None:
             return {}
+        # The oauth relation publishes JWKS/token URLs via the public ingress
+        # hostname (e.g. https://superset.test) which is not resolvable from
+        # inside the workload pod.  The introspection endpoint is published as
+        # an internal k8s service URL on the admin port (4445); derive the
+        # internal JWKS URL from the same host but on the public port (4444).
+        introspection = provider.introspection_endpoint or ""
+        if introspection:
+            from urllib.parse import urlparse, urlunparse
+            parsed = urlparse(introspection)
+            # Switch admin port → public port and point at JWKS path.
+            internal_jwks_url = urlunparse(
+                parsed._replace(
+                    netloc=parsed.hostname + ":4444",
+                    path="/.well-known/jwks.json",
+                    query="",
+                    fragment="",
+                )
+            )
+        else:
+            internal_jwks_url = provider.jwks_endpoint
         return {
             "MCP_AUTH_ISSUER": provider.issuer_url,
-            "MCP_AUTH_JWKS_URL": provider.jwks_endpoint,
+            "MCP_AUTH_JWKS_URL": internal_jwks_url,
             "MCP_AUTH_INTROSPECTION_URL": provider.introspection_endpoint,
             "MCP_AUTH_JWT_ACCESS_TOKEN": (
                 "true" if provider.jwt_access_token else "false"

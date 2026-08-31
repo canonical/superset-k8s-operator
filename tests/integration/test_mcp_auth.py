@@ -10,12 +10,14 @@ import logging
 import pytest
 import pytest_asyncio
 from integration.conftest import deploy  # noqa: F401, pylint: disable=W0611
-from integration.helpers import UI_NAME, get_unit_url
+from integration.helpers import TLS_NAME, TRAEFIK_NAME, UI_NAME, get_unit_url
 from integration.mcp_helpers import (
     HYDRA_APP,
     HYDRA_ADMIN_PORT,
     HYDRA_CHANNEL,
     HYDRA_PUBLIC_PORT,
+    LOGIN_UI_APP,
+    LOGIN_UI_CHANNEL,
     MCP_ENDPOINT,
     MCP_PORT,
     create_hydra_client,
@@ -41,47 +43,60 @@ _CLIENT_SECRET_SUFFIX = "_mcp_secret"
 async def deploy_mcp_oauth_fixture(ops_test: OpsTest, deploy) -> None:
     """Extend the base deployment with Hydra and wire the oauth relation.
 
-    After this fixture:
-    - Hydra is deployed and active.
-    - superset-k8s-ui:oauth is related to hydra:oauth.
-    - mcp-auth-enabled is set to True so the JWKS path is active.
-    - Test Hydra clients exist for each username in _TEST_USERS.
+    Steps (mirrors test_oauth.py pattern):
+    1. Deploy self-signed-certificates and wire to Traefik so it gets an
+       external hostname — required by Hydra's public-route.
+    2. Deploy Hydra; integrate pg-database and public-route.
+    3. Wait for Hydra active, then wire superset-k8s-ui:oauth → hydra:oauth.
+    4. Flip mcp-auth-enabled=True and register test Hydra clients.
     """
     del deploy  # wait for base fixture
 
     async with ops_test.fast_forward():
-        await ops_test.model.deploy(
-            HYDRA_APP,
-            channel=HYDRA_CHANNEL,
-            trust=True,
+        # Step 1: TLS → Traefik so external hostname is published.
+        await ops_test.model.deploy(TLS_NAME, channel="1/stable")
+        await ops_test.model.wait_for_idle(
+            apps=[TLS_NAME], status="active", raise_on_blocked=False, timeout=1200,
+        )
+        await ops_test.model.integrate(
+            f"{TRAEFIK_NAME}:certificates", f"{TLS_NAME}:certificates"
         )
         await ops_test.model.wait_for_idle(
-            apps=[HYDRA_APP],
-            status="active",
-            raise_on_blocked=False,
-            timeout=1200,
-        )
-        await ops_test.model.integrate(f"{UI_NAME}:oauth", f"{HYDRA_APP}:oauth")
-        await ops_test.model.wait_for_idle(
-            apps=[UI_NAME, HYDRA_APP],
-            status="active",
-            raise_on_blocked=False,
-            timeout=600,
+            apps=[TRAEFIK_NAME, UI_NAME], status="active", raise_on_blocked=False, timeout=600,
         )
 
-    # Flip to auth-enabled now that the oauth relation is live.
-    await ops_test.model.applications[UI_NAME].set_config(
-        {"mcp-auth-enabled": "True"}
+    # Step 2: Deploy Hydra + login UI outside fast_forward — Hydra's update-status
+    # hook fires every few seconds inside fast_forward, briefly setting maintenance,
+    # which prevents wait_for_idle from ever completing.
+    await ops_test.model.deploy(LOGIN_UI_APP, channel=LOGIN_UI_CHANNEL, trust=True)
+    await ops_test.model.deploy(HYDRA_APP, channel=HYDRA_CHANNEL, trust=True)
+    await ops_test.model.integrate(
+        f"{HYDRA_APP}:pg-database", "postgresql-k8s:database"
     )
+    await ops_test.model.integrate(
+        f"{HYDRA_APP}:public-route", f"{TRAEFIK_NAME}:traefik-route"
+    )
+    await ops_test.model.integrate(
+        f"{HYDRA_APP}:ui-endpoint-info", f"{LOGIN_UI_APP}:ui-endpoint-info"
+    )
+    await ops_test.model.wait_for_idle(
+        apps=[HYDRA_APP, LOGIN_UI_APP], status="active", raise_on_blocked=False, timeout=1200,
+    )
+
+    # Step 3: Wire oauth relation and wait for both sides active.
+    await ops_test.model.integrate(f"{UI_NAME}:oauth", f"{HYDRA_APP}:oauth")
+    await ops_test.model.wait_for_idle(
+        apps=[UI_NAME, HYDRA_APP], status="active", raise_on_blocked=False, timeout=600,
+    )
+
+    # Step 4: Flip auth-enabled, wait, register test clients.
+    await ops_test.model.applications[UI_NAME].set_config({"mcp-auth-enabled": "True"})
     async with ops_test.fast_forward():
         await ops_test.model.wait_for_idle(
-            apps=[UI_NAME], status="active", raise_on_blocked=False, timeout=300
+            apps=[UI_NAME], status="active", raise_on_blocked=False, timeout=300,
         )
 
-    # Read the MCP OAuth client_id registered by the charm so we can set the
-    # correct audience on test-client tokens.
     mcp_client_id = await get_mcp_oauth_client_id(ops_test, UI_NAME)
-
     await setup_hydra_test_clients(
         ops_test,
         _TEST_USERS,

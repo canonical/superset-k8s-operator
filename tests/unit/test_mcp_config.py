@@ -79,7 +79,7 @@ class TestMCPConfiguration(unittest.TestCase):
         fake_provider.issuer_url = "https://hydra.example.com"
         fake_provider.jwks_endpoint = "https://hydra.example.com/.well-known/jwks.json"
         fake_provider.introspection_endpoint = (
-            "https://hydra.example.com/oauth2/introspect"
+            "http://hydra.test-model.svc.cluster.local:4445/admin/oauth2/introspect"
         )
         fake_provider.jwt_access_token = True
         fake_provider.client_id = "superset-mcp-client"
@@ -92,11 +92,12 @@ class TestMCPConfiguration(unittest.TestCase):
             env = charm._get_mcp_auth_env()
 
         assert env["MCP_AUTH_ISSUER"] == "https://hydra.example.com"
+        # JWKS URL is derived from the internal introspection host, port 4444.
         assert env["MCP_AUTH_JWKS_URL"] == (
-            "https://hydra.example.com/.well-known/jwks.json"
+            "http://hydra.test-model.svc.cluster.local:4444/.well-known/jwks.json"
         )
         assert env["MCP_AUTH_INTROSPECTION_URL"] == (
-            "https://hydra.example.com/oauth2/introspect"
+            "http://hydra.test-model.svc.cluster.local:4445/admin/oauth2/introspect"
         )
         assert env["MCP_AUTH_JWT_ACCESS_TOKEN"] == "true"
         assert env["MCP_AUTH_CLIENT_ID"] == "superset-mcp-client"
