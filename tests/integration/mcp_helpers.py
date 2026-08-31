@@ -4,7 +4,9 @@
 
 """MCP test helpers for integration tests."""
 
+import http.cookiejar
 import json
+import jwt
 import logging
 import re
 import time
@@ -13,7 +15,6 @@ import urllib.parse
 import urllib.request
 from typing import Optional
 
-import jwt
 from pytest_operator.plugin import OpsTest
 
 logger = logging.getLogger(__name__)
@@ -30,14 +31,9 @@ SQLAB_ROLE_ID = 5
 
 SUPERSET_ADMIN_USER = "admin"
 SUPERSET_ADMIN_PASSWORD = "admin"
-SUPERSET_API_AUTH_PAYLOAD = {
-    "username": SUPERSET_ADMIN_USER,
-    "password": SUPERSET_ADMIN_PASSWORD,
-    "provider": "db",
-}
 
 
-def api(method: str, url: str, body=None, headers: dict = None) -> tuple[int, dict]:
+def api(method: str, url: str, body=None, headers: Optional[dict] = None) -> tuple[int, dict]:
     """Make HTTP request to Superset or MCP API.
 
     Args:
@@ -287,10 +283,6 @@ def ensure_rls_rule(
     Returns:
         RLS rule ID
     """
-    import http.cookiejar
-    import re
-    import urllib.parse
-    import urllib.request
 
     auth_headers = {"Authorization": f"Bearer {api_token}"}
 

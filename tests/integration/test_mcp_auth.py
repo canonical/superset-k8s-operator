@@ -8,9 +8,9 @@ import json
 import logging
 
 import pytest
-import requests
+import pytest_asyncio
 from integration.conftest import deploy  # noqa: F401, pylint: disable=W0611
-from integration.helpers import UI_NAME, api_authentication, get_unit_url
+from integration.helpers import UI_NAME, get_unit_url
 from integration.mcp_helpers import (
     MCP_ENDPOINT,
     MCP_PORT,
@@ -24,6 +24,16 @@ from pytest_operator.plugin import OpsTest
 
 logger = logging.getLogger(__name__)
 
+JWT_SECRET = "a" * 64
+
+
+@pytest_asyncio.fixture(scope="module")
+async def mcp_fixtures(ops_test: OpsTest):
+    """Set up MCP test fixtures once per module: users, roles, RLS seed."""
+    superset_url = await get_unit_url(ops_test, UI_NAME, 0, 8088)
+    api_token = superset_login(superset_url)
+    return setup_mcp_fixtures(superset_url, api_token)
+
 
 @pytest.mark.abort_on_fail
 @pytest.mark.usefixtures("deploy")
@@ -35,8 +45,7 @@ class TestMCPAuthentication:
         mcp_url = await get_unit_url(ops_test, UI_NAME, 0, MCP_PORT)
         mcp_endpoint = f"{mcp_url}{MCP_ENDPOINT}"
 
-        jwt_secret = "a" * 64
-        admin_token = make_token("admin", jwt_secret)
+        admin_token = make_token("admin", JWT_SECRET)
         status, text = mcp_call(mcp_endpoint, "get_instance_info", {}, admin_token)
 
         assert status == 200
@@ -48,8 +57,7 @@ class TestMCPAuthentication:
         mcp_url = await get_unit_url(ops_test, UI_NAME, 0, MCP_PORT)
         mcp_endpoint = f"{mcp_url}{MCP_ENDPOINT}"
 
-        jwt_secret = "a" * 64
-        admin_token = make_token("admin", jwt_secret)
+        admin_token = make_token("admin", JWT_SECRET)
         status, text = mcp_call(mcp_endpoint, "health_check", {}, admin_token)
 
         assert status == 200
@@ -68,12 +76,10 @@ class TestMCPAuthentication:
         mcp_url = await get_unit_url(ops_test, UI_NAME, 0, MCP_PORT)
         mcp_endpoint = f"{mcp_url}{MCP_ENDPOINT}"
 
-        jwt_secret = "a" * 64
-
         if token_variant == "tampered":
-            token = make_token("admin", jwt_secret) + "x"
+            token = make_token("admin", JWT_SECRET) + "x"
         elif token_variant == "expired":
-            token = make_token("admin", jwt_secret, exp_offset=-60)
+            token = make_token("admin", JWT_SECRET, exp_offset=-60)
         else:  # missing
             token = None
 
@@ -85,8 +91,7 @@ class TestMCPAuthentication:
         mcp_url = await get_unit_url(ops_test, UI_NAME, 0, MCP_PORT)
         mcp_endpoint = f"{mcp_url}{MCP_ENDPOINT}"
 
-        jwt_secret = "a" * 64
-        ghost_token = make_token("ghost_user", jwt_secret)
+        ghost_token = make_token("ghost_user", JWT_SECRET)
         status, text = mcp_call(mcp_endpoint, "get_instance_info", {}, ghost_token)
 
         assert status == 200
@@ -94,22 +99,17 @@ class TestMCPAuthentication:
 
 
 @pytest.mark.abort_on_fail
-@pytest.mark.usefixtures("deploy")
+@pytest.mark.usefixtures("deploy", "mcp_fixtures")
 class TestMCPRBAC:
     """MCP role-based access control tests."""
 
     async def test_gamma_user_reduced_access(self, ops_test: OpsTest):
         """Verify Gamma role has limited menu access vs admin."""
-        superset_url = await get_unit_url(ops_test, UI_NAME, 0, 8088)
         mcp_url = await get_unit_url(ops_test, UI_NAME, 0, MCP_PORT)
         mcp_endpoint = f"{mcp_url}{MCP_ENDPOINT}"
 
-        jwt_secret = "a" * 64
-        api_token = superset_login(superset_url)
-        setup_mcp_fixtures(superset_url, api_token)
-
-        admin_token = make_token("admin", jwt_secret)
-        gamma_token = make_token("gamma_user", jwt_secret)
+        admin_token = make_token("admin", JWT_SECRET)
+        gamma_token = make_token("gamma_user", JWT_SECRET)
 
         _, admin_text = mcp_call(mcp_endpoint, "get_instance_info", {}, admin_token)
         admin_menus = len(
@@ -128,15 +128,10 @@ class TestMCPRBAC:
 
     async def test_sqlab_user_authenticated(self, ops_test: OpsTest):
         """Verify sqlab_user (Alpha + sql_lab + SqlLabRLS) authenticated."""
-        superset_url = await get_unit_url(ops_test, UI_NAME, 0, 8088)
         mcp_url = await get_unit_url(ops_test, UI_NAME, 0, MCP_PORT)
         mcp_endpoint = f"{mcp_url}{MCP_ENDPOINT}"
 
-        jwt_secret = "a" * 64
-        api_token = superset_login(superset_url)
-        setup_mcp_fixtures(superset_url, api_token)
-
-        sqlab_token = make_token("sqlab_user", jwt_secret)
+        sqlab_token = make_token("sqlab_user", JWT_SECRET)
         status, text = mcp_call(mcp_endpoint, "get_instance_info", {}, sqlab_token)
 
         assert status == 200
@@ -159,27 +154,25 @@ class TestMCPRLS:
         ("admin", {"boy", "girl"}),
     ])
     async def test_rls_filtering(
-        self, ops_test: OpsTest, username: str, expected_genders: set
+        self, ops_test: OpsTest, mcp_fixtures: dict, username: str, expected_genders: set
     ):
         """Verify RLS filtering is applied correctly per role."""
         superset_url = await get_unit_url(ops_test, UI_NAME, 0, 8088)
         mcp_url = await get_unit_url(ops_test, UI_NAME, 0, MCP_PORT)
         mcp_endpoint = f"{mcp_url}{MCP_ENDPOINT}"
 
-        jwt_secret = "a" * 64
         api_token = superset_login(superset_url)
-        fixtures = setup_mcp_fixtures(superset_url, api_token)
 
         ensure_rls_rule(
             superset_url, api_token,
             "demo-rls-birth-names-boy-only",
             "gender = 'boy'",
-            [fixtures["rls_role_id"]],
-            [fixtures["birth_names_id"]],
+            [mcp_fixtures["rls_role_id"]],
+            [mcp_fixtures["birth_names_id"]],
         )
 
         sql_query = "SELECT gender, COUNT(*) as cnt FROM birth_names GROUP BY gender ORDER BY gender"
-        token = make_token(username, jwt_secret)
+        token = make_token(username, JWT_SECRET)
         status, text = mcp_call(
             mcp_endpoint,
             "execute_sql",

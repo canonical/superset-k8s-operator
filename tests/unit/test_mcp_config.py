@@ -36,13 +36,6 @@ class TestMCPConfiguration(unittest.TestCase):
         self.mock_db = patcher_db.start()
         self.addCleanup(patcher_db.stop)
 
-    def test_mcp_enabled_config(self):
-        """Test charm config validation accepts mcp-enabled=true."""
-        self.harness.update_config({"mcp-enabled": True})
-        self.harness.begin()
-
-        config = self.harness.model.config
-        assert config.get("mcp-enabled") is True
 
     def test_mcp_with_jwt_secret(self):
         """Test MCP is enabled with JWT secret configured."""
@@ -57,17 +50,16 @@ class TestMCPConfiguration(unittest.TestCase):
         assert config.get("mcp-enabled") is True
         assert config.get("mcp-jwt-secret") == jwt_secret
 
-    def test_jwt_secret_format_accepted(self):
-        """Test JWT secret in hex format is accepted by charm config."""
-        jwt_secret_hex = "a" * 64
+    def test_jwt_secret_accepted_regardless_of_length(self):
+        """Charm accepts any non-empty secret; no length enforcement at config layer."""
+        short_secret = "a" * 32
         self.harness.update_config({
             "mcp-enabled": True,
-            "mcp-jwt-secret": jwt_secret_hex,
+            "mcp-jwt-secret": short_secret,
         })
         self.harness.begin()
 
-        jwt_secret = self.harness.model.config.get("mcp-jwt-secret")
-        self.assertEqual(jwt_secret, jwt_secret_hex)
+        self.assertEqual(self.harness.model.config.get("mcp-jwt-secret"), short_secret)
 
     def test_mcp_disabled_without_secret(self):
         """Test that MCP can be disabled without JWT secret."""
@@ -79,18 +71,6 @@ class TestMCPConfiguration(unittest.TestCase):
 
         config = self.harness.model.config
         assert config.get("mcp-enabled") is False
-
-    def test_jwt_secret_length_recommendation(self):
-        """Test JWT secret has recommended length (32 bytes = 64 hex chars)."""
-        self.harness.update_config({
-            "mcp-enabled": True,
-            "mcp-jwt-secret": "a" * 64,
-        })
-        self.harness.begin()
-
-        jwt_secret = self.harness.model.config.get("mcp-jwt-secret")
-        hex_bytes = len(bytes.fromhex(jwt_secret))
-        self.assertGreaterEqual(hex_bytes, 32, "JWT secret should be at least 32 bytes")
 
 
 if __name__ == "__main__":
