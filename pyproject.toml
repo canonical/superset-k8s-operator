@@ -65,7 +65,7 @@ integration = [
     "celery==5.3.6",
     "ipdb==0.13.9",
     "juju==3.5.2.1",
-    "protobuf==3.19.0",
+    "protobuf==5.29.6",
     "pytest==7.4.0",
     "pytest-asyncio==0.21",
     "pytest-operator==0.29.0",
