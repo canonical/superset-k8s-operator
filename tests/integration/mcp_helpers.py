@@ -4,12 +4,10 @@
 
 """MCP test helpers for integration tests."""
 
-import http.cookiejar
 import json
 import logging
 import re
 import urllib.error
-import urllib.parse
 import urllib.request
 from typing import Optional
 
@@ -421,36 +419,33 @@ def ensure_rls_rule(
             logger.info(f"RLS rule '{name}' already exists (id={rule['id']})")
             return rule["id"]
 
-    jar = http.cookiejar.CookieJar()
-    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
-
-    resp = opener.open(f"{base_url}/login/")
-    html = resp.read().decode()
-    m = re.search(r'name=["\']csrf_token["\'][^>]*value=["\']([^"\']+)["\']', html) or \
-        re.search(r'value=["\']([^"\']+)["\'][^>]*name=["\']csrf_token["\']', html)
-    form_csrf = m.group(1) if m else ""
-
-    form_data = urllib.parse.urlencode({
-        "username": SUPERSET_ADMIN_USER,
-        "password": SUPERSET_ADMIN_PASSWORD,
-        "csrf_token": form_csrf,
-    }).encode()
-    opener.open(f"{base_url}/login/", form_data)
-
-    req = urllib.request.Request(
-        f"{base_url}/api/v1/security/csrf_token/", headers=auth_headers
+    # CSRF requires a session cookie. Log in via the JSON API to get both
+    # the Bearer token and a session cookie in one session object, then
+    # fetch the CSRF token from that session.
+    session = _requests.Session()
+    login_resp = session.post(
+        f"{base_url}/api/v1/security/login",
+        json={"username": SUPERSET_ADMIN_USER, "password": SUPERSET_ADMIN_PASSWORD, "provider": "db"},
+        timeout=30,
     )
-    with opener.open(req) as resp:
-        csrf_token = json.loads(resp.read()).get("result", "")
+    login_resp.raise_for_status()
+    session_token = login_resp.json()["access_token"]
+
+    csrf_resp = session.get(
+        f"{base_url}/api/v1/security/csrf_token/",
+        headers={"Authorization": f"Bearer {session_token}"},
+        timeout=30,
+    )
+    csrf_resp.raise_for_status()
+    csrf_token = csrf_resp.json().get("result", "")
 
     headers = {
-        "Authorization": f"Bearer {api_token}",
+        "Authorization": f"Bearer {session_token}",
         "X-CSRFToken": csrf_token,
         "Referer": base_url,
         "Content-Type": "application/json",
     }
-
-    body = json.dumps({
+    body = {
         "name": name,
         "clause": clause,
         "filter_type": "Regular",
@@ -458,20 +453,14 @@ def ensure_rls_rule(
         "roles": role_ids,
         "group_key": "",
         "description": f"Demo: {clause}",
-    }).encode()
-
-    req = urllib.request.Request(
+    }
+    resp = session.post(
         f"{base_url}/api/v1/rowlevelsecurity/",
-        data=body,
+        json=body,
         headers=headers,
-        method="POST",
+        timeout=30,
     )
-
-    try:
-        with opener.open(req, timeout=30) as resp:
-            response = json.loads(resp.read())
-    except urllib.error.HTTPError as e:
-        response = json.loads(e.read())
+    response = resp.json()
 
     rule_id = response.get("id") or response.get("result", {}).get("id")
     if not rule_id:

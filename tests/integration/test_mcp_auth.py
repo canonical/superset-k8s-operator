@@ -203,7 +203,7 @@ class TestMCPAuthentication:
 
         status, text = mcp_call(mcp_endpoint, "get_instance_info", {}, ghost_token)
         assert status == 200
-        assert "no Superset user found" in text
+        assert "JWT authenticated user not found in Superset database" in text
 
 
 @pytest.mark.abort_on_fail
