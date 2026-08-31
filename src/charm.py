@@ -578,6 +578,31 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "OAUTH_CLIENT_SECRET": provider.client_secret,
         }
 
+    def _get_mcp_auth_env(self) -> dict:
+        """Return MCP_AUTH_* env vars from the oauth relation provider.
+
+        Uses a distinct namespace from OAUTH_* (web-UI login) so the two
+        auth configurations remain independent and the MCP container does
+        not receive unneeded web-UI credentials.
+
+        Returns:
+            dict of MCP_AUTH_* env vars, or empty dict when the oauth
+            relation is not yet ready.
+        """
+        provider = self.oauth.provider_info
+        if provider is None:
+            return {}
+        return {
+            "MCP_AUTH_ISSUER": provider.issuer_url,
+            "MCP_AUTH_JWKS_URL": provider.jwks_endpoint,
+            "MCP_AUTH_INTROSPECTION_URL": provider.introspection_endpoint,
+            "MCP_AUTH_JWT_ACCESS_TOKEN": (
+                "true" if provider.jwt_access_token else "false"
+            ),
+            "MCP_AUTH_CLIENT_ID": provider.client_id or "",
+            "MCP_AUTH_CLIENT_SECRET": provider.client_secret or "",
+        }
+
     def _update(self, event):
         """Update the application server configuration and replan its execution.
 
@@ -674,21 +699,23 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             self.config["mcp-enabled"]
             and self.config["charm-function"] in UI_FUNCTIONS
         ):
+            if self.config["mcp-auth-enabled"] and not self.oauth.provider_info:
+                self.unit.status = BlockedStatus(
+                    "mcp-enabled with auth requires an active oauth relation"
+                )
+                return
+
             mcp_port = self.config["mcp-port"]
             mcp_env = env.copy()
-            mcp_env.update(
-                {
-                    "MCP_AUTH_ENABLED": self.config["mcp-auth-enabled"],
-                    "MCP_PORT": mcp_port,
-                }
-            )
+            mcp_env["MCP_AUTH_ENABLED"] = self.config["mcp-auth-enabled"]
+            mcp_env["MCP_PORT"] = mcp_port
+
             if not self.config["mcp-auth-enabled"]:
                 if self.config["mcp-dev-username"]:
-                    mcp_env["MCP_DEV_USERNAME"] = self.config[
-                        "mcp-dev-username"
-                    ]
-            elif self.config["mcp-jwt-secret"]:
-                mcp_env["MCP_JWT_SECRET"] = self.config["mcp-jwt-secret"]
+                    mcp_env["MCP_DEV_USERNAME"] = self.config["mcp-dev-username"]
+            else:
+                mcp_env.update(self._get_mcp_auth_env())
+
             mcp_layer = {
                 "services": {
                     "mcp": {

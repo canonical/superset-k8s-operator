@@ -82,13 +82,13 @@ async def deploy(ops_test: OpsTest, charm: str, charm_image: str):
                 "feature-flags": "GLOBAL_ASYNC_QUERIES",
             }
 
-            # Load examples and enable MCP for the UI charm
+            # Load examples and enable MCP for the UI charm (no jwt-secret;
+            # auth comes from the oauth relation wired in mcp-specific fixtures).
             if app_name == UI_NAME:
                 superset_config.update({
                     "load-examples": "True",
                     "mcp-enabled": "True",
-                    "mcp-auth-enabled": "True",
-                    "mcp-jwt-secret": "a" * 64,
+                    "mcp-auth-enabled": "False",
                     "feature-flags": "GLOBAL_ASYNC_QUERIES,RLS_IN_SQLLAB",
                 })
 

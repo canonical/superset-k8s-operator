@@ -6,24 +6,26 @@
 
 import http.cookiejar
 import json
-import jwt
 import logging
 import re
-import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from typing import Optional
 
+import requests as _requests
 from pytest_operator.plugin import OpsTest
 
 logger = logging.getLogger(__name__)
 
 MCP_PORT = 5008
 MCP_ENDPOINT = "/mcp"
-ISSUER = "superset-k8s"
-AUDIENCE = "superset-mcp"
-TOKEN_TTL_SECONDS = 3600
+
+# Hydra deployment constants
+HYDRA_APP = "hydra"
+HYDRA_CHANNEL = "latest/edge"
+HYDRA_PUBLIC_PORT = 4444
+HYDRA_ADMIN_PORT = 4445
 
 ALPHA_ROLE_ID = 3
 GAMMA_ROLE_ID = 4
@@ -60,26 +62,151 @@ def api(method: str, url: str, body=None, headers: Optional[dict] = None) -> tup
             return e.code, {}
 
 
-def make_token(username: str, secret: str, exp_offset: int = TOKEN_TTL_SECONDS) -> str:
-    """Generate JWT token for MCP authentication.
+def get_hydra_token(token_url: str, client_id: str, client_secret: str) -> str:
+    """Obtain a JWT access token from Hydra via the client_credentials grant.
+
+    Tokens issued this way carry ``sub = client_id``, so creating a Hydra
+    client whose id matches a Superset username lets the MCP user resolver
+    find the right user without extra claim mapping.
 
     Args:
-        username: Subject claim (username)
-        secret: HS256 signing secret
-        exp_offset: Token expiration offset in seconds (default: 3600)
+        token_url: Hydra public token endpoint (e.g. http://host:4444/oauth2/token).
+        client_id: OAuth client id (must match a Superset username for RBAC tests).
+        client_secret: Client secret registered with Hydra.
 
     Returns:
-        Encoded JWT token string
+        Raw JWT access token string.
+
+    Raises:
+        RuntimeError: if Hydra returns an error or no access_token.
     """
-    now = int(time.time())
+    resp = _requests.post(
+        token_url,
+        data={"grant_type": "client_credentials", "scope": "openid"},
+        auth=(client_id, client_secret),
+        timeout=30,
+    )
+    resp.raise_for_status()
+    token = resp.json().get("access_token")
+    if not token:
+        raise RuntimeError(
+            f"Hydra returned no access_token for client {client_id!r}: {resp.json()}"
+        )
+    return token
+
+
+def create_hydra_client(
+    admin_url: str,
+    client_id: str,
+    client_secret: str,
+    audience: Optional[list] = None,
+) -> None:
+    """Register an OAuth client in Hydra via the admin API.
+
+    Idempotent: if the client already exists its secret is updated to
+    ``client_secret`` so tests that restore from a snapshot remain valid.
+
+    Args:
+        admin_url: Hydra admin base URL (e.g. http://host:4445).
+        client_id: Client id to register.
+        client_secret: Client secret.
+        audience: Optional list of audiences to embed in issued tokens.
+            Pass the MCP OAuth client_id here so audience validation passes.
+    """
     payload = {
-        "sub": username,
-        "iss": ISSUER,
-        "aud": AUDIENCE,
-        "iat": now,
-        "exp": now + exp_offset,
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "grant_types": ["client_credentials"],
+        "token_endpoint_auth_method": "client_secret_basic",
+        "scope": "openid",
     }
-    return jwt.encode(payload, secret, algorithm="HS256")
+    if audience:
+        payload["audience"] = audience
+
+    # Check whether the client already exists.
+    check = _requests.get(
+        f"{admin_url}/admin/clients/{client_id}", timeout=10
+    )
+    if check.status_code == 200:
+        resp = _requests.put(
+            f"{admin_url}/admin/clients/{client_id}",
+            json=payload,
+            timeout=10,
+        )
+    else:
+        resp = _requests.post(
+            f"{admin_url}/admin/clients",
+            json=payload,
+            timeout=10,
+        )
+    resp.raise_for_status()
+    logger.info("Hydra client %r registered/updated", client_id)
+
+
+async def setup_hydra_test_clients(
+    ops_test: OpsTest,
+    usernames: list[str],
+    mcp_client_id: str,
+    client_secret_suffix: str = "_pass123",
+) -> dict[str, str]:
+    """Create Hydra OAuth clients whose ids match Superset usernames.
+
+    Tokens issued via client_credentials carry ``sub = client_id``, which
+    the MCP user resolver maps directly to a Superset username.  The MCP
+    OAuth client_id is set as the audience so our validator accepts the tokens.
+
+    Args:
+        ops_test: Pytest-operator test context.
+        usernames: List of Superset usernames to register as Hydra clients.
+        mcp_client_id: The MCP service's own OAuth client_id (audience value).
+        client_secret_suffix: Appended to each username to form the secret.
+
+    Returns:
+        Dict mapping username → client_secret.
+    """
+    admin_url = await get_unit_url(ops_test, HYDRA_APP, 0, HYDRA_ADMIN_PORT)
+    secrets = {}
+    for username in usernames:
+        secret = f"{username}{client_secret_suffix}"
+        create_hydra_client(admin_url, username, secret, audience=[mcp_client_id])
+        secrets[username] = secret
+    return secrets
+
+
+async def get_mcp_oauth_client_id(ops_test: OpsTest, app_name: str) -> str:
+    """Read MCP_AUTH_CLIENT_ID from the running charm's MCP pebble service env.
+
+    Args:
+        ops_test: Pytest-operator test context.
+        app_name: Superset application name.
+
+    Returns:
+        The MCP OAuth client_id string, or empty string if not found.
+    """
+    unit = ops_test.model.applications[app_name].units[0]
+    action = await unit.run("env", timeout=30)
+    await action.wait()
+    stdout = action.results.get("stdout", "")
+    for line in stdout.splitlines():
+        if line.startswith("MCP_AUTH_CLIENT_ID="):
+            return line.split("=", 1)[1].strip()
+    return ""
+
+
+async def get_unit_url(ops_test: OpsTest, application: str, unit: int, port: int) -> str:
+    """Return a unit's HTTP URL.
+
+    Args:
+        ops_test: Pytest-operator test context.
+        application: Application name.
+        unit: Unit index.
+        port: TCP port.
+
+    Returns:
+        URL string like ``http://10.x.x.x:port``.
+    """
+    from integration.helpers import get_unit_url as _get_unit_url
+    return await _get_unit_url(ops_test, application, unit, port)
 
 
 def mcp_call(

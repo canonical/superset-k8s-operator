@@ -38,7 +38,6 @@ the Trino service account.
 import asyncio
 import json
 import logging
-import time
 
 import pytest
 import pytest_asyncio
@@ -56,9 +55,15 @@ from integration.mcp_helpers import (
     MCP_ENDPOINT,
     MCP_PORT,
     ALPHA_ROLE_ID,
+    HYDRA_APP,
+    HYDRA_ADMIN_PORT,
+    HYDRA_CHANNEL,
+    HYDRA_PUBLIC_PORT,
     SQLAB_ROLE_ID,
+    create_hydra_client,
     ensure_user,
-    make_token,
+    get_hydra_token,
+    get_mcp_oauth_client_id,
     mcp_call,
     superset_login,
 )
@@ -172,16 +177,13 @@ async def deploy_trino_mcp_fixture(
             timeout=TIMEOUT_DEPLOY,
         )
 
-    # Step 3: Superset
-    resources = {"superset-image": charm_image}
     superset_config = {
         "charm-function": "app-gunicorn",
         "superset-secret-key": SUPERSET_SECRET_KEY,
         "admin-password": "admin",
         "load-examples": "True",
         "mcp-enabled": "True",
-        "mcp-auth-enabled": "True",
-        "mcp-jwt-secret": "a" * 64,
+        "mcp-auth-enabled": "False",
         "feature-flags": "GLOBAL_ASYNC_QUERIES,RLS_IN_SQLLAB",
     }
 
@@ -253,6 +255,31 @@ async def deploy_trino_mcp_fixture(
         await ops_test.model.wait_for_idle(
             apps=[TRINO_APP, SUPERSET_APP],
             status="active",
+            timeout=TIMEOUT_IDLE,
+        )
+    # Step 6: Hydra — deploy, integrate oauth, enable MCP auth
+    await ops_test.model.deploy(HYDRA_APP, channel=HYDRA_CHANNEL, trust=True)
+    async with ops_test.fast_forward():
+        await ops_test.model.wait_for_idle(
+            apps=[HYDRA_APP],
+            status="active",
+            raise_on_blocked=False,
+            timeout=TIMEOUT_DEPLOY,
+        )
+    await ops_test.model.integrate(f"{SUPERSET_APP}:oauth", f"{HYDRA_APP}:oauth")
+    async with ops_test.fast_forward():
+        await ops_test.model.wait_for_idle(
+            apps=[SUPERSET_APP, HYDRA_APP],
+            status="active",
+            raise_on_blocked=False,
+            timeout=TIMEOUT_IDLE,
+        )
+    await ops_test.model.applications[SUPERSET_APP].set_config(
+        {"mcp-auth-enabled": "True"}
+    )
+    async with ops_test.fast_forward():
+        await ops_test.model.wait_for_idle(
+            apps=[SUPERSET_APP], status="active", raise_on_blocked=False,
             timeout=TIMEOUT_IDLE,
         )
 
@@ -403,17 +430,36 @@ class TestTrinoRBACViaImpersonation:
     module-scoped and the Ranger policy grant is applied once in the first test.
     """
 
-    # JWT secret is the fixed value set in deploy_trino_mcp_fixture.
-    JWT_SECRET = "a" * 64
+    # Hydra client secrets for the Trino test users (registered in step 6).
+    _CLIENT_SECRET_SUFFIX = "_trino_secret"
+
+    def _secret(self, username: str) -> str:
+        return f"{username}{self._CLIENT_SECRET_SUFFIX}"
+
+    async def _setup_hydra_clients(self, ops_test: OpsTest) -> str:
+        """Register ALLOWED_USER and BLOCKED_USER as Hydra clients.
+
+        Returns the Hydra public token endpoint URL.
+        """
+        admin_url = await get_unit_url(
+            ops_test, application=HYDRA_APP, unit=0, port=HYDRA_ADMIN_PORT
+        )
+        mcp_client_id = await get_mcp_oauth_client_id(ops_test, SUPERSET_APP)
+        for username in (ALLOWED_USER, BLOCKED_USER):
+            create_hydra_client(
+                admin_url, username, self._secret(username),
+                audience=[mcp_client_id],
+            )
+        hydra_base = await get_unit_url(
+            ops_test, application=HYDRA_APP, unit=0, port=HYDRA_PUBLIC_PORT
+        )
+        return f"{hydra_base}/oauth2/token"
 
     async def test_setup_users_and_policies(self, ops_test: OpsTest):
-        """Create Superset users and Ranger policies before the RBAC assertions.
-
-        This is a setup step disguised as a test so that failures are reported
-        clearly and abort subsequent tests (abort_on_fail).
-        """
+        """Create Superset users, Hydra clients, and Ranger policies."""
         await _setup_superset_users(ops_test)
         await _setup_ranger_users_and_policies(ops_test)
+        self._token_url = await self._setup_hydra_clients(ops_test)
 
         logger.info(
             "Waiting %ss for Ranger plugin to sync policies to Trino",
@@ -430,7 +476,7 @@ class TestTrinoRBACViaImpersonation:
         """
         db_id = await _get_trino_db_id(ops_test)
         url = _mcp_url(ops_test)
-        token = make_token(ALLOWED_USER, self.JWT_SECRET)
+        token = get_hydra_token(self._token_url, ALLOWED_USER, self._secret(ALLOWED_USER))
 
         status, text = mcp_call(
             url,
@@ -456,7 +502,7 @@ class TestTrinoRBACViaImpersonation:
         """``trino_allowed`` has a Ranger policy grant and must be able to query."""
         db_id = await _get_trino_db_id(ops_test)
         url = _mcp_url(ops_test)
-        token = make_token(ALLOWED_USER, self.JWT_SECRET)
+        token = get_hydra_token(self._token_url, ALLOWED_USER, self._secret(ALLOWED_USER))
 
         status, text = mcp_call(
             url,
@@ -480,7 +526,7 @@ class TestTrinoRBACViaImpersonation:
         """
         db_id = await _get_trino_db_id(ops_test)
         url = _mcp_url(ops_test)
-        token = make_token(BLOCKED_USER, self.JWT_SECRET)
+        token = get_hydra_token(self._token_url, BLOCKED_USER, self._secret(BLOCKED_USER))
 
         status, text = mcp_call(
             url,
@@ -512,7 +558,7 @@ class TestTrinoRBACViaImpersonation:
             ops_test, application=SUPERSET_APP, unit=0, port=8088
         )
         url = _mcp_url(ops_test)
-        token = make_token(BLOCKED_USER, self.JWT_SECRET)
+        token = get_hydra_token(self._token_url, BLOCKED_USER, self._secret(BLOCKED_USER))
 
         # get_instance_info does not touch Trino — must succeed for blocked user
         status, text = mcp_call(url, "get_instance_info", {}, token)

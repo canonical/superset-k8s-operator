@@ -573,76 +573,166 @@ _QO.cache_key = _qo_patched_cache_key
 
 # MCP server configuration
 # Ref: https://superset.apache.org/admin-docs/6.1.0/configuration/mcp-server/
-if os.getenv("MCP_AUTH_ENABLED", "").lower() == "false":
+_mcp_auth_enabled = os.getenv("MCP_AUTH_ENABLED", "").lower()
+_mcp_dev_username = os.getenv("MCP_DEV_USERNAME", "")
+_mcp_auth_issuer = os.getenv("MCP_AUTH_ISSUER", "")
+
+if _mcp_auth_enabled == "false":
+    # Dev / internal testing: no token validation; identity comes from
+    # MCP_DEV_USERNAME, which Superset's built-in MCP handler honours.
+    MCP_AUTH_ENABLED = False
+    if _mcp_dev_username:
+        MCP_DEV_USERNAME = _mcp_dev_username
+
+elif _mcp_auth_issuer:
+    # Production: OAuth 2.1 resource-server mode.
+    #
+    # FastMCP's built-in HS256 middleware is disabled; token validation is
+    # done entirely in a Flask before_request hook (installed via
+    # FLASK_APP_MUTATOR) so that invalid or missing tokens are rejected with
+    # HTTP 401 before FastMCP sees the request.  The before_request hook
+    # stores validated claims in flask.g.mcp_claims; the patched
+    # get_user_from_request resolver reads them from there.
+    #
+    # This block only executes in the MCP process because MCP_AUTH_ISSUER is
+    # only injected into the MCP pebble layer environment, not into the main
+    # Superset or worker environments.
     MCP_AUTH_ENABLED = False
 
-_mcp_dev_username = os.getenv("MCP_DEV_USERNAME", "")
-if _mcp_dev_username:
-    MCP_DEV_USERNAME = _mcp_dev_username
+    # Pre-create the PyJWKClient when using JWT access tokens so that key
+    # material is cached across requests (PyJWT's built-in TTL is 300 s).
+    _mcp_jwt_mode = os.getenv("MCP_AUTH_JWT_ACCESS_TOKEN", "false").lower() == "true"
+    if _mcp_jwt_mode:
+        import jwt as _jwt_mod
+        _mcp_jwks_client = _jwt_mod.PyJWKClient(
+            os.getenv("MCP_AUTH_JWKS_URL", ""),
+            cache_keys=True,
+        )
+    else:
+        _mcp_jwks_client = None
 
-_mcp_jwt_secret = os.getenv("MCP_JWT_SECRET", "")
-if _mcp_jwt_secret:
-    MCP_AUTH_ENABLED = True
-    MCP_JWT_ALGORITHM = "HS256"
-    MCP_JWT_SECRET = _mcp_jwt_secret
-    MCP_JWT_ISSUER = "superset-k8s"
-    MCP_JWT_AUDIENCE = "superset-mcp"
+    def _mcp_validate_token(token_str):
+        """Validate a bearer token and return its decoded claims.
 
-    # Patch get_user_from_request to bridge FastMCP's validated JWT access
-    # token to Flask's g.user. In Superset 6.1.0, MCP_USER_RESOLVER is
-    # documented but not wired into get_user_from_request(), so the JWT
-    # sub claim is never used to load a Superset user. This patch adds
-    # that missing step between JWT validation and tool execution.
-    def _get_user_from_request_with_jwt():
-        from flask import current_app, g
+        Uses JWKS when MCP_AUTH_JWT_ACCESS_TOKEN is true, otherwise calls
+        the provider's introspection endpoint.
 
-        if hasattr(g, "user") and g.user:
-            return g.user
+        Args:
+            token_str: raw bearer token string (no "Bearer " prefix).
 
-        try:
-            import sys
-            from fastmcp.server.dependencies import get_access_token
-            from superset.mcp_service.auth import load_user_with_relationships
+        Returns:
+            dict of token claims (e.g. {"sub": ..., "email": ...}).
 
-            token = get_access_token()
-            with open("/tmp/mcp_patch_debug.txt", "a") as _f:
-                _f.write(f"token={type(token).__name__}: {token}\n")
-            if token is not None:
-                claims = getattr(token, "claims", {}) or {}
-                username = (
-                    getattr(token, "subject", None)
-                    or claims.get("sub")
-                    or claims.get("email")
-                    or claims.get("username")
+        Raises:
+            ValueError: on signature failure, expiry, inactive token, or
+                any other validation error.
+        """
+        import os as _os
+
+        if _mcp_jwks_client is not None:
+            import jwt as _jwt
+            issuer = _os.getenv("MCP_AUTH_ISSUER", "")
+            client_id = _os.getenv("MCP_AUTH_CLIENT_ID", "")
+            try:
+                signing_key = _mcp_jwks_client.get_signing_key_from_jwt(token_str)
+                decode_kwargs = dict(
+                    algorithms=["RS256", "ES256"],
+                    issuer=issuer,
+                    options={"require": ["exp", "iss"]},
                 )
-                with open("/tmp/mcp_patch_debug.txt", "a") as _f:
-                    _f.write(f"username={username}\n")
-                if username:
-                    user = load_user_with_relationships(username)
-                    if user:
-                        return user
-        except Exception as e:
-            import sys
-            with open("/tmp/mcp_patch_debug.txt", "a") as _f:
-                _f.write(f"exception: {type(e).__name__}: {e}\n")
+                if client_id:
+                    decode_kwargs["audience"] = client_id
+                return _jwt.decode(token_str, signing_key.key, **decode_kwargs)
+            except _jwt.ExpiredSignatureError:
+                raise ValueError("token expired")
+            except _jwt.InvalidTokenError as exc:
+                raise ValueError(f"invalid token: {exc}")
+        else:
+            import requests as _requests
+            introspect_url = _os.getenv("MCP_AUTH_INTROSPECTION_URL", "")
+            client_id = _os.getenv("MCP_AUTH_CLIENT_ID", "")
+            secret = _os.getenv("MCP_AUTH_CLIENT_SECRET", "")
+            resp = _requests.post(
+                introspect_url,
+                data={"token": token_str},
+                auth=(client_id, secret),
+                timeout=10,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            if not data.get("active"):
+                raise ValueError("token inactive or invalid")
+            return data
 
-        dev_username = current_app.config.get("MCP_DEV_USERNAME")
-        if dev_username:
-            from superset.mcp_service.auth import load_user_with_relationships
+    def _mcp_get_user_from_request():
+        """Load the Superset user from claims pre-validated by the before_request hook.
 
-            user = load_user_with_relationships(dev_username)
+        The before_request hook stores decoded claims in flask.g.mcp_claims.
+        The resolver maps them to a Superset user object.
+
+        Returns:
+            Superset user object for the authenticated identity.
+
+        Raises:
+            ValueError: if no matching Superset user is found.
+        """
+        from flask import g
+        from superset.mcp_service.auth import load_user_with_relationships
+
+        claims = getattr(g, "mcp_claims", None)
+        if claims is None:
+            raise ValueError(
+                "request not pre-authenticated; g.mcp_claims not set"
+            )
+
+        sub = claims.get("sub", "")
+        email = claims.get("email", "")
+
+        # Try sub as username first (covers service accounts and test clients
+        # whose client_id matches a Superset username).
+        if sub:
+            user = load_user_with_relationships(sub)
             if user:
                 return user
 
-        auth_enabled = current_app.config.get("MCP_AUTH_ENABLED", False)
-        jwt_configured = bool(current_app.config.get("MCP_JWT_SECRET"))
-        raise ValueError(
-            "No authenticated user found. Tried:\n"
-            f"  - g.user was not set by JWT middleware "
-            f"(MCP_AUTH_ENABLED={auth_enabled}, JWT keys configured={jwt_configured})\n"
-            "  - MCP_DEV_USERNAME is not configured\n\n"
-            "Either pass a valid JWT bearer token or configure MCP_DEV_USERNAME."
-        )
+        # Fall back to email lookup (covers human users from Canonical Identity
+        # Platform where sub is a UUID and email is the human-readable identity).
+        if email:
+            from superset.extensions import db as _db
+            from flask_appbuilder.security.sqla.models import User as _FABUser
+            db_user = _db.session.query(_FABUser).filter_by(email=email).first()
+            if db_user:
+                return load_user_with_relationships(db_user.username)
+
+        tried = f"sub={sub!r}"
+        if email:
+            tried += f", email={email!r}"
+        raise ValueError(f"no Superset user found ({tried})")
+
+    def _mcp_app_mutator(app):
+        """Install bearer-token pre-validation as a Flask before_request hook.
+
+        Runs before every request to the MCP Flask app.  Invalid or missing
+        tokens are rejected with HTTP 401 before FastMCP processes the
+        request; validated claims are stored in flask.g.mcp_claims for the
+        resolver.
+
+        Args:
+            app: Flask application instance passed by Superset's create_app.
+        """
+        from flask import abort, g, request as flask_request
+
+        @app.before_request
+        def _mcp_auth_check():
+            auth_hdr = flask_request.headers.get("Authorization", "")
+            if not auth_hdr.startswith("Bearer "):
+                abort(401)
+            token_str = auth_hdr[len("Bearer "):]
+            try:
+                g.mcp_claims = _mcp_validate_token(token_str)
+            except Exception:
+                abort(401)
 
     import superset.mcp_service.auth as _mcp_auth_module
-    _mcp_auth_module.get_user_from_request = _get_user_from_request_with_jwt
+    _mcp_auth_module.get_user_from_request = _mcp_get_user_from_request
+    FLASK_APP_MUTATOR = _mcp_app_mutator
