@@ -114,6 +114,7 @@ class TestSslContext(unittest.TestCase):
     """The SSL context reflects the verification query parameters."""
 
     def test_verifies_and_checks_hostname_by_default(self):
+        """With no overrides, the context verifies and checks hostnames."""
         context = hive_tls.build_ssl_context(
             ca_bundle=None, check_hostname=True, verify=True
         )
@@ -121,6 +122,7 @@ class TestSslContext(unittest.TestCase):
         self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
 
     def test_hostname_check_can_be_disabled_while_still_verifying(self):
+        """Hostname checking can be turned off without disabling verify."""
         context = hive_tls.build_ssl_context(
             ca_bundle=None, check_hostname=False, verify=True
         )
@@ -128,6 +130,7 @@ class TestSslContext(unittest.TestCase):
         self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
 
     def test_verification_can_be_disabled(self):
+        """Disabling verify also disables the hostname check."""
         context = hive_tls.build_ssl_context(
             ca_bundle=None, check_hostname=True, verify=False
         )
@@ -152,6 +155,7 @@ class TestConnectArgs(unittest.TestCase):
         return kwargs
 
     def test_transport_wraps_a_tls_socket(self):
+        """The thrift transport wraps a TLS socket to the right host/port."""
         kwargs = self._connect_args(
             "hive+tls://admin:secret@kyuubi-0:10009/telemetry"
         )
@@ -162,6 +166,7 @@ class TestConnectArgs(unittest.TestCase):
         self.assertEqual(transport.transport.port, 10009)
 
     def test_host_port_and_credentials_are_not_passed_to_pyhive(self):
+        """Only thrift_transport, username and database reach PyHive."""
         kwargs = self._connect_args(
             "hive+tls://admin:secret@kyuubi-0:10009/telemetry"
         )
@@ -172,10 +177,12 @@ class TestConnectArgs(unittest.TestCase):
         self.assertEqual(kwargs["database"], "telemetry")
 
     def test_defaults_to_the_kyuubi_thrift_binary_port(self):
+        """A URL with no port defaults to Kyuubi's thrift binary port."""
         kwargs = self._connect_args("hive+tls://admin:secret@kyuubi-0/default")
         self.assertEqual(kwargs["thrift_transport"].transport.port, 10009)
 
     def test_thrift_hostname_check_is_bypassed(self):
+        """Thrift's own hostname check is bypassed in favour of SSLContext."""
         kwargs = self._connect_args(
             "hive+tls://admin:secret@kyuubi-0:10009/telemetry"
         )
@@ -187,6 +194,7 @@ class TestConnectArgs(unittest.TestCase):
         )
 
     def test_query_parameters_configure_verification(self):
+        """The check_hostname query parameter configures the SSL context."""
         kwargs = self._connect_args(
             "hive+tls://admin:secret@kyuubi.svc:10009/telemetry"
             "?check_hostname=false"
@@ -195,6 +203,7 @@ class TestConnectArgs(unittest.TestCase):
         self.assertFalse(context.check_hostname)
 
     def test_sasl_password_placeholder_when_absent(self):
+        """A missing password is replaced with the PLAIN mechanism placeholder."""
         kwargs = self._connect_args("hive+tls://admin@kyuubi-0:10009/default")
         sasl_args = kwargs["thrift_transport"].sasl_factory()
         self.assertEqual(sasl_args["password"], "x")
