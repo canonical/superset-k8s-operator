@@ -173,6 +173,13 @@ async def deploy_trino_superset(
     ops_test: OpsTest, charm: str, charm_image: str, secret_ids: dict[str, str]
 ):  # pylint: disable=redefined-outer-name
     """Deploy Superset with dependencies and Trino."""
+    if ops_test.request.config.getoption("--no-deploy") and ops_test.request.config.getoption(
+        "--model"
+    ):
+        logger.info(
+            "Skipping Trino/Superset deploy; reusing existing model %s", ops_test.model_name
+        )
+        return
     await ops_test.model.set_config(
         {"logging-config": "<root>=INFO;unit=DEBUG"}
     )

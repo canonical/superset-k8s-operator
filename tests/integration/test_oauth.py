@@ -4,6 +4,7 @@
 """Integration tests for Superset's OAuth relation."""
 
 import json
+import logging
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -18,6 +19,8 @@ from integration.helpers import (
     get_unit_url,
 )
 from pytest_operator.plugin import OpsTest
+
+logger = logging.getLogger(__name__)
 
 TRAEFIK_DOMAIN = TRAEFIK_CONFIG["external_hostname"]
 OAUTH_INTEGRATOR_NAME = "oauth-external-idp-integrator"
@@ -44,6 +47,11 @@ async def deploy_oauth(ops_test: OpsTest, deploy) -> None:
         deploy: Shared deployment fixture from the integration conftest.
     """
     del deploy
+    if ops_test.request.config.getoption("--no-deploy") and ops_test.request.config.getoption(
+        "--model"
+    ):
+        logger.info("Skipping OAuth stub deploy; reusing existing model %s", ops_test.model_name)
+        return
     await ops_test.model.deploy(TLS_NAME, channel="1/stable")
     await ops_test.model.wait_for_idle(
         apps=[TLS_NAME],
