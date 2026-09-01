@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+/.sql
 # Copyright 2023 Canonical Ltd.
 # See LICENSE file for licensing details.
 
@@ -8,11 +10,16 @@ the *impersonated* Superset user, not the Trino service account.
 
 Deployment topology
 -------------------
-  PostgreSQL ──► Superset (app-gunicorn, MCP enabled)
+  PostgreSQL ──► Superset (multi-app: ui, worker, beat; MCP enabled)
   Redis       ──► Superset
   PostgreSQL  ──► Ranger
+  PostgreSQL  ──► Hydra
   Trino       ──► Ranger  (policy relation)
   Trino       ──► Superset (trino-catalog relation → creates Superset DB connection)
+  TLS         ──► Traefik (external hostname for Hydra public route)
+  Hydra       ──► Traefik (public-route)
+  Hydra       ──► Login UI (ui-endpoint-info)
+  Superset UI ──► Hydra   (oauth relation)
 
 The Trino charm sets ``impersonate_user: True`` on every Superset DB connection,
 so every SQL query routed through Superset carries ``X-Trino-User: <superset_user>``.
@@ -38,34 +45,39 @@ the Trino service account.
 import asyncio
 import json
 import logging
+import time
+import uuid
 
 import pytest
 import pytest_asyncio
-from apache_ranger.client.ranger_client import RangerClient
-from apache_ranger.model.ranger_policy import RangerPolicy
+import requests
+
+from integration.conftest import deploy  # noqa: F401, pylint: disable=W0611
 from integration.helpers import (
     POSTGRES_NAME,
-    REDIS_NAME,
-    SUPERSET_SECRET_KEY,
+    TLS_NAME,
+    TRAEFIK_NAME,
+    UI_NAME,
     api_authentication,
     get_unit_url,
-    perform_superset_integrations,
 )
 from integration.mcp_helpers import (
-    MCP_ENDPOINT,
-    MCP_PORT,
-    ALPHA_ROLE_ID,
     HYDRA_APP,
     HYDRA_ADMIN_PORT,
     HYDRA_CHANNEL,
     HYDRA_PUBLIC_PORT,
+    LOGIN_UI_APP,
+    LOGIN_UI_CHANNEL,
+    MCP_ENDPOINT,
+    MCP_PORT,
+    ALPHA_ROLE_ID,
     SQLAB_ROLE_ID,
     create_hydra_client,
     ensure_user,
     get_hydra_token,
     get_mcp_oauth_client_id,
-    mcp_call,
     superset_login,
+    mcp_call,
 )
 from pytest_operator.plugin import OpsTest
 
@@ -73,7 +85,6 @@ logger = logging.getLogger(__name__)
 
 # ── Application names ──────────────────────────────────────────────────────────
 
-SUPERSET_APP = "superset-k8s"
 TRINO_APP = "trino-k8s"
 RANGER_APP = "ranger-k8s"
 
@@ -124,101 +135,40 @@ async def pg_secret_id(ops_test: OpsTest) -> str:
 @pytest.mark.skip_if_deployed
 @pytest_asyncio.fixture(name="deploy_trino_mcp", scope="module")
 async def deploy_trino_mcp_fixture(
-    ops_test: OpsTest, charm: str, charm_image: str, pg_secret_id: str
-):
-    """Deploy the full Trino-Ranger-Superset stack.
+    ops_test: OpsTest, deploy, pg_secret_id: str
+) -> None:
+    """Extend the base deployment with Trino, Ranger, and Hydra for MCP OAuth.
 
-    Deployment order:
-    1. PostgreSQL and Redis (Superset deps) + PostgreSQL for Ranger, in parallel.
-    2. Ranger (needs PostgreSQL active first).
-    3. Superset (needs PostgreSQL and Redis active).
-    4. Trino (needs Ranger active for policy relation).
-    5. Wire relations: Ranger↔Trino (policy), Trino↔Superset (trino-catalog).
+    Order matters: Trino's catalog relation must create the Superset database
+    connection *before* Ranger's policy relation is wired.  If the policy
+    relation is added first, Ranger denies the service account used to validate
+    the connection and the Superset database is never created.
     """
+    del deploy  # wait for base fixture to finish
+
     await ops_test.model.set_config({"logging-config": "<root>=INFO;unit=DEBUG"})
 
-    # Step 1: shared infrastructure
-    await asyncio.gather(
-        ops_test.model.deploy(POSTGRES_NAME, channel="14", trust=True),
-        ops_test.model.deploy(REDIS_NAME, channel="edge", trust=True),
-    )
-
     async with ops_test.fast_forward():
+        # TLS → Traefik so an external hostname is published for Hydra's route.
+        await ops_test.model.deploy(TLS_NAME, channel="1/stable")
         await ops_test.model.wait_for_idle(
-            apps=[POSTGRES_NAME, REDIS_NAME],
-            status="active",
-            raise_on_blocked=False,
-            timeout=TIMEOUT_DEPLOY,
+            apps=[TLS_NAME], status="active", raise_on_blocked=False, timeout=1200,
         )
-
-    # Step 2: Ranger (needs its own PostgreSQL — reuse the same instance)
-    await ops_test.model.deploy(
-        RANGER_APP,
-        channel="latest/edge",
-        config={"ranger-usersync-password": "P@ssw0rd1234"},
-        trust=True,
-    )
-
-    async with ops_test.fast_forward():
+        await ops_test.model.integrate(
+            f"{TRAEFIK_NAME}:certificates", f"{TLS_NAME}:certificates"
+        )
         await ops_test.model.wait_for_idle(
-            apps=[RANGER_APP],
-            status="blocked",
-            raise_on_blocked=False,
-            timeout=TIMEOUT_DEPLOY,
+            apps=[TRAEFIK_NAME, UI_NAME], status="active", raise_on_blocked=False, timeout=600,
         )
 
-    await ops_test.model.integrate(RANGER_APP, POSTGRES_NAME)
-
-    async with ops_test.fast_forward():
-        await ops_test.model.wait_for_idle(
-            apps=[RANGER_APP, POSTGRES_NAME],
-            status="active",
-            raise_on_blocked=False,
-            timeout=TIMEOUT_DEPLOY,
-        )
-
-    superset_config = {
-        "charm-function": "app-gunicorn",
-        "superset-secret-key": SUPERSET_SECRET_KEY,
-        "admin-password": "admin",
-        "load-examples": "True",
-        "mcp-enabled": "True",
-        "mcp-auth-enabled": "False",
-        "feature-flags": "GLOBAL_ASYNC_QUERIES,RLS_IN_SQLLAB",
-    }
-
-    await ops_test.model.deploy(
-        charm,
-        resources=resources,
-        application_name=SUPERSET_APP,
-        config=superset_config,
-        num_units=1,
-    )
-
-    async with ops_test.fast_forward():
-        await ops_test.model.wait_for_idle(
-            apps=[SUPERSET_APP],
-            status="blocked",
-            raise_on_blocked=False,
-            timeout=TIMEOUT_DEPLOY,
-        )
-        await perform_superset_integrations(ops_test, SUPERSET_APP)
-        assert (
-            ops_test.model.applications[SUPERSET_APP].units[0].workload_status
-            == "active"
-        )
-
-    # Step 4: Trino
+    # Deploy Trino before Ranger so the catalog connection can be validated
+    # without any Ranger policies active.
     await ops_test.model.deploy(
         TRINO_APP,
         channel="latest/edge",
-        config={
-            "charm-function": "all",
-            "ranger-service-name": TRINO_SERVICE_NAME,
-        },
+        config={"charm-function": "all"},
         trust=True,
     )
-
     async with ops_test.fast_forward():
         await ops_test.model.wait_for_idle(
             apps=[TRINO_APP],
@@ -227,67 +177,83 @@ async def deploy_trino_mcp_fixture(
             timeout=TIMEOUT_DEPLOY,
         )
 
-    # Step 5a: Ranger ↔ Trino (policy)
-    await ops_test.model.integrate(f"{RANGER_APP}:policy", f"{TRINO_APP}:policy")
-
-    async with ops_test.fast_forward():
-        await ops_test.model.wait_for_idle(
-            apps=[RANGER_APP, TRINO_APP],
-            status="active",
-            timeout=TIMEOUT_IDLE,
-        )
-
-    # Step 5b: Grant catalog secret to Trino, then set catalog-config
-    await ops_test.model.grant_secret("trino-mcp-pg-secret", TRINO_APP)
-
-    catalog_config = _build_tpch_catalog_config(pg_secret_id)
-    await ops_test.model.applications[TRINO_APP].set_config(
-        {"catalog-config": catalog_config}
+    # Ranger uses the same PostgreSQL application already deployed for Superset.
+    await ops_test.model.deploy(
+        RANGER_APP,
+        channel="latest/edge",
+        config={"ranger-usersync-password": "P@ssw0rd1234"},
+        trust=True,
     )
-
-    # Step 5c: Trino ↔ Superset (trino-catalog)
-    await ops_test.model.integrate(
-        f"{TRINO_APP}:trino-catalog",
-        f"{SUPERSET_APP}:trino-catalog",
-    )
-
+    await ops_test.model.integrate(RANGER_APP, POSTGRES_NAME)
     async with ops_test.fast_forward():
         await ops_test.model.wait_for_idle(
-            apps=[TRINO_APP, SUPERSET_APP],
-            status="active",
-            timeout=TIMEOUT_IDLE,
-        )
-    # Step 6: Hydra — deploy, integrate oauth, enable MCP auth
-    await ops_test.model.deploy(HYDRA_APP, channel=HYDRA_CHANNEL, trust=True)
-    async with ops_test.fast_forward():
-        await ops_test.model.wait_for_idle(
-            apps=[HYDRA_APP],
+            apps=[RANGER_APP, POSTGRES_NAME],
             status="active",
             raise_on_blocked=False,
             timeout=TIMEOUT_DEPLOY,
         )
-    await ops_test.model.integrate(f"{SUPERSET_APP}:oauth", f"{HYDRA_APP}:oauth")
+
+    # Configure the catalog and create the Superset relation before enabling
+    # Ranger's policy manager for Trino.
+    await ops_test.model.grant_secret("trino-mcp-pg-secret", TRINO_APP)
+    catalog_config = _build_tpch_catalog_config(ops_test, pg_secret_id)
+    await ops_test.model.applications[TRINO_APP].set_config(
+        {"catalog-config": catalog_config}
+    )
+    await ops_test.model.integrate(
+        f"{TRINO_APP}:trino-catalog", f"{UI_NAME}:trino-catalog"
+    )
+    await _wait_for_trino_database(ops_test)
+
+    # Now enforce Ranger policies.
+    await ops_test.model.integrate(f"{RANGER_APP}:policy", f"{TRINO_APP}:policy")
     async with ops_test.fast_forward():
         await ops_test.model.wait_for_idle(
-            apps=[SUPERSET_APP, HYDRA_APP],
+            apps=[RANGER_APP, TRINO_APP],
             status="active",
             raise_on_blocked=False,
             timeout=TIMEOUT_IDLE,
         )
-    await ops_test.model.applications[SUPERSET_APP].set_config(
-        {"mcp-auth-enabled": "True"}
+
+    # Deploy Hydra + Login UI outside fast_forward (Hydra's update-status hook
+    # can briefly set maintenance under fast_forward).
+    await ops_test.model.deploy(LOGIN_UI_APP, channel=LOGIN_UI_CHANNEL, trust=True)
+    await ops_test.model.deploy(HYDRA_APP, channel=HYDRA_CHANNEL, trust=True)
+    await ops_test.model.integrate(f"{HYDRA_APP}:pg-database", f"{POSTGRES_NAME}:database")
+    await ops_test.model.integrate(
+        f"{HYDRA_APP}:public-route", f"{TRAEFIK_NAME}:traefik-route"
     )
+    await ops_test.model.integrate(
+        f"{HYDRA_APP}:ui-endpoint-info", f"{LOGIN_UI_APP}:ui-endpoint-info"
+    )
+    await ops_test.model.wait_for_idle(
+        apps=[HYDRA_APP, LOGIN_UI_APP],
+        status="active",
+        raise_on_blocked=False,
+        timeout=1200,
+    )
+
+    # Wire OAuth relation and enable MCP authentication.
+    await ops_test.model.integrate(f"{UI_NAME}:oauth", f"{HYDRA_APP}:oauth")
     async with ops_test.fast_forward():
         await ops_test.model.wait_for_idle(
-            apps=[SUPERSET_APP], status="active", raise_on_blocked=False,
-            timeout=TIMEOUT_IDLE,
+            apps=[UI_NAME, HYDRA_APP],
+            status="active",
+            raise_on_blocked=False,
+            timeout=600,
+        )
+
+    await ops_test.model.applications[UI_NAME].set_config({"mcp-auth-enabled": "True"})
+    async with ops_test.fast_forward():
+        await ops_test.model.wait_for_idle(
+            apps=[UI_NAME], status="active", raise_on_blocked=False, timeout=600,
         )
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 
-def _build_tpch_catalog_config(pg_secret_id: str) -> str:
+def _build_tpch_catalog_config(ops_test: OpsTest, pg_secret_id: str) -> str:
     """Build a minimal catalog-config YAML for Trino using PostgreSQL as backend.
 
     The catalog is named ``testcat`` to match the zone name Ranger creates.
@@ -304,79 +270,91 @@ def _build_tpch_catalog_config(pg_secret_id: str) -> str:
         "backends:\n"
         "  pg:\n"
         "    connector: postgresql\n"
-        "    url: jdbc:postgresql://postgresql-k8s-primary.{model}.svc.cluster.local:5432\n"
+        f"    url: jdbc:postgresql://postgresql-k8s-primary.{ops_test.model.name}.svc.cluster.local:5432\n"
     )
-
-
-def _get_ranger_url(ops_test: OpsTest) -> str:
-    """Return the Ranger admin URL (synchronous — uses cached model status)."""
-    unit = ops_test.model.applications[RANGER_APP].units[0]
-    address = unit.public_address
-    return f"http://{address}:{RANGER_PORT}"
 
 
 async def _get_ranger_url_async(ops_test: OpsTest) -> str:
     """Return the Ranger admin URL via get_unit_url."""
-    return await get_unit_url(ops_test, application=RANGER_APP, unit=0, port=RANGER_PORT)
+    return await get_unit_url(
+        ops_test, application=RANGER_APP, unit=0, port=RANGER_PORT
+    )
 
 
 async def _setup_ranger_users_and_policies(ops_test: OpsTest) -> None:
-    """Create Ranger users and grant ``trino_allowed`` access to the Trino service.
-
-    ``trino_allowed`` is added to the three default trinouser/catalog/queryid
-    policies that gate all catalog access.  ``trino_blocked`` is left out.
-    """
+    """Create Ranger users and grant ``trino_allowed`` access to Trino."""
     ranger_url = await _get_ranger_url_async(ops_test)
-    ranger = RangerClient(ranger_url, RANGER_AUTH)
 
-    # Create users in Ranger's internal user store
+    # Create users in Ranger's internal user store.
     for username in (ALLOWED_USER, BLOCKED_USER):
-        _ensure_ranger_user(ranger_url, username)
+        response = requests.get(
+            f"{ranger_url}/service/xusers/users",
+            params={"name": username},
+            auth=RANGER_AUTH,
+            timeout=30,
+        )
+        response.raise_for_status()
+        if response.json().get("totalCount", 0) == 0:
+            response = requests.post(
+                f"{ranger_url}/service/xusers/secure/users",
+                json={
+                    "name": username,
+                    "firstName": username,
+                    "lastName": "Test",
+                    "emailAddress": f"{username}@example.com",
+                    "password": "T3stP@ssword!",
+                    "userRoleList": ["ROLE_USER"],
+                },
+                auth=RANGER_AUTH,
+                timeout=30,
+            )
+            response.raise_for_status()
 
-    # Add trino_allowed to the three default service-level policies
-    for policy_name in ("all - trinouser", "all - catalog", "all - queryid"):
-        try:
-            policy = ranger.get_policy(TRINO_SERVICE_NAME, policy_name)
-        except Exception:
-            logger.warning("Policy %r not found yet, skipping", policy_name)
-            continue
-        if ALLOWED_USER not in (policy.policyItems[0].users if policy.policyItems else []):
-            policy.policyItems[0].users.append(ALLOWED_USER)
-            ranger.update_policy(TRINO_SERVICE_NAME, policy_name, policy)
-            logger.info("Granted %s access via policy %r", ALLOWED_USER, policy_name)
-
-
-def _ensure_ranger_user(ranger_url: str, username: str) -> None:
-    """Create a Ranger internal user if it does not already exist."""
-    import requests as _requests
-
-    resp = _requests.get(
-        f"{ranger_url}/service/xusers/users",
-        params={"name": username},
+    # Grant ``trino_allowed`` access to every service-level Trino policy.
+    # SHOW SCHEMAS and similar metadata queries need schema/table/column grants
+    # in addition to the impersonation and catalog policies.
+    response = requests.get(
+        f"{ranger_url}/service/public/v2/api/service/{TRINO_SERVICE_NAME}/policy",
         auth=RANGER_AUTH,
         timeout=30,
     )
-    resp.raise_for_status()
-    if resp.json().get("totalCount", 0) > 0:
-        logger.info("Ranger user %r already exists", username)
-        return
+    response.raise_for_status()
+    for policy in response.json():
+        policy_items = policy.setdefault("policyItems", [{}])
+        users = policy_items[0].setdefault("users", [])
+        if ALLOWED_USER not in users:
+            users.append(ALLOWED_USER)
+            put_response = requests.put(
+                f"{ranger_url}/service/public/v2/api/policy/{policy['id']}",
+                json=policy,
+                auth=RANGER_AUTH,
+                timeout=30,
+            )
+            put_response.raise_for_status()
+            logger.info(
+                "Granted %s access via policy %r", ALLOWED_USER, policy.get("name")
+            )
 
-    payload = {
-        "name": username,
-        "firstName": username,
-        "lastName": "Test",
-        "emailAddress": f"{username}@example.com",
-        "password": "T3stP@ssword!",
-        "userRoleList": ["ROLE_USER"],
-    }
-    resp = _requests.post(
-        f"{ranger_url}/service/xusers/secure/users",
-        json=payload,
-        auth=RANGER_AUTH,
-        timeout=30,
+
+async def _wait_for_trino_database(
+    ops_test: OpsTest, timeout: int = TIMEOUT_DEPLOY
+) -> None:
+    """Wait until the Trino catalog relation creates a Superset database."""
+    superset_url = await get_unit_url(
+        ops_test, application=UI_NAME, unit=0, port=8088
     )
-    resp.raise_for_status()
-    logger.info("Created Ranger user %r", username)
+    session = await api_authentication(ops_test, superset_url)
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        response = session.get(f"{superset_url}/api/v1/database/", timeout=30)
+        response.raise_for_status()
+        if any(
+            db.get("backend") == "trino"
+            for db in response.json().get("result", [])
+        ):
+            return
+        await asyncio.sleep(20)
+    raise TimeoutError("Superset did not create the Trino database connection")
 
 
 async def _setup_superset_users(ops_test: OpsTest) -> None:
@@ -385,25 +363,35 @@ async def _setup_superset_users(ops_test: OpsTest) -> None:
     Both get Alpha + sql_lab roles — identical Superset permissions.  Any
     difference in query outcome is therefore purely Trino/Ranger enforcement.
     """
-    superset_url = await get_unit_url(ops_test, application=SUPERSET_APP, unit=0, port=8088)
+    superset_url = await get_unit_url(
+        ops_test, application=UI_NAME, unit=0, port=8088
+    )
     api_token = superset_login(superset_url)
 
     for username, password in (
         (ALLOWED_USER, ALLOWED_PASSWORD),
         (BLOCKED_USER, BLOCKED_PASSWORD),
     ):
-        ensure_user(superset_url, api_token, username, password, [ALPHA_ROLE_ID, SQLAB_ROLE_ID])
+        ensure_user(
+            superset_url, api_token, username, password, [ALPHA_ROLE_ID, SQLAB_ROLE_ID]
+        )
         logger.info("Ensured Superset user %r", username)
 
 
-async def _get_trino_db_id(ops_test: OpsTest, catalog_name: str = "testcat") -> int:
+async def _get_trino_db_id(
+    ops_test: OpsTest, catalog_name: str = "testcat"
+) -> int:
     """Return the Superset database connection ID for the given Trino catalog."""
-    superset_url = await get_unit_url(ops_test, application=SUPERSET_APP, unit=0, port=8088)
+    superset_url = await get_unit_url(
+        ops_test, application=UI_NAME, unit=0, port=8088
+    )
     session = await api_authentication(ops_test, superset_url)
     resp = session.get(f"{superset_url}/api/v1/database/", timeout=30)
     resp.raise_for_status()
     for db in resp.json().get("result", []):
-        if db.get("backend") == "trino" and catalog_name in db.get("database_name", ""):
+        if db.get("backend") == "trino" and catalog_name in db.get(
+            "database_name", ""
+        ):
             return db["id"]
     raise RuntimeError(
         f"No Trino database connection for catalog {catalog_name!r} found in Superset. "
@@ -413,7 +401,7 @@ async def _get_trino_db_id(ops_test: OpsTest, catalog_name: str = "testcat") -> 
 
 def _mcp_url(ops_test: OpsTest) -> str:
     """Return the MCP server URL for the Superset unit."""
-    unit = ops_test.model.applications[SUPERSET_APP].units[0]
+    unit = ops_test.model.applications[UI_NAME].units[0]
     address = unit.public_address
     return f"http://{address}:{MCP_PORT}{MCP_ENDPOINT}"
 
@@ -444,10 +432,12 @@ class TestTrinoRBACViaImpersonation:
         admin_url = await get_unit_url(
             ops_test, application=HYDRA_APP, unit=0, port=HYDRA_ADMIN_PORT
         )
-        mcp_client_id = await get_mcp_oauth_client_id(ops_test, SUPERSET_APP)
+        mcp_client_id = await get_mcp_oauth_client_id(ops_test, UI_NAME)
         for username in (ALLOWED_USER, BLOCKED_USER):
             create_hydra_client(
-                admin_url, username, self._secret(username),
+                admin_url,
+                username,
+                self._secret(username),
                 audience=[mcp_client_id],
             )
         hydra_base = await get_unit_url(
@@ -476,7 +466,9 @@ class TestTrinoRBACViaImpersonation:
         """
         db_id = await _get_trino_db_id(ops_test)
         url = _mcp_url(ops_test)
-        token = get_hydra_token(self._token_url, ALLOWED_USER, self._secret(ALLOWED_USER))
+        token = get_hydra_token(
+            self._token_url, ALLOWED_USER, self._secret(ALLOWED_USER)
+        )
 
         status, text = mcp_call(
             url,
@@ -502,12 +494,23 @@ class TestTrinoRBACViaImpersonation:
         """``trino_allowed`` has a Ranger policy grant and must be able to query."""
         db_id = await _get_trino_db_id(ops_test)
         url = _mcp_url(ops_test)
-        token = get_hydra_token(self._token_url, ALLOWED_USER, self._secret(ALLOWED_USER))
+        token = get_hydra_token(
+            self._token_url, ALLOWED_USER, self._secret(ALLOWED_USER)
+        )
 
+        # Cache-bust: execute_sql's result cache is keyed by SQL text, not
+        # user , and would collide with the identical
+        # query in test_blocked_user_denied_by_ranger otherwise.
+        cache_buster = uuid.uuid4().hex
         status, text = mcp_call(
             url,
             "execute_sql",
-            {"request": {"database_id": db_id, "sql": "SHOW SCHEMAS"}},
+            {
+                "request": {
+                    "database_id": db_id,
+                    "sql": f"SHOW SCHEMAS -- allowed {cache_buster}",
+                }
+            },
             token,
         )
 
@@ -526,12 +529,23 @@ class TestTrinoRBACViaImpersonation:
         """
         db_id = await _get_trino_db_id(ops_test)
         url = _mcp_url(ops_test)
-        token = get_hydra_token(self._token_url, BLOCKED_USER, self._secret(BLOCKED_USER))
+        token = get_hydra_token(
+            self._token_url, BLOCKED_USER, self._secret(BLOCKED_USER)
+        )
 
+        # Cache-bust: must not reuse test_allowed_user_can_query's SQL text,
+        # or this reads back that test's cached allowed result instead of a
+        # fresh Ranger denial .
+        cache_buster = uuid.uuid4().hex
         status, text = mcp_call(
             url,
             "execute_sql",
-            {"request": {"database_id": db_id, "sql": "SHOW SCHEMAS"}},
+            {
+                "request": {
+                    "database_id": db_id,
+                    "sql": f"SHOW SCHEMAS -- blocked {cache_buster}",
+                }
+            },
             token,
         )
 
@@ -550,15 +564,14 @@ class TestTrinoRBACViaImpersonation:
 
         Both users have identical Superset roles.  If Superset were blocking
         ``trino_blocked``, MCP would return a Superset permission message
-        (\"You don't have access\"), not a Trino access-denied error.
+        ("You don't have access"), not a Trino access-denied error.
         This test asserts that the MCP tool is actually reached (HTTP 200) and
         the error originates from Trino, not from Superset's permission layer.
         """
-        superset_url = await get_unit_url(
-            ops_test, application=SUPERSET_APP, unit=0, port=8088
-        )
         url = _mcp_url(ops_test)
-        token = get_hydra_token(self._token_url, BLOCKED_USER, self._secret(BLOCKED_USER))
+        token = get_hydra_token(
+            self._token_url, BLOCKED_USER, self._secret(BLOCKED_USER)
+        )
 
         # get_instance_info does not touch Trino — must succeed for blocked user
         status, text = mcp_call(url, "get_instance_info", {}, token)
