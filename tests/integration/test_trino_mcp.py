@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-/.sql
 # Copyright 2023 Canonical Ltd.
 # See LICENSE file for licensing details.
 
@@ -122,9 +121,29 @@ RANGER_POLICY_SYNC_WAIT = 60
 # ── Fixtures ───────────────────────────────────────────────────────────────────
 
 
+def _reusing_existing_model(ops_test: OpsTest) -> bool:
+    """True when invoked as ``--model <existing> --no-deploy``.
+
+    skip_if_deployed on a fixture is not honoured by pytest-operator's own
+    skip check (it only inspects test-item keywords), so fixtures in this
+    file enforce the --no-deploy contract explicitly using this helper.
+    """
+    return bool(
+        ops_test.request.config.getoption("--no-deploy")
+        and ops_test.request.config.getoption("--model")
+    )
+
+
 @pytest_asyncio.fixture(scope="module")
 async def pg_secret_id(ops_test: OpsTest) -> str:
     """Create a Juju secret with PostgreSQL replica credentials for Trino."""
+    if _reusing_existing_model(ops_test):
+        for secret in await ops_test.model.list_secrets():
+            if secret.label == "trino-mcp-pg-secret":
+                return secret.uri.split(":")[-1]
+        raise RuntimeError(
+            "Reusing existing model but no 'trino-mcp-pg-secret' secret found"
+        )
     secret = await ops_test.model.add_secret(
         name="trino-mcp-pg-secret",
         data_args=[f"replicas={POSTGRESQL_REPLICA_SECRET}"],
@@ -145,6 +164,13 @@ async def deploy_trino_mcp_fixture(
     the connection and the Superset database is never created.
     """
     del deploy  # wait for base fixture to finish
+
+    if _reusing_existing_model(ops_test):
+        logger.info(
+            "Skipping Trino/Ranger/Hydra deploy; reusing existing model %s",
+            ops_test.model_name,
+        )
+        return
 
     await ops_test.model.set_config({"logging-config": "<root>=INFO;unit=DEBUG"})
 
@@ -399,11 +425,65 @@ async def _get_trino_db_id(
     )
 
 
-def _mcp_url(ops_test: OpsTest) -> str:
-    """Return the MCP server URL for the Superset unit."""
-    unit = ops_test.model.applications[UI_NAME].units[0]
-    address = unit.public_address
-    return f"http://{address}:{MCP_PORT}{MCP_ENDPOINT}"
+async def _mcp_url(ops_test: OpsTest) -> str:
+    """Return the MCP server URL for the Superset unit.
+
+    ``unit.public_address`` is None for this k8s app, so use the same
+    status-based address lookup as ``get_unit_url``.
+    """
+    base = await get_unit_url(ops_test, application=UI_NAME, unit=0, port=MCP_PORT)
+    return f"{base}{MCP_ENDPOINT}"
+
+
+# Hydra client secrets for the Trino test users (registered by token_url fixture).
+_CLIENT_SECRET_SUFFIX = "_trino_secret"
+
+
+def _secret(username: str) -> str:
+    return f"{username}{_CLIENT_SECRET_SUFFIX}"
+
+
+async def _setup_hydra_clients(ops_test: OpsTest) -> str:
+    """Register ALLOWED_USER and BLOCKED_USER as Hydra clients.
+
+    Returns the Hydra public token endpoint URL.
+    """
+    admin_url = await get_unit_url(
+        ops_test, application=HYDRA_APP, unit=0, port=HYDRA_ADMIN_PORT
+    )
+    mcp_client_id = await get_mcp_oauth_client_id(ops_test, UI_NAME)
+    for username in (ALLOWED_USER, BLOCKED_USER):
+        create_hydra_client(
+            admin_url,
+            username,
+            _secret(username),
+            audience=[mcp_client_id],
+        )
+    hydra_base = await get_unit_url(
+        ops_test, application=HYDRA_APP, unit=0, port=HYDRA_PUBLIC_PORT
+    )
+    return f"{hydra_base}/oauth2/token"
+
+
+@pytest_asyncio.fixture(scope="module")
+async def token_url(ops_test: OpsTest, deploy_trino_mcp) -> str:
+    """Create Superset users, Hydra clients, and Ranger policies once per module.
+
+    pytest gives each test *method* its own fresh class instance, so state set
+    on ``self`` in one test (e.g. a prior ``self._token_url = ...``) is not
+    visible in later tests — this must live in a fixture instead.
+    """
+    del deploy_trino_mcp
+    await _setup_superset_users(ops_test)
+    await _setup_ranger_users_and_policies(ops_test)
+    url = await _setup_hydra_clients(ops_test)
+
+    logger.info(
+        "Waiting %ss for Ranger plugin to sync policies to Trino",
+        RANGER_POLICY_SYNC_WAIT,
+    )
+    await asyncio.sleep(RANGER_POLICY_SYNC_WAIT)
+    return url
 
 
 # ── Test class ─────────────────────────────────────────────────────────────────
@@ -418,46 +498,11 @@ class TestTrinoRBACViaImpersonation:
     module-scoped and the Ranger policy grant is applied once in the first test.
     """
 
-    # Hydra client secrets for the Trino test users (registered in step 6).
-    _CLIENT_SECRET_SUFFIX = "_trino_secret"
-
-    def _secret(self, username: str) -> str:
-        return f"{username}{self._CLIENT_SECRET_SUFFIX}"
-
-    async def _setup_hydra_clients(self, ops_test: OpsTest) -> str:
-        """Register ALLOWED_USER and BLOCKED_USER as Hydra clients.
-
-        Returns the Hydra public token endpoint URL.
-        """
-        admin_url = await get_unit_url(
-            ops_test, application=HYDRA_APP, unit=0, port=HYDRA_ADMIN_PORT
-        )
-        mcp_client_id = await get_mcp_oauth_client_id(ops_test, UI_NAME)
-        for username in (ALLOWED_USER, BLOCKED_USER):
-            create_hydra_client(
-                admin_url,
-                username,
-                self._secret(username),
-                audience=[mcp_client_id],
-            )
-        hydra_base = await get_unit_url(
-            ops_test, application=HYDRA_APP, unit=0, port=HYDRA_PUBLIC_PORT
-        )
-        return f"{hydra_base}/oauth2/token"
-
-    async def test_setup_users_and_policies(self, ops_test: OpsTest):
+    async def test_setup_users_and_policies(self, token_url: str):
         """Create Superset users, Hydra clients, and Ranger policies."""
-        await _setup_superset_users(ops_test)
-        await _setup_ranger_users_and_policies(ops_test)
-        self._token_url = await self._setup_hydra_clients(ops_test)
+        assert token_url.endswith("/oauth2/token")
 
-        logger.info(
-            "Waiting %ss for Ranger plugin to sync policies to Trino",
-            RANGER_POLICY_SYNC_WAIT,
-        )
-        await asyncio.sleep(RANGER_POLICY_SYNC_WAIT)
-
-    async def test_impersonation_fires(self, ops_test: OpsTest):
+    async def test_impersonation_fires(self, ops_test: OpsTest, token_url: str):
         """Confirm X-Trino-User is the Superset username, not the service account.
 
         ``SELECT current_user`` returns the user Trino sees on the connection.
@@ -465,10 +510,8 @@ class TestTrinoRBACViaImpersonation:
         returns the Superset session username.
         """
         db_id = await _get_trino_db_id(ops_test)
-        url = _mcp_url(ops_test)
-        token = get_hydra_token(
-            self._token_url, ALLOWED_USER, self._secret(ALLOWED_USER)
-        )
+        url = await _mcp_url(ops_test)
+        token = get_hydra_token(token_url, ALLOWED_USER, _secret(ALLOWED_USER))
 
         status, text = mcp_call(
             url,
@@ -490,13 +533,11 @@ class TestTrinoRBACViaImpersonation:
             "Impersonation may be off — check impersonate_user on the DB connection."
         )
 
-    async def test_allowed_user_can_query(self, ops_test: OpsTest):
+    async def test_allowed_user_can_query(self, ops_test: OpsTest, token_url: str):
         """``trino_allowed`` has a Ranger policy grant and must be able to query."""
         db_id = await _get_trino_db_id(ops_test)
-        url = _mcp_url(ops_test)
-        token = get_hydra_token(
-            self._token_url, ALLOWED_USER, self._secret(ALLOWED_USER)
-        )
+        url = await _mcp_url(ops_test)
+        token = get_hydra_token(token_url, ALLOWED_USER, _secret(ALLOWED_USER))
 
         # Cache-bust: execute_sql's result cache is keyed by SQL text, not
         # user , and would collide with the identical
@@ -520,7 +561,7 @@ class TestTrinoRBACViaImpersonation:
         )
         logger.info("%s query succeeded", ALLOWED_USER)
 
-    async def test_blocked_user_denied_by_ranger(self, ops_test: OpsTest):
+    async def test_blocked_user_denied_by_ranger(self, ops_test: OpsTest, token_url: str):
         """``trino_blocked`` has no Ranger policy and must be denied by Trino.
 
         The MCP layer does not raise an HTTP error for a query-level permission
@@ -528,10 +569,8 @@ class TestTrinoRBACViaImpersonation:
         We assert the body contains Trino's access-denied signal.
         """
         db_id = await _get_trino_db_id(ops_test)
-        url = _mcp_url(ops_test)
-        token = get_hydra_token(
-            self._token_url, BLOCKED_USER, self._secret(BLOCKED_USER)
-        )
+        url = await _mcp_url(ops_test)
+        token = get_hydra_token(token_url, BLOCKED_USER, _secret(BLOCKED_USER))
 
         # Cache-bust: must not reuse test_allowed_user_can_query's SQL text,
         # or this reads back that test's cached allowed result instead of a
@@ -559,7 +598,9 @@ class TestTrinoRBACViaImpersonation:
         )
         logger.info("%s correctly denied by Ranger", BLOCKED_USER)
 
-    async def test_blocked_user_not_due_to_superset_rbac(self, ops_test: OpsTest):
+    async def test_blocked_user_not_due_to_superset_rbac(
+        self, ops_test: OpsTest, token_url: str
+    ):
         """Confirm the denial is Trino-side, not a Superset RBAC rejection.
 
         Both users have identical Superset roles.  If Superset were blocking
@@ -568,10 +609,8 @@ class TestTrinoRBACViaImpersonation:
         This test asserts that the MCP tool is actually reached (HTTP 200) and
         the error originates from Trino, not from Superset's permission layer.
         """
-        url = _mcp_url(ops_test)
-        token = get_hydra_token(
-            self._token_url, BLOCKED_USER, self._secret(BLOCKED_USER)
-        )
+        url = await _mcp_url(ops_test)
+        token = get_hydra_token(token_url, BLOCKED_USER, _secret(BLOCKED_USER))
 
         # get_instance_info does not touch Trino — must succeed for blocked user
         status, text = mcp_call(url, "get_instance_info", {}, token)

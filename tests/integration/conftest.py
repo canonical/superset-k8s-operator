@@ -52,6 +52,14 @@ async def charm_fixture(
 @pytest_asyncio.fixture(name="deploy", scope="module")
 async def deploy(ops_test: OpsTest, charm: str, charm_image: str):
     """Deploy the app."""
+    if ops_test.request.config.getoption("--no-deploy") and ops_test.request.config.getoption(
+        "--model"
+    ):
+        # skip_if_deployed on a fixture is not honoured by pytest-operator's
+        # own skip check (it only inspects test-item keywords), so enforce
+        # the --no-deploy contract here explicitly.
+        logger.info("Skipping base deploy; reusing existing model %s", ops_test.model_name)
+        return
     await asyncio.gather(
         ops_test.model.deploy(POSTGRES_NAME, channel="14", trust=True),
         ops_test.model.deploy(REDIS_NAME, channel="edge", trust=True),
