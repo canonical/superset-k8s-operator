@@ -28,7 +28,6 @@ from literals import (
     CA_CERT_PATH,
     CERTIFICATES_RELATION_NAME,
 )
-from log import log_event_handler
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +73,6 @@ class Certificates(ops.Object):
         common_name = self.charm.app.name
         return CertificateRequestAttributes(common_name=common_name)
 
-    @log_event_handler(logger)
     def _on_certificate_available(
         self, event: CertificateAvailableEvent
     ) -> None:
@@ -85,7 +83,6 @@ class Certificates(ops.Object):
         """
         self.charm.reconcile_certificates()
 
-    @log_event_handler(logger)
     def _on_certificates_broken(self, event: ops.RelationBrokenEvent) -> None:
         """Handle the certificates-relation-broken event.
 

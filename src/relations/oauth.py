@@ -142,12 +142,12 @@ class OAuthRelation(Object):
     def _on_oauth_info_changed(self, event) -> None:
         """Reconfigure Superset when provider information changes."""
         self._provider_removed = False
-        self.charm._update(event)
+        self.charm.reconcile()
 
     def _on_oauth_info_removed(self, event) -> None:
         """Remove OAuth configuration when provider information disappears."""
         self._provider_removed = True
-        self.charm._update(event)
+        self.charm.reconcile()
 
     def _on_invalid_client_config(self, event) -> None:
         """Log client configuration rejected by the relation library."""

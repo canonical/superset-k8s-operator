@@ -9,7 +9,6 @@ from charms.redis_k8s.v0.redis import RedisRequires
 from ops import framework
 
 from literals import REDIS_RELATION_NAME
-from log import log_event_handler
 
 logger = logging.getLogger(__name__)
 
@@ -30,14 +29,13 @@ class Redis(framework.Object):
             charm.on.redis_relation_updated, self._on_redis_relation_changed
         )
 
-    @log_event_handler(logger)
     def _on_redis_relation_changed(self, event):
         """Handle redis relation updated event.
 
         Args:
             event: The event triggered when the relation changed.
         """
-        self.charm._update(event)
+        self.charm.reconcile()
 
     def get_redis_relation_data(self):
         """Get the hostname and port from the redis relation data.

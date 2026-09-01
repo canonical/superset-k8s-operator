@@ -50,7 +50,6 @@ from literals import (
     TRINO_CATALOG_RELATION_NAME,
     UI_FUNCTIONS,
 )
-from log import log_event_handler
 from relations.oauth import ClientConfigError, OAuthRelation
 from relations.postgresql import Database
 from relations.redis import Redis
@@ -160,16 +159,14 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             refresh_event=self.on.config_changed,
         )
 
-    @log_event_handler(logger)
     def _on_ingress_changed(self, event):
         """Handle the external URL being granted or revoked by the provider.
 
         Args:
             event: The ingress ready or revoked event.
         """
-        self._update(event)
+        self.reconcile()
 
-    @log_event_handler(logger)
     def _on_install(self, event):
         """Install application.
 
@@ -178,61 +175,62 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         """
         self.unit.status = MaintenanceStatus(f"installing {APP_NAME}")
 
-    @log_event_handler(logger)
     def _on_pebble_ready(self, event: PebbleReadyEvent):
         """Define and start a workload using the Pebble API.
 
         Args:
             event: The event triggered when the relation changed.
         """
-        self._update(event)
+        self.reconcile()
 
-    @log_event_handler(logger)
     def _on_config_changed(self, event: ConfigChangedEvent):
         """Handle changed configuration.
 
         Args:
-            event: The event triggered when the relation changed.
+            event: The event triggered when the configuration changed.
         """
-        self.unit.status = WaitingStatus(f"configuring {APP_NAME}")
-        self._update(event)
+        self.reconcile()
 
-    @log_event_handler(logger)
     def _on_peer_relation_changed(self, event):
         """Handle peer relation changes.
 
         Args:
             event: The event triggered when the peer relation changed.
         """
-        self.unit.status = WaitingStatus(f"configuring {APP_NAME}")
-        self._update(event)
+        self.reconcile()
 
-    @log_event_handler(logger)
     def _on_secret_changed(self, event):
         """Handle secret changes.
 
         Args:
             event: The event triggered when the secret changed.
         """
-        self._update(event)
+        self.reconcile(
+            force_trino_credentials=(
+                self.trino_catalog_handler.is_trino_credentials_secret(
+                    event.secret
+                )
+            )
+        )
 
-    @log_event_handler(logger)
     def _on_update_status(self, event):
         """Handle `update-status` events.
 
         Args:
             event: The `update-status` event triggered at intervals
         """
-        if not self.ready_to_start():
+        self._refresh_ingress_address()
+
+        if not self._validate_config():
             return
 
         container = self.unit.get_container(self.name)
-        valid_pebble_plan = self._validate_pebble_plan(container)
-        if not valid_pebble_plan:
-            self._update(event)
+        if not container.can_connect():
+            self.unit.status = MaintenanceStatus("Status check: NOT READY")
             return
 
-        if not self.reconcile_certificates():
+        if not self._validate_pebble_plan(container):
+            self.reconcile()
             return
 
         if self.config["charm-function"] in UI_FUNCTIONS:
@@ -241,12 +239,17 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
                 self.unit.status = MaintenanceStatus("Status check: DOWN")
                 return
 
-        # Sync Trino catalog databases if the relation exists
-        if self.model.get_relation(TRINO_CATALOG_RELATION_NAME):
-            self.trino_catalog_handler.sync_databases()
+        self.reconcile()
 
-        self.unit.set_workload_version(f"v{SUPERSET_VERSION}")
-        self.unit.status = ActiveStatus("Status check: UP")
+    def _refresh_ingress_address(self):
+        """Republish the unit's address on the ingress relation.
+
+        `IngressPerAppRequirer` publishes the address on relation churn,
+        `leader-elected` and `upgrade-charm` only so one bad read
+        routes the ingress at a dead IP indefinitely. It is a no-op when
+        the value has not changed.
+        """
+        self.ingress.provide_ingress_requirements(port=APPLICATION_PORT)
 
     def reconcile_certificates(self, relation_broken: bool = False):
         """Sync the workload CA trust store with the certificates relation.
@@ -381,7 +384,6 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         return True
 
-    @log_event_handler(logger)
     def _on_restart(self, event):
         """Restart application, action handler.
 
@@ -578,40 +580,41 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "OAUTH_CLIENT_SECRET": provider.client_secret,
         }
 
-    def _update(self, event):
-        """Update the application server configuration and replan its execution.
+    def _open_workload_ports(self):
+        """Open the ports a UI application serves on."""
+        if self.config["charm-function"] not in UI_FUNCTIONS:
+            return
+
+        # Open port for cache warm-up.
+        self.model.unit.open_port(port=APPLICATION_PORT, protocol="tcp")
+
+        # Open ports for accepting and exposing metrics
+        self.model.unit.open_port(port=PROMETHEUS_METRICS_PORT, protocol="tcp")
+        self.model.unit.open_port(port=STATSD_PORT, protocol="udp")
+
+    def _sync_trino_catalogs(self, force_update_credentials):
+        """Synchronise Trino catalogs into Superset database connections.
 
         Args:
-            event: The event triggered when the relation changed.
+            force_update_credentials: Whether to update every existing
+                connection unconditionally.
         """
-        try:
-            self.oauth.publish_client_config()
-        except ClientConfigError as exc:
-            logger.error("Invalid OAuth client configuration: %s", exc)
-            self.unit.status = BlockedStatus(
-                "invalid OAuth client configuration"
-            )
+        if not self.model.get_relation(TRINO_CATALOG_RELATION_NAME):
             return
 
-        container = self.unit.get_container(self.name)
-        if not container.can_connect():
-            return
+        self.trino_catalog_handler.sync_databases(
+            force_update_credentials=force_update_credentials
+        )
 
-        if not self.ready_to_start():
-            return
+    def _pebble_layer(self, env):
+        """Build the pebble layer for the configured charm function.
 
-        logger.info("configuring %s", APP_NAME)
-        try:
-            env = self._create_env()
-        except ValueError as e:
-            self.unit.status = BlockedStatus(str(e))
-            return
+        Args:
+            env: the workload environment.
 
-        if not self.reconcile_certificates():
-            return
-
-        load_superset_files(container)
-
+        Returns:
+            The pebble layer as a dictionary.
+        """
         (
             redis_hostname,
             redis_port,
@@ -623,7 +626,6 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             else "/usr/bin/statsd_exporter"
         )
 
-        logger.info("planning %s execution", APP_NAME)
         pebble_layer = {
             "summary": f"{APP_NAME} layer",
             "description": f"pebble config layer for {APP_NAME}",
@@ -659,18 +661,67 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
                 },
             )
 
-            # Open port for cache warm-up.
-            self.model.unit.open_port(port=APPLICATION_PORT, protocol="tcp")
+        return pebble_layer
 
-            # Open ports for accepting and exposing metrics
-            self.model.unit.open_port(
-                port=PROMETHEUS_METRICS_PORT, protocol="tcp"
+    def reconcile(self, force_trino_credentials: bool = False):
+        """Reconcile the charm to its desired state.
+
+        Single entry point for every observer: it reads the current config and
+        relation state, decides whether the charm is ready, and ensures the
+        workload plan matches.
+
+        Args:
+            force_trino_credentials: Whether to update every Trino database
+                connection unconditionally, used when the credentials secret
+                has rotated.
+        """
+        try:
+            self.oauth.publish_client_config()
+        except ClientConfigError as exc:
+            logger.error("Invalid OAuth client configuration: %s", exc)
+            self.unit.status = BlockedStatus(
+                "invalid OAuth client configuration"
             )
-            self.model.unit.open_port(port=STATSD_PORT, protocol="udp")
+            return
 
-        container.add_layer(self.name, pebble_layer, combine=True)
-        container.replan()
-        self.unit.status = MaintenanceStatus("replanning application")
+        if not self.ready_to_start():
+            return
+
+        container = self.unit.get_container(self.name)
+        if not container.can_connect():
+            self.unit.status = WaitingStatus(
+                f"waiting for {APP_NAME} container"
+            )
+            return
+
+        logger.info("configuring %s", APP_NAME)
+        try:
+            env = self._create_env()
+        except ValueError as e:
+            self.unit.status = BlockedStatus(str(e))
+            return
+
+        if not self.reconcile_certificates():
+            return
+
+        load_superset_files(container)
+
+        self._open_workload_ports()
+
+        logger.info("planning %s execution", APP_NAME)
+        container.add_layer(self.name, self._pebble_layer(env), combine=True)
+        try:
+            container.replan()
+        except pebble.ChangeError as e:
+            # A pod being torn down fails the replan rather than the charm.
+            logger.warning("Pebble replan failed: %s", e)
+            self.unit.status = MaintenanceStatus("replan failed")
+            return
+
+        self._sync_trino_catalogs(force_trino_credentials)
+
+        self.unit.set_workload_version(f"v{SUPERSET_VERSION}")
+        self.unit.status = ActiveStatus()
 
 
 if __name__ == "__main__":

@@ -18,7 +18,6 @@ from charms.trino_k8s.v0.trino_catalog import (
 )
 
 from literals import TRINO_CATALOG_RELATION_NAME, UI_FUNCTIONS
-from log import log_event_handler
 from superset_api import SupersetApiClient, SupersetApiError, TrinoConnection
 
 logger = logging.getLogger(__name__)
@@ -53,27 +52,22 @@ class TrinoCatalogRelationHandler(ops.Object):
             charm.on[TRINO_CATALOG_RELATION_NAME].relation_broken,
             self._on_relation_broken,
         )
-        self.framework.observe(
-            charm.on.secret_changed,
-            self._on_secret_changed,
-        )
-        self.framework.observe(
-            charm.on.update_status,
-            self._on_update_status,
-        )
 
-    @log_event_handler(logger)
     def _on_relation_changed(self, event: ops.RelationEvent) -> None:
         """Handle trino-catalog relation changed.
 
         Args:
             event: The event triggered when the relation changed.
         """
-        self.sync_databases()
+        self.charm.reconcile()
 
-    @log_event_handler(logger)
     def _on_relation_broken(self, event: ops.RelationEvent) -> None:
         """Handle trino-catalog relation broken.
+
+        Superset database connections created from the catalogs are left in
+        place deliberately: they hold user-owned content, and a relation that
+        goes away is not an instruction to delete the charts and dashboards
+        built on them.
 
         Args:
             event: The event triggered when the relation departs.
@@ -84,29 +78,22 @@ class TrinoCatalogRelationHandler(ops.Object):
             event.relation.id,
         )
 
-    @log_event_handler(logger)
-    def _on_secret_changed(self, event: ops.SecretChangedEvent) -> None:
-        """Handle secret-changed for Trino credential rotation.
-
-        Only triggers sync when the changed secret matches the
-        Trino credentials secret from the relation data.
+    def is_trino_credentials_secret(self, secret: ops.Secret) -> bool:
+        """Return whether a secret carries this relation's Trino credentials.
 
         Args:
-            event: The event triggered when a secret changes.
+            secret: The secret that changed.
+
+        Returns:
+            True when the relation names this secret as its credentials
+            secret, meaning every existing connection has to be updated.
         """
         trino_info = self.trino_catalog_requirer.get_trino_info()
         if not trino_info:
-            return
+            return False
 
         secret_id = trino_info.get("trino_credentials_secret_id")
-        if secret_id and event.secret.id == secret_id:
-            logger.info("Trino credentials secret changed, syncing databases")
-            self.sync_databases(force_update_credentials=True)
-
-    @log_event_handler(logger)
-    def _on_update_status(self, event: ops.UpdateStatusEvent) -> None:
-        """Trigger database sync on update-status to reconcile state."""
-        self.sync_databases()
+        return bool(secret_id) and secret.id == secret_id
 
     def sync_databases(self, force_update_credentials: bool = False) -> None:
         """Synchronise Trino catalogs into Superset database connections.
@@ -163,14 +150,10 @@ class TrinoCatalogRelationHandler(ops.Object):
         """Check whether this unit should perform database sync.
 
         Returns:
-            True if the charm function is a UI function and base
-            relations are ready.
+            True if this is the leader unit of a UI application.
         """
         if not self.charm.unit.is_leader():
             logger.debug("Skipping trino-catalog sync: not the leader unit")
-            return False
-
-        if not self.charm.ready_to_start():
             return False
 
         if self.charm.config["charm-function"] not in UI_FUNCTIONS:

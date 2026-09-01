@@ -11,7 +11,6 @@ from ops import framework
 from ops.charm import RelationEvent
 
 from literals import DB_NAME, DB_RELATION_NAME
-from log import log_event_handler
 
 logger = logging.getLogger(__name__)
 
@@ -47,23 +46,21 @@ class Database(framework.Object):
             self._on_database_relation_broken,
         )
 
-    @log_event_handler(logger)
     def _on_database_changed(self, event: RelationEvent) -> None:
         """Handle database changed event.
 
         Args:
             event: The event triggered when the relation changed.
         """
-        self.charm._update(event)
+        self.charm.reconcile()
 
-    @log_event_handler(logger)
     def _on_database_relation_broken(self, event):
         """Handle database broken event.
 
         Args:
             event: The event triggered when the relation departs.
         """
-        self.charm._update(event)
+        self.charm.reconcile()
 
     def get_db_info(self) -> Optional[Dict]:
         """Get database connection info by reading relation data.

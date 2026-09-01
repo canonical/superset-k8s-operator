@@ -3,6 +3,8 @@
 
 """Literals and Scenario state builders for the Superset K8s charm unit tests."""
 
+import json
+
 from ops.testing import (
     CheckInfo,
     Container,
@@ -33,6 +35,16 @@ OAUTH_PROVIDER_DATA = {
     "jwks_endpoint": "https://idp.example/jwks",
     "scope": "openid email profile",
     "client_id": "superset-client",
+}
+
+TRINO_CREDENTIALS = {
+    "username": "trino",
+    "password": "trino-password",  # nosec B105
+}
+
+TRINO_CREDENTIALS_NEW = {
+    "username": "trino",
+    "password": "rotated-trino-password",  # nosec B105
 }
 
 SMTP_SECRET_CONTENTS = {
@@ -195,6 +207,32 @@ def ingress_relation(url="https://superset.example"):
         "ingress",
         remote_app_name="traefik-k8s",
         remote_app_data=remote_data,
+    )
+
+
+def trino_catalog_relation(secret_id, catalogs=("marketing",)):
+    """Build a trino-catalog relation carrying complete provider data.
+
+    Args:
+        secret_id: id of the Juju secret holding the Trino credentials.
+        catalogs: names of the catalogs the provider publishes.
+
+    Returns:
+        A Scenario `Relation`.
+    """
+    return Relation(
+        "trino-catalog",
+        remote_app_name="trino-k8s",
+        remote_app_data={
+            "trino_url": "trino.example:443",
+            "trino_catalogs": json.dumps(
+                [
+                    {"name": name, "connector": "postgresql"}
+                    for name in catalogs
+                ]
+            ),
+            "trino_credentials_secret_id": secret_id,
+        },
     )
 
 
