@@ -11,6 +11,7 @@ DB_RELATION_NAME = "postgresql_db"
 REDIS_RELATION_NAME = "redis"
 TRINO_CATALOG_RELATION_NAME = "trino-catalog"
 INGRESS_RELATION_NAME = "ingress"
+MCP_INGRESS_RELATION_NAME = "mcp-ingress"
 OAUTH_RELATION_NAME = "oauth"
 OAUTH_CALLBACK_PATH = "/oauth-authorized/oidc"
 OAUTH_SCOPE = "openid email profile"
@@ -34,6 +35,7 @@ CONFIG_FILES = [
     "custom_security_manager.py",
     "sentry_interceptor.py",
     "permission_error_messages.py",
+    "mcp_google_auth.py",
 ]
 CONFIG_PATH = "/app/pythonpath"
 UI_FUNCTIONS = ["app", "app-gunicorn"]

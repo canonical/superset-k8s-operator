@@ -215,3 +215,13 @@ options:
       mcp-auth-enabled=false. Leave empty when auth is enabled.
     type: string
     default: ""
+  mcp-auth-client-registration:
+    description: |
+      Whether callers may register their own OAuth client with the MCP
+      server (true) or only pre-registered clients are served (false).
+      Only takes effect when the oauth relation's provider is Google-backed
+      (see templates/mcp_google_auth.py) -- Superset's default JWKS-based
+      auth for other providers (Hydra / Canonical Identity Platform) has no
+      concept of client registration, so this has no effect there.
+    type: boolean
+    default: true

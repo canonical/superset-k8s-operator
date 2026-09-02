@@ -72,6 +72,7 @@ class TestMCPConfiguration(unittest.TestCase):
 
     def test_mcp_auth_env_uses_mcp_auth_prefix(self):
         """_get_mcp_auth_env() returns MCP_AUTH_* keys, not raw OAUTH_* keys."""
+        self.harness.update_config({"superset-secret-key": "testsecret"})
         self.harness.begin()
         charm = self.harness.charm
 
@@ -101,6 +102,7 @@ class TestMCPConfiguration(unittest.TestCase):
         )
         assert env["MCP_AUTH_JWT_ACCESS_TOKEN"] == "true"
         assert env["MCP_AUTH_CLIENT_ID"] == "superset-mcp-client"
+        assert env["MCP_AUTH_CLIENT_REGISTRATION"] == "true"
         assert "MCP_JWT_SECRET" not in env
         assert "OAUTH_CLIENT_SECRET" not in env
 
@@ -119,6 +121,7 @@ class TestMCPConfiguration(unittest.TestCase):
 
     def test_mcp_jwt_access_token_false(self):
         """jwt_access_token=False → MCP_AUTH_JWT_ACCESS_TOKEN is 'false'."""
+        self.harness.update_config({"superset-secret-key": "testsecret"})
         self.harness.begin()
         charm = self.harness.charm
 

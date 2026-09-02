@@ -32,6 +32,10 @@ requires:
     interface: ingress
     optional: true
     limit: 1
+  mcp-ingress:
+    interface: traefik_route
+    optional: true
+    limit: 1
   postgresql_db:
     interface: postgresql_client
     optional: false

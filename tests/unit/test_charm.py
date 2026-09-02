@@ -26,7 +26,10 @@ from tests.unit.helpers import (
     SERVER_PORT,
     SMTP_SECRET_CONTENTS,
     build_state,
+    google_oauth_relation,
     ingress_relation,
+    mcp_environment,
+    mcp_ingress_relation,
     oauth_relation,
     oauth_secret,
     superset_container,
@@ -648,3 +651,131 @@ def test_certificates_relation_broken_removes_ca(ctx):
 
         assert not container.exists(CA_CERT_PATH)
         assert not container.exists(CA_CERT_LOCAL_PATH)
+
+
+def _mcp_config(**overrides):
+    """Return charm config enabling authenticated MCP.
+
+    Args:
+        overrides: Config values overriding the defaults.
+
+    Returns:
+        A config dict suitable for build_state().
+    """
+    config = {
+        "mcp-enabled": True,
+        "mcp-auth-enabled": True,
+    }
+    config.update(overrides)
+    return config
+
+
+def test_google_oauth_does_not_require_mcp_ingress(ctx):
+    """A Google-backed oauth relation reconciles cleanly without mcp-ingress.
+
+    mcp-ingress is not required to start MCP -- MCP_AUTH_BASE_URL is simply
+    empty until it's related. Left as a deployer's responsibility to wire
+    up before Google login can actually complete end-to-end.
+    """
+    secret = oauth_secret()
+    state_in = build_state(
+        config=_mcp_config(),
+        extra_relations=(
+            google_oauth_relation(secret.id),
+            ingress_relation("https://superset.example"),
+        ),
+        secrets=(secret,),
+    )
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    assert state_out.unit_status == MaintenanceStatus("replanning application")
+    assert mcp_environment(state_out)["MCP_AUTH_BASE_URL"] == ""
+
+
+def test_google_oauth_ready_with_mcp_ingress(ctx):
+    """A Google-backed oauth relation with mcp-ingress reconciles cleanly."""
+    secret = oauth_secret()
+    state_in = build_state(
+        config=_mcp_config(),
+        extra_relations=(
+            google_oauth_relation(secret.id),
+            ingress_relation("https://superset.example"),
+            mcp_ingress_relation(),
+        ),
+        secrets=(secret,),
+    )
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    assert state_out.unit_status == MaintenanceStatus("replanning application")
+
+
+def test_google_oauth_env_built_from_relation(ctx):
+    """MCP env is sourced from the same oauth relation used for the web UI."""
+    secret = oauth_secret()
+    state_in = build_state(
+        config=_mcp_config(),
+        extra_relations=(
+            google_oauth_relation(secret.id),
+            ingress_relation("https://superset.example"),
+            mcp_ingress_relation("traefik.example"),
+        ),
+        secrets=(secret,),
+    )
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    environment = mcp_environment(state_out)
+    assert environment["MCP_AUTH_ISSUER"] == "https://accounts.google.com"
+    assert environment["MCP_AUTH_INTROSPECTION_URL"] == (
+        "https://oauth2.googleapis.com/tokeninfo"
+    )
+    assert environment["MCP_AUTH_CLIENT_ID"] == "google-client-id"
+    assert environment["MCP_AUTH_CLIENT_SECRET"] == "secret-value"
+    # Derived from Traefik's root external_host, not a literal URL the
+    # provider publishes -- see SupersetK8SCharm._mcp_route_host.
+    assert environment["MCP_AUTH_BASE_URL"] == (
+        f"https://{MODEL_NAME}-superset-k8s-mcp.traefik.example"
+    )
+    assert environment["MCP_AUTH_CLIENT_REGISTRATION"] == "true"
+
+
+def test_google_oauth_client_registration_disabled(ctx):
+    """mcp-auth-client-registration=false is rendered lowercase into the env."""
+    secret = oauth_secret()
+    state_in = build_state(
+        config=_mcp_config(**{"mcp-auth-client-registration": False}),
+        extra_relations=(
+            google_oauth_relation(secret.id),
+            ingress_relation("https://superset.example"),
+            mcp_ingress_relation(),
+        ),
+        secrets=(secret,),
+    )
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    assert (
+        mcp_environment(state_out)["MCP_AUTH_CLIENT_REGISTRATION"] == "false"
+    )
+
+
+def test_hydra_oauth_does_not_require_mcp_ingress(ctx):
+    """A standard (non-Google) oauth relation never needed mcp-ingress."""
+    secret = oauth_secret()
+    state_in = build_state(
+        config=_mcp_config(),
+        extra_relations=(
+            oauth_relation(secret.id),
+            ingress_relation("https://superset.example"),
+        ),
+        secrets=(secret,),
+    )
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    assert state_out.unit_status == MaintenanceStatus("replanning application")
+    environment = mcp_environment(state_out)
+    assert environment["MCP_AUTH_CLIENT_ID"] == "superset-client"
+    assert environment["MCP_AUTH_BASE_URL"] == ""

@@ -48,6 +48,17 @@ SMTP_SECRET_CONTENTS = {
     "email-subject-prefix": "[Test] ",
 }
 
+GOOGLE_OAUTH_PROVIDER_DATA = {
+    "issuer_url": "https://accounts.google.com",
+    "authorization_endpoint": "https://accounts.google.com/o/oauth2/auth",
+    "token_endpoint": "https://oauth2.googleapis.com/token",  # nosec B105
+    "introspection_endpoint": "https://oauth2.googleapis.com/tokeninfo",
+    "userinfo_endpoint": "https://openidconnect.googleapis.com/v1/userinfo",
+    "jwks_endpoint": "https://www.googleapis.com/oauth2/v3/certs",
+    "scope": "openid email profile",
+    "client_id": "google-client-id",
+}
+
 
 def database_provider_databag():
     """Create and return mock database info.
@@ -180,6 +191,30 @@ def oauth_relation(secret_id=None):
     )
 
 
+def google_oauth_relation(secret_id=None):
+    """Build an oauth relation whose provider is Google-backed.
+
+    Simulates an oauth-external-idp-integrator deployment configured for
+    Google (per datahub-mcp-k8s-operator's README) and related exactly like
+    Hydra -- same relation, same interface, just a different provider.
+
+    Args:
+        secret_id: id of the Juju secret holding the client secret, or None to
+            leave the registration incomplete.
+
+    Returns:
+        A Scenario `Relation`.
+    """
+    remote_data = dict(GOOGLE_OAUTH_PROVIDER_DATA)
+    if secret_id is not None:
+        remote_data["client_secret_id"] = secret_id
+    return Relation(
+        "oauth",
+        remote_app_name="oauth-external-idp-integrator",
+        remote_app_data=remote_data,
+    )
+
+
 def ingress_relation(url="https://superset.example"):
     """Build an ingress relation with a URL published by the provider.
 
@@ -198,6 +233,33 @@ def ingress_relation(url="https://superset.example"):
     )
 
 
+def mcp_ingress_relation(external_host="traefik.example"):
+    """Build an mcp-ingress (traefik-route) relation with Traefik's host.
+
+    Unlike ingress_relation(), the traefik-route interface has the
+    *provider* (Traefik) publish only its own root external_host/scheme;
+    the charm derives the actual per-app MCP hostname from that (see
+    SupersetK8SCharm._mcp_route_host).
+
+    Args:
+        external_host: the root hostname Traefik reports, or None to model
+            a related-but-not-yet-ready provider.
+
+    Returns:
+        A Scenario `Relation`.
+    """
+    remote_data = (
+        {}
+        if external_host is None
+        else {"external_host": external_host, "scheme": "https"}
+    )
+    return Relation(
+        "mcp-ingress",
+        remote_app_name="traefik-k8s",
+        remote_app_data=remote_data,
+    )
+
+
 def superset_environment(state):
     """Return the rendered Superset service environment.
 
@@ -210,3 +272,17 @@ def superset_environment(state):
     return state.get_container("superset").plan.to_dict()["services"][
         "superset"
     ]["environment"]
+
+
+def mcp_environment(state):
+    """Return the rendered MCP service environment.
+
+    Args:
+        state: the Scenario `State` to read the plan from.
+
+    Returns:
+        The environment mapping of the `mcp` pebble service.
+    """
+    return state.get_container("superset").plan.to_dict()["services"]["mcp"][
+        "environment"
+    ]

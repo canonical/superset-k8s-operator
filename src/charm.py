@@ -13,6 +13,7 @@ https://discourse.charmhub.io/t/4208
 import logging
 import os
 from typing import Optional
+from urllib.parse import urlparse, urlunparse
 
 import ops
 from charms.data_platform_libs.v0.data_models import TypedCharmBase
@@ -20,6 +21,7 @@ from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
 from charms.loki_k8s.v1.loki_push_api import LogForwarder
 from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointProvider
 from charms.redis_k8s.v0.redis import RedisRelationCharmEvents
+from charms.traefik_k8s.v0.traefik_route import TraefikRouteRequirer
 from charms.traefik_k8s.v2.ingress import IngressPerAppRequirer
 from ops import (
     ActiveStatus,
@@ -42,6 +44,7 @@ from literals import (
     DEFAULT_ROLES,
     INGRESS_RELATION_NAME,
     LOG_FILE,
+    MCP_INGRESS_RELATION_NAME,
     PROMETHEUS_METRICS_PORT,
     REDIS_RELATION_NAME,
     SQL_AB_ROLE,
@@ -68,6 +71,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
     Attrs:
         https_ingress_url: external HTTPS URL published by the ingress provider
+        mcp_https_ingress_url: external HTTPS URL published by the mcp-ingress provider
         on: redis relation events from redis_k8s library
         config_type: the charm structured config
     """
@@ -87,6 +91,42 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         if not url or not url.startswith("https://"):
             return None
         return url.rstrip("/")
+
+    @property
+    def _mcp_route_host(self) -> Optional[str]:
+        """Return the hostname this unit's MCP route is published under.
+
+        Distinct from https_ingress_url's host (the web UI's): a plain
+        IngressPerAppRequirer for MCP would collide with the web UI's own
+        ingress relation, since traefik-k8s names ingress-interface routes
+        purely by <model>-<app>, identical for both relations from this one
+        app. traefik-route sidesteps that: this charm builds the router
+        itself with a distinct name/host, the same way Hydra publishes its
+        own separate endpoint through the same Traefik.
+
+        Returns:
+            The hostname, or None until Traefik has published its external
+            hostname over the mcp-ingress relation.
+        """
+        external_host = self.mcp_route.external_host
+        if not external_host:
+            return None
+        return f"{self.model.name}-{self.app.name}-mcp.{external_host}"
+
+    @property
+    def mcp_https_ingress_url(self) -> Optional[str]:
+        """Return the external HTTPS URL published for the MCP server.
+
+        Returns:
+            The URL without any trailing slash, or None until the
+            mcp-ingress (traefik-route) relation is ready.
+        """
+        if not self.mcp_route.is_ready():
+            return None
+        host = self._mcp_route_host
+        if host is None:
+            return None
+        return f"https://{host}"
 
     def __init__(self, framework: ops.Framework):
         """Construct.
@@ -136,6 +176,25 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         self.framework.observe(self.ingress.on.ready, self._on_ingress_changed)
         self.framework.observe(
             self.ingress.on.revoked, self._on_ingress_changed
+        )
+
+        # Route for the MCP server, published separately from the web UI's
+        # ingress relation. IngressPerAppRequirer keys its router/service
+        # names purely by <model>-<app>, so a second ingress-interface
+        # relation from this same app collides with the web UI's ingress
+        # relation in Traefik's own config -- confirmed live against a real
+        # deployment, not theoretical. traefik-route hands Traefik a raw
+        # dynamic config this charm builds itself (see _publish_mcp_route),
+        # with a distinct router name/host, avoiding that collision -- the
+        # same interface Hydra uses to publish its own separate endpoint
+        # through the same Traefik in this repo's dev deployment.
+        self.mcp_route = TraefikRouteRequirer(
+            self,
+            relation=self.model.get_relation(MCP_INGRESS_RELATION_NAME),
+            relation_name=MCP_INGRESS_RELATION_NAME,
+        )
+        self.framework.observe(
+            self.mcp_route.on.ready, self._on_ingress_changed
         )
 
         # Loki
@@ -379,6 +438,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             )
             return False
 
+
         return True
 
     @log_event_handler(logger)
@@ -579,15 +639,22 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         }
 
     def _get_mcp_auth_env(self) -> dict:
-        """Return MCP_AUTH_* env vars from the oauth relation provider.
+        """Return MCP_AUTH_* env vars for the MCP server's auth provider.
 
         Uses a distinct namespace from OAUTH_* (web-UI login) so the two
         auth configurations remain independent and the MCP container does
         not receive unneeded web-UI credentials.
 
+        Always built from self.oauth.provider_info, the same relation used
+        for the web UI's Hydra login. A Google-backed provider (e.g. an
+        oauth-external-idp-integrator configured for Google) needs no
+        special casing here: templates/mcp_google_auth.py detects Google at
+        the workload level, purely from MCP_AUTH_INTROSPECTION_URL's
+        hostname, and switches to its OAuth-proxy path itself.
+
         Returns:
             dict of MCP_AUTH_* env vars, or empty dict when the oauth
-            relation is not yet ready.
+            relation is not ready.
         """
         provider = self.oauth.provider_info
         if provider is None:
@@ -599,7 +666,6 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         # internal JWKS URL from the same host but on the public port (4444).
         introspection = provider.introspection_endpoint or ""
         if introspection:
-            from urllib.parse import urlparse, urlunparse
             parsed = urlparse(introspection)
             # Switch admin port → public port and point at JWKS path.
             internal_jwks_url = urlunparse(
@@ -621,7 +687,58 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             ),
             "MCP_AUTH_CLIENT_ID": provider.client_id or "",
             "MCP_AUTH_CLIENT_SECRET": provider.client_secret or "",
+            # Only consumed by mcp_google_auth.py's OAuth-proxy path; the
+            # default JWKS-based factory ignores these.
+            "MCP_AUTH_BASE_URL": self.mcp_https_ingress_url or "",
+            "MCP_AUTH_CLIENT_REGISTRATION": str(
+                self.config["mcp-auth-client-registration"]
+            ).lower(),
         }
+
+    def _publish_mcp_route(self, mcp_port: int) -> None:
+        """Publish this unit's MCP endpoint to Traefik over mcp-ingress.
+
+        Builds the Traefik dynamic config by hand (raw=False, so Traefik
+        appends the matching HTTPS/TLS router automatically) rather than
+        going through the ingress interface a second time -- see
+        _mcp_route_host for why. Targets this unit's own pod directly via
+        the per-unit "endpoints" DNS record Kubernetes creates for every
+        Juju sidecar charm, the same address IngressPerAppProvider itself
+        would have used.
+
+        Args:
+            mcp_port: The port the MCP pebble service listens on.
+        """
+        if not self.unit.is_leader() or not self.mcp_route.is_ready():
+            return
+        host = self._mcp_route_host
+        if host is None:
+            return
+
+        router = f"juju-{self.model.name}-{self.app.name}-mcp"
+        unit_dns = self.unit.name.replace("/", "-")
+        target = (
+            f"http://{unit_dns}.{self.app.name}-endpoints."
+            f"{self.model.name}.svc.cluster.local:{mcp_port}"
+        )
+        self.mcp_route.submit_to_traefik(
+            config={
+                "http": {
+                    "routers": {
+                        router: {
+                            "entryPoints": ["web"],
+                            "rule": f"Host(`{host}`)",
+                            "service": f"{router}-service",
+                        }
+                    },
+                    "services": {
+                        f"{router}-service": {
+                            "loadBalancer": {"servers": [{"url": target}]}
+                        }
+                    },
+                }
+            }
+        )
 
     def _update(self, event):
         """Update the application server configuration and replan its execution.
@@ -750,6 +867,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             }
             container.add_layer("mcp", mcp_layer, combine=True)
             self.model.unit.open_port(port=mcp_port, protocol="tcp")
+            self._publish_mcp_route(mcp_port)
 
         container.replan()
         self.unit.status = MaintenanceStatus("replanning application")
