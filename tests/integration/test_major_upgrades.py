@@ -24,7 +24,6 @@ from pytest_operator.plugin import OpsTest
 logger = logging.getLogger(__name__)
 
 
-@pytest.mark.skip_if_deployed
 @pytest_asyncio.fixture(name="deploy-major-upgrade", scope="module")
 async def deploy(ops_test: OpsTest):
     """Deploy the app."""

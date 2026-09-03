@@ -325,6 +325,14 @@ async def simulate_crash(ops_test: OpsTest, charm: str, charm_image: str):
         charm: charm path.
         charm_image: path to rock image to be used.
     """
+    # The signing keys are user-supplied, so the replacement application has
+    # to be pointed at the same secret; granting it again is not enough.
+    app_config = await ops_test.model.applications[UI_NAME].get_config()
+    config = dict(UI_CONFIG)
+    config["signing-keys-secret-id"] = app_config["signing-keys-secret-id"][
+        "value"
+    ]
+
     # Destroy charm
     await ops_test.model.applications[UI_NAME].destroy(force=True)
     await ops_test.model.block_until(
@@ -336,7 +344,7 @@ async def simulate_crash(ops_test: OpsTest, charm: str, charm_image: str):
         "superset-image": charm_image,
     }
     await deploy_and_relate_superset_charm(
-        ops_test, UI_NAME, UI_CONFIG, charm, resources
+        ops_test, UI_NAME, config, charm, resources
     )
 
 

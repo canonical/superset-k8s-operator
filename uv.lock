@@ -1585,7 +1585,7 @@ wheels = [
 
 [[package]]
 name = "macaroonbakery"
-version = "1.3.3"
+version = "1.3.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "protobuf" },
@@ -1595,9 +1595,9 @@ dependencies = [
     { name = "requests" },
     { name = "six" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d1/6f/fb5b71d2b85b22fd5ea813d6fd06c8402f73fcecbe7d3f9302de76deed60/macaroonbakery-1.3.3.tar.gz", hash = "sha256:824e6b1b6d2743ea3ceb614fe3697ef3d6f55effca2ebee7788a7626acaa3af4", size = 82581, upload-time = "2023-12-07T15:43:37.511Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/4b/ae/59f5ab870640bd43673b708e5f24aed592dc2673cc72caa49b0053b4af37/macaroonbakery-1.3.4.tar.gz", hash = "sha256:41ca993a23e4f8ef2fe7723b5cd4a30c759735f1d5021e990770c8a0e0f33970", size = 82143, upload-time = "2023-12-13T14:22:22.539Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/21/e9/2304a657e57ed1ae129d48c16fe940d0165cc28e6bdc353197f6c03a0d97/macaroonbakery-1.3.3-py2.py3-none-any.whl", hash = "sha256:c375f70a3e115e9e04793473237fd4b715ebb2bde610dcb1481195312fa43e74", size = 103666, upload-time = "2023-12-07T15:43:35.102Z" },
+    { url = "https://files.pythonhosted.org/packages/60/42/227f748dc222b7a1c5cb40c7c74ab4162c7fc146b88980776b490ab673a1/macaroonbakery-1.3.4-py2.py3-none-any.whl", hash = "sha256:1e952a189f5c1e96ef82b081b2852c770d7daa20987e2088e762dd5689fb253b", size = 103184, upload-time = "2023-12-13T14:22:20.159Z" },
 ]
 
 [[package]]
@@ -3143,6 +3143,7 @@ integration = [
     { name = "celery" },
     { name = "ipdb" },
     { name = "juju" },
+    { name = "macaroonbakery" },
     { name = "protobuf" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -3201,6 +3202,7 @@ integration = [
     { name = "celery", specifier = "==5.3.6" },
     { name = "ipdb", specifier = "==0.13.9" },
     { name = "juju", specifier = "==3.5.2.1" },
+    { name = "macaroonbakery", specifier = ">=1.3.4" },
     { name = "protobuf", specifier = "==5.29.6" },
     { name = "pytest", specifier = "==9.0.3" },
     { name = "pytest-asyncio", specifier = "==0.21" },

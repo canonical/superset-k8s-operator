@@ -133,26 +133,20 @@ def build_catalog_config(
     catalog_entries = []
 
     if "pgsql" in catalogs:
-        catalog_entries.append(
-            f"""  pgsql:
+        catalog_entries.append(f"""  pgsql:
     backend: dwh
     database: example
-    secret-id: {catalog_secrets['postgresql']}"""
-        )
+    secret-id: {catalog_secrets['postgresql']}""")
 
     if "mysql" in catalogs:
-        catalog_entries.append(
-            f"""  mysql:
+        catalog_entries.append(f"""  mysql:
     backend: mysql
-    secret-id: {catalog_secrets['mysql']}"""
-        )
+    secret-id: {catalog_secrets['mysql']}""")
 
     if "redshift" in catalogs:
-        catalog_entries.append(
-            f"""  redshift:
+        catalog_entries.append(f"""  redshift:
     backend: redshift
-    secret-id: {catalog_secrets['redshift']}"""
-        )
+    secret-id: {catalog_secrets['redshift']}""")
 
     backends = """backends:
   dwh:
@@ -168,7 +162,6 @@ def build_catalog_config(
     return "catalogs:\n" + "\n".join(catalog_entries) + "\n" + backends
 
 
-@pytest.mark.skip_if_deployed
 @pytest_asyncio.fixture(name="deploy-trino-superset", scope="module")
 async def deploy_trino_superset(
     ops_test: OpsTest, charm: str, charm_image: str, secret_ids: dict[str, str]

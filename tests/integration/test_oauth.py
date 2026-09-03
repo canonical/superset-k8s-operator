@@ -34,7 +34,6 @@ OAUTH_STUB_CONFIG = {
 }
 
 
-@pytest.mark.skip_if_deployed
 @pytest_asyncio.fixture(name="deploy-oauth", scope="module")
 async def deploy_oauth(ops_test: OpsTest, deploy) -> None:
     """Add a stub Google OAuth provider to the shared deployment.

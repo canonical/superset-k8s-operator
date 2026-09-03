@@ -906,11 +906,14 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         self._open_workload_ports()
 
         logger.info("planning %s execution", APP_NAME)
-        container.add_layer(self.name, self._pebble_layer(env), combine=True)
         try:
+            container.add_layer(
+                self.name, self._pebble_layer(env), combine=True
+            )
             container.replan()
-        except pebble.ChangeError as e:
-            # A pod being torn down fails the replan rather than the charm.
+        except (pebble.ChangeError, pebble.ConnectionError) as e:
+            # A pod being torn down fails the replan rather than the charm:
+            # `can_connect` goes stale, and pebble goes away with the pod.
             logger.warning("Pebble replan failed: %s", e)
             self.unit.status = MaintenanceStatus("replan failed")
             return

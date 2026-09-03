@@ -48,7 +48,6 @@ async def charm_fixture(
     return charms[0]
 
 
-@pytest.mark.skip_if_deployed
 @pytest_asyncio.fixture(name="deploy", scope="module")
 async def deploy(ops_test: OpsTest, charm: str, charm_image: str):
     """Deploy the app."""

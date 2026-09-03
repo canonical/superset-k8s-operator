@@ -14,7 +14,9 @@ import logging
 from unittest import mock
 
 from ops import ActiveStatus, BlockedStatus, MaintenanceStatus, WaitingStatus
-from ops.pebble import ChangeError, CheckStatus, Layer
+from ops.pebble import ChangeError, CheckStatus
+from ops.pebble import ConnectionError as PebbleConnectionError
+from ops.pebble import Layer
 from ops.testing import CheckInfo, Relation, Secret, State
 
 from literals import CA_CERT_LOCAL_PATH, CA_CERT_PATH
@@ -757,15 +759,14 @@ def test_update_status_reports_unreachable_container(ctx):
 
 def test_failed_replan_is_reported(ctx):
     """A replan that fails leaves the unit in maintenance, not active."""
-    state_in = build_state()
-
-    with mock.patch(
-        "ops.model.Container.replan",
-        side_effect=ChangeError("boom", mock.Mock(tasks=[])),
+    for failure in (
+        ChangeError("error", mock.Mock(tasks=[])),
+        PebbleConnectionError("pebble went away with the pod"),
     ):
-        state_out = ctx.run(ctx.on.config_changed(), state_in)
+        with mock.patch("ops.model.Container.replan", side_effect=failure):
+            state_out = ctx.run(ctx.on.config_changed(), build_state())
 
-    assert state_out.unit_status == MaintenanceStatus("replan failed")
+        assert state_out.unit_status == MaintenanceStatus("replan failed")
 
 
 def test_update_status_republishes_ingress_address(ctx):
