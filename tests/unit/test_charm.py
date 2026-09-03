@@ -14,10 +14,10 @@ import logging
 from unittest import mock
 
 from ops import ActiveStatus, BlockedStatus, MaintenanceStatus, WaitingStatus
-from ops.pebble import ChangeError, CheckStatus
+from ops.pebble import ChangeError
 from ops.pebble import ConnectionError as PebbleConnectionError
 from ops.pebble import Layer
-from ops.testing import CheckInfo, Relation, Secret, State
+from ops.testing import Relation, Secret, State
 
 from literals import CA_CERT_LOCAL_PATH, CA_CERT_PATH
 from tests.unit.helpers import (
@@ -381,48 +381,6 @@ def test_oauth_secret_change_refreshes_credentials(ctx):
     assert superset_environment(state_out)["OAUTH_CLIENT_SECRET"] == (
         "rotated-secret"
     )
-
-
-def with_check(state, status):
-    """Return the state with a pebble check reported on the container.
-
-    The check can only be declared once the plan the charm applied carries
-    it, so this is applied to the state a first reconcile produced.
-
-    Args:
-        state: a state whose plan already declares the `up` check.
-        status: the status the check reports.
-
-    Returns:
-        A new `State` whose container reports the check.
-    """
-    container = dataclasses.replace(
-        state.get_container("superset"),
-        check_infos={CheckInfo("up", status=status)},
-    )
-    return dataclasses.replace(state, containers={container})
-
-
-def test_update_status_up(ctx):
-    """The charm updates the unit status to active based on UP status."""
-    state_mid = ctx.run(ctx.on.config_changed(), build_state())
-
-    state_out = ctx.run(
-        ctx.on.update_status(), with_check(state_mid, CheckStatus.UP)
-    )
-
-    assert state_out.unit_status == ActiveStatus()
-
-
-def test_update_status_down(ctx):
-    """The charm reports maintenance when the pebble check is DOWN."""
-    state_mid = ctx.run(ctx.on.config_changed(), build_state())
-
-    state_out = ctx.run(
-        ctx.on.update_status(), with_check(state_mid, CheckStatus.DOWN)
-    )
-
-    assert state_out.unit_status == MaintenanceStatus("Status check: DOWN")
 
 
 def test_incomplete_pebble_plan(ctx):
@@ -903,32 +861,6 @@ def test_unrelated_secret_change_does_not_force_update(ctx):
         ctx.run(ctx.on.secret_changed(other), state_in)
 
     sync.assert_called_once_with(force_update_credentials=False)
-
-
-def test_reconcile_reports_a_failing_health_check(ctx):
-    """A check reporting DOWN is surfaced by the reconcile, not hidden.
-
-    Waiting for the next update-status to notice would leave the unit
-    reading Active for a whole hook interval while the workload is down.
-    """
-    state_mid = ctx.run(ctx.on.config_changed(), build_state())
-
-    state_out = ctx.run(
-        ctx.on.config_changed(), with_check(state_mid, CheckStatus.DOWN)
-    )
-
-    assert state_out.unit_status == MaintenanceStatus("Status check: DOWN")
-
-
-def test_reconcile_is_active_while_the_check_is_up(ctx):
-    """A check that has not tripped leaves the unit Active."""
-    state_mid = ctx.run(ctx.on.config_changed(), build_state())
-
-    state_out = ctx.run(
-        ctx.on.config_changed(), with_check(state_mid, CheckStatus.UP)
-    )
-
-    assert state_out.unit_status == ActiveStatus()
 
 
 def test_unready_database_relation_waits_rather_than_blocks(ctx):

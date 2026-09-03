@@ -468,13 +468,14 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             container: application container.
 
         Returns:
-            MaintenanceStatus when the health check reports DOWN, else
+            MaintenanceStatus until the health check has passed, else
             ActiveStatus.
         """
         if self.config["charm-function"] not in UI_FUNCTIONS:
             return ActiveStatus()
 
-        if container.get_check("up").status != CheckStatus.UP:
+        check = container.get_check("up")
+        if check.status != CheckStatus.UP or check.successes == 0:
             return MaintenanceStatus("Status check: DOWN")
 
         return ActiveStatus()
