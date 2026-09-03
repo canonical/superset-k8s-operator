@@ -13,7 +13,7 @@ from charms.hydra.v0.oauth import (
     OauthProviderConfig,
     OAuthRequirer,
 )
-from ops import BlockedStatus, ModelError, SecretNotFoundError
+from ops import BlockedStatus, ModelError, Relation, SecretNotFoundError
 from ops.framework import Object
 
 from literals import (
@@ -32,8 +32,6 @@ class OAuthRelation(Object):
     Attrs:
         charm: Superset charm instance.
         requirer: OAuth relation library instance.
-        is_related: Whether an OAuth provider relation exists.
-        provider_info: Live provider information when registration is ready.
     """
 
     def __init__(self, charm):
@@ -44,7 +42,6 @@ class OAuthRelation(Object):
         """
         super().__init__(charm, OAUTH_RELATION_NAME)
         self.charm = charm
-        self._provider_removed = False
         self.requirer = OAuthRequirer(
             charm,
             client_config=None,
@@ -59,8 +56,8 @@ class OAuthRelation(Object):
             self._on_oauth_info_changed,
         )
         self.framework.observe(
-            self.requirer.on.oauth_info_removed,
-            self._on_oauth_info_removed,
+            charm.on[OAUTH_RELATION_NAME].relation_broken,
+            self._on_oauth_relation_broken,
         )
         self.framework.observe(
             self.requirer.on.invalid_client_config,
@@ -83,17 +80,36 @@ class OAuthRelation(Object):
             grant_types=OAUTH_GRANT_TYPES,
         )
 
-    @property
-    def is_related(self) -> bool:
-        """Return whether an OAuth provider is related."""
-        return self.charm.model.get_relation(OAUTH_RELATION_NAME) is not None
+    def is_related(self, departing: Optional[Relation] = None) -> bool:
+        """Return whether an OAuth provider is related.
 
-    @property
-    def provider_info(self) -> Optional[OauthProviderConfig]:
-        """Return live provider details once registration is complete."""
+        Args:
+            departing: A relation that is being removed. Its data is still
+                readable in `relation-broken`, so it has to be excluded
+                explicitly rather than inferred from the model.
+
+        Returns:
+            True when a provider relation exists and is not the departing one.
+        """
+        relation = self.charm.model.get_relation(OAUTH_RELATION_NAME)
+        if relation is None:
+            return False
+        return departing is None or relation.id != departing.id
+
+    def provider_info(
+        self, departing: Optional[Relation] = None
+    ) -> Optional[OauthProviderConfig]:
+        """Return live provider details once registration is complete.
+
+        Args:
+            departing: A relation that is being removed.
+
+        Returns:
+            The provider configuration, or None when the client registration
+            is not complete or the relation is going away.
+        """
         if (
-            self._provider_removed
-            or not self.is_related
+            not self.is_related(departing)
             or not self.requirer.is_client_created()
         ):
             return None
@@ -114,7 +130,7 @@ class OAuthRelation(Object):
 
     def publish_client_config(self) -> None:
         """Publish current client registration data on the relation."""
-        if not self.is_related:
+        if not self.is_related():
             return
         client_config = self._client_config
         if client_config is None:
@@ -140,14 +156,20 @@ class OAuthRelation(Object):
             )
 
     def _on_oauth_info_changed(self, event) -> None:
-        """Reconfigure Superset when provider information changes."""
-        self._provider_removed = False
+        """Reconfigure Superset when provider information changes.
+
+        Args:
+            event: OAuth information changed event.
+        """
         self.charm.reconcile()
 
-    def _on_oauth_info_removed(self, event) -> None:
-        """Remove OAuth configuration when provider information disappears."""
-        self._provider_removed = True
-        self.charm.reconcile()
+    def _on_oauth_relation_broken(self, event) -> None:
+        """Remove OAuth configuration when the provider relation goes away.
+
+        Args:
+            event: OAuth relation-broken event.
+        """
+        self.charm.reconcile(departing_relation=event.relation)
 
     def _on_invalid_client_config(self, event) -> None:
         """Log client configuration rejected by the relation library."""

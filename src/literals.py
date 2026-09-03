@@ -26,6 +26,15 @@ CERTIFICATES_RELATION_NAME = "certificates"
 CA_CERT_LOCAL_PATH = "/usr/local/share/ca-certificates/juju-charm-ca.crt"
 CA_CERT_PATH = "/etc/ssl/certs/charm-ca.pem"
 SUPERSET_VERSION = "6.1.0"
+
+# Juju secret holding the signing keys shared by every application of one
+# deployment. It is user-supplied because a charm-generated secret would be
+# per application, and because the secret key outlives the charm: it encrypts
+# the database connection passwords stored in the metadata database.
+SIGNING_KEYS_SECRET_KEYS = ("secret-key", "async-queries-jwt")
+ADMIN_SECRET_LABEL = "superset-admin-password"  # nosec B105
+ADMIN_SECRET_ID_FIELD = "admin-password-secret-id"  # nosec B105
+ADMIN_SECRET_KEY = "password"  # nosec B105
 REDIS_KEY_PREFIX = "superset_results"
 APP_NAME = "superset"
 CONFIG_FILES = [
@@ -36,7 +45,6 @@ CONFIG_FILES = [
 ]
 CONFIG_PATH = "/app/pythonpath"
 UI_FUNCTIONS = ["app", "app-gunicorn"]
-DEFAULT_ROLES = ["Public", "Gamma", "Alpha", "Admin"]
 SQL_AB_ROLE = "SELECT name FROM ab_role;"
 
 # Observability literals

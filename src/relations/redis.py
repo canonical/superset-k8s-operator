@@ -24,7 +24,7 @@ class Redis(framework.Object):
         """
         super().__init__(charm, "redis")
         self.charm = charm
-        self.charm.redis = RedisRequires(charm)
+        self.requirer = RedisRequires(charm)
         self.framework.observe(
             charm.on.redis_relation_updated, self._on_redis_relation_changed
         )
@@ -48,7 +48,7 @@ class Redis(framework.Object):
             logger.debug("no redis relation found")
             return None, None
 
-        unit_data = self.charm.redis.relation_data or {}
+        unit_data = self.requirer.relation_data or {}
         relation = self.model.get_relation(REDIS_RELATION_NAME)
         application_data = relation.data[relation.app] if relation else {}
 

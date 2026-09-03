@@ -11,9 +11,10 @@ import pytest_asyncio
 from integration.helpers import (
     POSTGRES_NAME,
     REDIS_NAME,
-    SUPERSET_SECRET_KEY,
     api_authentication,
+    create_signing_keys_secret,
     get_unit_url,
+    grant_signing_keys_secret,
     perform_superset_integrations,
 )
 from pytest_operator.plugin import OpsTest
@@ -70,7 +71,7 @@ async def get_trino_databases(
     url = await get_unit_url(
         ops_test, application=SUPERSET_APP, unit=0, port=8088
     )
-    session = await api_authentication(ops_test, url)
+    session = await api_authentication(ops_test, url, app_name=SUPERSET_APP)
 
     def _fetch_trino_dbs() -> list[dict]:
         """Fetch Trino databases from Superset API."""
@@ -197,10 +198,10 @@ async def deploy_trino_superset(
 
     # Deploy Superset
     resources = {"superset-image": charm_image}
+    signing_keys_secret_id = await create_signing_keys_secret(ops_test)
     superset_config = {
         "charm-function": "app-gunicorn",
-        "superset-secret-key": SUPERSET_SECRET_KEY,
-        "admin-password": "admin",
+        "signing-keys-secret-id": signing_keys_secret_id,
         "feature-flags": "GLOBAL_ASYNC_QUERIES",
     }
 
@@ -211,6 +212,7 @@ async def deploy_trino_superset(
         config=superset_config,
         num_units=1,
     )
+    await grant_signing_keys_secret(ops_test, SUPERSET_APP)
 
     async with ops_test.fast_forward():
         await ops_test.model.wait_for_idle(

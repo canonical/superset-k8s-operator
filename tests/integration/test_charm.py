@@ -17,6 +17,7 @@ from integration.helpers import (
     UI_NAME,
     api_authentication,
     delete_chart,
+    delete_unit_pod,
     get_chart_count,
     get_unit_url,
     read_workload_file,
@@ -125,6 +126,34 @@ class TestDeployment:
             ops_test, f"{UI_NAME}/0", CA_CERT_PATH
         )
         assert return_code != 0, f"{CA_CERT_PATH} was not removed"
+
+    async def test_pod_restart_is_stateless(self, ops_test: OpsTest):
+        """A rescheduled pod recovers on its own with its state intact.
+
+        The charm holds no state of its own, so everything the workload needs
+        has to survive the container filesystem and the pebble plan being
+        wiped.
+        """
+        url = await get_unit_url(
+            ops_test, application=UI_NAME, unit=0, port=8088
+        )
+        session = await api_authentication(ops_test, url)
+        charts_before = await get_chart_count(ops_test, url, session)
+
+        await delete_unit_pod(ops_test, f"{UI_NAME}/0")
+
+        await ops_test.model.wait_for_idle(
+            apps=[UI_NAME],
+            status="active",
+            raise_on_blocked=False,
+            timeout=2000,
+        )
+
+        url = await get_unit_url(
+            ops_test, application=UI_NAME, unit=0, port=8088
+        )
+        session = await api_authentication(ops_test, url)
+        assert await get_chart_count(ops_test, url, session) == charts_before
 
     async def test_redis_relation_removal(self, ops_test: OpsTest):
         """Removes Superset/Redis relation."""

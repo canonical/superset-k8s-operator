@@ -3,3 +3,8 @@
 
 restart:
     description: Restart the application server.
+
+get-admin-password:
+    description: |
+      Return the password the charm generated for this application's
+      `admin` user.

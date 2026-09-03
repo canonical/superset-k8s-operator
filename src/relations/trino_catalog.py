@@ -250,10 +250,15 @@ class TrinoCatalogRelationHandler(ops.Object):
         Returns:
             Authenticated API client, or None on failure.
         """
+        admin_password = self.charm.admin_password()
+        if admin_password is None:
+            logger.error("Admin password unavailable, skipping sync")
+            return None
+
         try:
             return SupersetApiClient(
                 admin_username="admin",
-                admin_password=self.charm.config["admin-password"],
+                admin_password=admin_password,
             )
         except SupersetApiError as e:
             logger.error("Superset API unavailable, skipping sync: %s", e)

@@ -15,10 +15,11 @@ from unittest import mock
 
 from ops import ActiveStatus, BlockedStatus, MaintenanceStatus, WaitingStatus
 from ops.pebble import ChangeError, CheckStatus, Layer
-from ops.testing import CheckInfo, Secret, State
+from ops.testing import CheckInfo, Relation, Secret, State
 
 from literals import CA_CERT_LOCAL_PATH, CA_CERT_PATH
 from tests.unit.helpers import (
+    ASYNC_QUERIES_JWT,
     CA_PEM,
     INCOMPLETE_PEBBLE_PLAN,
     MODEL_NAME,
@@ -31,6 +32,7 @@ from tests.unit.helpers import (
     ingress_relation,
     oauth_relation,
     oauth_secret,
+    signing_keys_secret,
     superset_container,
     superset_environment,
     trino_catalog_relation,
@@ -41,7 +43,6 @@ logger = logging.getLogger(__name__)
 WANT_ENVIRONMENT = {
     "ALLOW_IMAGE_DOMAINS": None,
     "SUPERSET_SECRET_KEY": SECRET_KEY,
-    "ADMIN_PASSWORD": "admin",  # nosec B105
     "CHARM_FUNCTION": "app-gunicorn",
     "SQL_ALCHEMY_URI": "postgresql://postgres_user:admin@myhost:5432/superset",
     "REDIS_HOST": "redis-host",
@@ -56,9 +57,7 @@ WANT_ENVIRONMENT = {
     "PYTHONPATH": "/app/pythonpath",
     "HTML_SANITIZATION": True,
     "HTML_SANITIZATION_SCHEMA_EXTENSIONS": None,
-    "GLOBAL_ASYNC_QUERIES_JWT": (
-        "18b2f8fcd0d708d270c00508da6e8dfc7a21eff14ea438056809805150439a04"
-    ),
+    "GLOBAL_ASYNC_QUERIES_JWT": ASYNC_QUERIES_JWT,
     "GLOBAL_ASYNC_QUERIES_POLLING_DELAY": 500,
     "SENTRY_DSN": None,
     "SENTRY_ENVIRONMENT": None,
@@ -105,6 +104,8 @@ def test_ready(ctx):
     state_out = ctx.run(ctx.on.pebble_ready(container), state_in)
 
     plan = state_out.get_container("superset").plan.to_dict()
+    environment = plan["services"]["superset"]["environment"]
+    assert environment.pop("ADMIN_PASSWORD")
     assert plan["services"]["superset"] == {
         "override": "replace",
         "summary": "superset server",
@@ -126,7 +127,6 @@ def test_config_changed(ctx):
     """The pebble plan changes according to config changes."""
     state_in = build_state(
         config={
-            "admin-password": "secure-pass",
             "allow-image-domains": "assets.ubuntu.com",
             "feature-flags": "ALLOW_ADHOC_SUBQUERY, !GLOBAL_ASYNC_QUERIES",
             "enable-raise-for-access-patch": True,
@@ -139,13 +139,14 @@ def test_config_changed(ctx):
     want_environment.update(
         {
             "ALLOW_IMAGE_DOMAINS": "assets.ubuntu.com",
-            "ADMIN_PASSWORD": "secure-pass",  # nosec B105
             "ALLOW_ADHOC_SUBQUERY": True,
             "GLOBAL_ASYNC_QUERIES": False,
             "ENABLE_RAISE_FOR_ACCESS_PATCH": True,
         }
     )
-    assert superset_environment(state_out) == want_environment
+    environment = superset_environment(state_out)
+    assert environment.pop("ADMIN_PASSWORD")
+    assert environment == want_environment
     assert state_out.unit_status == ActiveStatus()
 
 
@@ -452,27 +453,105 @@ def test_missing_pebble_plan(ctx):
     assert state_out.get_container("superset").plan.to_dict() is not None
 
 
-def test_secret_key_uses_configured_value(ctx):
-    """SUPERSET_SECRET_KEY uses the value of superset-secret-key."""
+def test_signing_keys_reach_the_workload(ctx):
+    """Both signing keys are read out of the user secret."""
     state_out = ctx.run(ctx.on.config_changed(), build_state())
 
-    assert superset_environment(state_out)["SUPERSET_SECRET_KEY"] == SECRET_KEY
+    environment = superset_environment(state_out)
+    assert environment["SUPERSET_SECRET_KEY"] == SECRET_KEY
+    assert environment["GLOBAL_ASYNC_QUERIES_JWT"] == ASYNC_QUERIES_JWT
 
 
-def test_secret_key_blocked_when_not_configured(ctx):
-    """The charm sets BlockedStatus when superset-secret-key is missing."""
+def test_signing_keys_blocked_when_not_configured(ctx):
+    """The charm blocks when signing-keys-secret-id is unset."""
     state_in = build_state()
     state_in = dataclasses.replace(state_in, config={})
 
     state_out = ctx.run(ctx.on.config_changed(), state_in)
     assert state_out.unit_status == BlockedStatus(
-        "missing required config: superset-secret-key"
+        "missing required config: signing-keys-secret-id"
     )
 
     state_out = ctx.run(ctx.on.update_status(), state_out)
     assert state_out.unit_status == BlockedStatus(
-        "missing required config: superset-secret-key"
+        "missing required config: signing-keys-secret-id"
     )
+
+
+def test_signing_keys_blocked_when_secret_is_missing(ctx):
+    """A secret ID that does not resolve blocks the unit."""
+    state_in = build_state()
+    state_in = dataclasses.replace(
+        state_in, config={"signing-keys-secret-id": "secret:does-not-exist"}
+    )
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    assert state_out.unit_status == BlockedStatus(
+        "signing keys secret 'secret:does-not-exist' cannot be found."
+    )
+
+
+def test_signing_keys_blocked_when_a_key_is_missing(ctx):
+    """A secret without both keys blocks the unit, naming the missing one."""
+    secret = signing_keys_secret(content={"secret-key": SECRET_KEY})
+    state_in = build_state(signing_keys=secret)
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    assert state_out.unit_status == BlockedStatus(
+        f"signing keys secret '{secret.id}' has improper schema. "
+        "Missing: async-queries-jwt"
+    )
+
+
+def test_admin_password_is_generated_once(ctx):
+    """The leader generates the password and publishes the secret ID."""
+    state_out = ctx.run(ctx.on.config_changed(), build_state())
+
+    peer = [
+        relation
+        for relation in state_out.relations
+        if relation.endpoint == "peer"
+    ][0]
+    secret_id = peer.local_app_data["admin-password-secret-id"]
+    assert secret_id
+
+    password = superset_environment(state_out)["ADMIN_PASSWORD"]
+    assert password
+
+    state_again = ctx.run(ctx.on.config_changed(), state_out)
+    assert superset_environment(state_again)["ADMIN_PASSWORD"] == password
+
+
+def test_admin_password_action_returns_the_password(ctx):
+    """The action returns the same password the workload was given."""
+    state_out = ctx.run(ctx.on.config_changed(), build_state())
+    password = superset_environment(state_out)["ADMIN_PASSWORD"]
+
+    ctx.run(ctx.on.action("get-admin-password"), state_out)
+
+    assert ctx.action_results == {"password": password}
+
+
+def test_follower_waits_for_the_leader_to_generate_the_password(ctx):
+    """A follower does not generate its own password."""
+    state_out = ctx.run(ctx.on.config_changed(), build_state(leader=False))
+
+    assert state_out.unit_status == WaitingStatus(
+        "waiting for the admin password secret"
+    )
+
+
+def test_follower_reads_the_password_the_leader_generated(ctx):
+    """A follower resolves the secret by the ID on the peer databag."""
+    state_leader = ctx.run(ctx.on.config_changed(), build_state())
+    password = superset_environment(state_leader)["ADMIN_PASSWORD"]
+
+    state_follower = dataclasses.replace(state_leader, leader=False)
+    state_out = ctx.run(ctx.on.config_changed(), state_follower)
+
+    assert superset_environment(state_out)["ADMIN_PASSWORD"] == password
 
 
 def test_beat_deployment(ctx):
@@ -823,3 +902,95 @@ def test_unrelated_secret_change_does_not_force_update(ctx):
         ctx.run(ctx.on.secret_changed(other), state_in)
 
     sync.assert_called_once_with(force_update_credentials=False)
+
+
+def test_reconcile_reports_a_failing_health_check(ctx):
+    """A check reporting DOWN is surfaced by the reconcile, not hidden.
+
+    Waiting for the next update-status to notice would leave the unit
+    reading Active for a whole hook interval while the workload is down.
+    """
+    state_mid = ctx.run(ctx.on.config_changed(), build_state())
+
+    state_out = ctx.run(
+        ctx.on.config_changed(), with_check(state_mid, CheckStatus.DOWN)
+    )
+
+    assert state_out.unit_status == MaintenanceStatus("Status check: DOWN")
+
+
+def test_reconcile_is_active_while_the_check_is_up(ctx):
+    """A check that has not tripped leaves the unit Active."""
+    state_mid = ctx.run(ctx.on.config_changed(), build_state())
+
+    state_out = ctx.run(
+        ctx.on.config_changed(), with_check(state_mid, CheckStatus.UP)
+    )
+
+    assert state_out.unit_status == ActiveStatus()
+
+
+def test_unready_database_relation_waits_rather_than_blocks(ctx):
+    """A related database that has not published data yet is a wait.
+
+    No operator action gets the charm out of this state, so it is not a
+    block.
+    """
+    state_in = build_state(
+        with_database=False,
+        extra_relations=(
+            Relation(
+                "postgresql_db",
+                remote_app_name="postgresql-k8s",
+                remote_app_data={},
+            ),
+        ),
+    )
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    assert state_out.unit_status == WaitingStatus(
+        "waiting for database relation data"
+    )
+
+
+def test_unready_redis_relation_waits_rather_than_blocks(ctx):
+    """A related Redis that has not published data yet is a wait."""
+    state_in = build_state()
+
+    with mock.patch(
+        "charm.Redis.get_redis_relation_data", return_value=(None, None)
+    ):
+        state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    assert state_out.unit_status == WaitingStatus(
+        "waiting for redis relation data"
+    )
+
+
+def test_missing_relation_still_blocks(ctx):
+    """A relation that was never made needs an operator, so it blocks."""
+    state_out = ctx.run(
+        ctx.on.config_changed(), build_state(with_database=False)
+    )
+
+    assert state_out.unit_status == BlockedStatus(
+        "Needs a PostgreSQL relation"
+    )
+
+
+def test_role_is_not_validated_when_roles_are_unreadable(ctx):
+    """An unreadable role table does not block a custom role.
+
+    The table does not exist until Superset has migrated the metadata
+    database.
+    """
+    state_in = build_state(config={"self-registration-role": "Analyst"})
+
+    with mock.patch("charm.query_metadata_database", return_value=[]):
+        state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    assert state_out.unit_status == ActiveStatus()
+    assert superset_environment(state_out)["SELF_REGISTRATION_ROLE"] == (
+        "Analyst"
+    )

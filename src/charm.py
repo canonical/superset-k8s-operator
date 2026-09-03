@@ -12,6 +12,7 @@ https://discourse.charmhub.io/t/4208
 
 import logging
 import os
+import secrets
 from typing import Optional
 
 import ops
@@ -35,15 +36,18 @@ from ops.pebble import CheckStatus
 from pydantic import ValidationError
 
 from literals import (
+    ADMIN_SECRET_ID_FIELD,
+    ADMIN_SECRET_KEY,
+    ADMIN_SECRET_LABEL,
     APP_NAME,
     APPLICATION_PORT,
     CONFIG_PATH,
     DB_RELATION_NAME,
-    DEFAULT_ROLES,
     INGRESS_RELATION_NAME,
     LOG_FILE,
     PROMETHEUS_METRICS_PORT,
     REDIS_RELATION_NAME,
+    SIGNING_KEYS_SECRET_KEYS,
     SQL_AB_ROLE,
     STATSD_PORT,
     SUPERSET_VERSION,
@@ -115,8 +119,17 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         self.framework.observe(
             self.on.superset_pebble_ready, self._on_pebble_ready
         )
+        self.framework.observe(
+            self.on.superset_pebble_check_failed, self._on_pebble_check
+        )
+        self.framework.observe(
+            self.on.superset_pebble_check_recovered, self._on_pebble_check
+        )
         self.framework.observe(self.on.config_changed, self._on_config_changed)
         self.framework.observe(self.on.restart_action, self._on_restart)
+        self.framework.observe(
+            self.on.get_admin_password_action, self._on_get_admin_password
+        )
         self.framework.observe(self.on.update_status, self._on_update_status)
         self.framework.observe(
             self.on.peer_relation_changed, self._on_peer_relation_changed
@@ -183,6 +196,18 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         """
         self.reconcile()
 
+    def _on_pebble_check(self, event):
+        """Reconcile when the workload health check changes verdict.
+
+        Without this the charm only learns the check has tripped on the next
+        `update-status`, so the unit reports Active for up to a whole hook
+        interval while the workload is down.
+
+        Args:
+            event: The pebble check failed or recovered event.
+        """
+        self.reconcile()
+
     def _on_config_changed(self, event: ConfigChangedEvent):
         """Handle changed configuration.
 
@@ -232,12 +257,6 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         if not self._validate_pebble_plan(container):
             self.reconcile()
             return
-
-        if self.config["charm-function"] in UI_FUNCTIONS:
-            check = container.get_check("up")
-            if check.status != CheckStatus.UP:
-                self.unit.status = MaintenanceStatus("Status check: DOWN")
-                return
 
         self.reconcile()
 
@@ -304,7 +323,11 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             return False
 
     def _validate_self_registration_role(self, sqlalchemy_uri: str):
-        """Determine allowed Superset roles.
+        """Check the configured self-registration role exists in Superset.
+
+        The roles live in the metadata database, which does not carry the
+        `ab_role` table until Superset has migrated it. Until then, and
+        whenever the database cannot answer, the role is left unvalidated.
 
         Args:
             sqlalchemy_uri (str): the SQL Alchemy URI.
@@ -312,18 +335,16 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         Raises:
             ValueError: in case role value is not allowed.
         """
-        sql = SQL_AB_ROLE
-
-        allowed_roles = query_metadata_database(sqlalchemy_uri, sql)
+        allowed_roles = query_metadata_database(sqlalchemy_uri, SQL_AB_ROLE)
         if not allowed_roles:
-            allowed_roles = DEFAULT_ROLES
+            logger.debug(
+                "Superset roles are not readable yet, "
+                "leaving self-registration-role unvalidated"
+            )
+            return
+
         role = self.config["self-registration-role"]
         if role not in allowed_roles:
-            logger.error(
-                "The self-registration role %s is not allowed. Use only %s.",
-                role,
-                allowed_roles,
-            )
             raise ValueError(
                 f"The self-registration role {role} is not allowed. Use only {allowed_roles}."
             )
@@ -359,8 +380,140 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             )
             return False
 
-    def ready_to_start(self):
+    @property
+    def _peer_relation(self):
+        """Return the peer relation, or None before it is established."""
+        return self.model.get_relation("peer")
+
+    def _signing_keys(self):
+        """Return the contents of the signing keys secret.
+
+        Returns:
+            The secret content as a mapping.
+
+        Raises:
+            ValueError: When the option is unset, or the secret cannot be
+                read, or it does not carry both keys.
+        """
+        secret_id = self.config["signing-keys-secret-id"]
+        if not secret_id:
+            raise ValueError("missing required config: signing-keys-secret-id")
+
+        try:
+            content = self.model.get_secret(id=secret_id).get_content(
+                refresh=True
+            )
+        except SecretNotFoundError:
+            raise ValueError(
+                f"signing keys secret '{secret_id}' cannot be found."
+            ) from None
+        except ModelError:
+            raise ValueError(
+                f"signing keys secret '{secret_id}' cannot be accessed."
+            ) from None
+
+        missing = [
+            key
+            for key in SIGNING_KEYS_SECRET_KEYS
+            if not content.get(key, "").strip()
+        ]
+        if missing:
+            raise ValueError(
+                f"signing keys secret '{secret_id}' has improper schema. "
+                f"Missing: {', '.join(missing)}"
+            )
+
+        return content
+
+    def admin_password(self):
+        """Return the admin password, generating it on the leader if needed.
+
+        The secret is charm-owned, so it is created once by the leader and
+        found by every unit through the ID published on the peer databag: a
+        label lookup is not reliable from a hook other than the one that
+        created the secret.
+
+        Returns:
+            The admin password, or None when the leader has not created the
+            secret yet.
+        """
+        peer = self._peer_relation
+        if peer is None:
+            return None
+
+        secret_id = peer.data[self.app].get(ADMIN_SECRET_ID_FIELD)
+        if secret_id:
+            try:
+                return self.model.get_secret(id=secret_id).get_content(
+                    refresh=True
+                )[ADMIN_SECRET_KEY]
+            except (SecretNotFoundError, ModelError, KeyError):
+                logger.warning(
+                    "admin password secret %s is unreadable", secret_id
+                )
+                return None
+
+        if not self.unit.is_leader():
+            return None
+
+        content = {ADMIN_SECRET_KEY: secrets.token_urlsafe(24)}
+        secret = self.app.add_secret(content, label=ADMIN_SECRET_LABEL)
+        peer.data[self.app][ADMIN_SECRET_ID_FIELD] = secret.id
+        return content[ADMIN_SECRET_KEY]
+
+    def _workload_status(self, container):
+        """Return the status to report once the plan has been applied.
+
+        Args:
+            container: application container.
+
+        Returns:
+            MaintenanceStatus when the health check reports DOWN, else
+            ActiveStatus.
+        """
+        if self.config["charm-function"] not in UI_FUNCTIONS:
+            return ActiveStatus()
+
+        if container.get_check("up").status != CheckStatus.UP:
+            return MaintenanceStatus("Status check: DOWN")
+
+        return ActiveStatus()
+
+    def _relation_status(self):
+        """Report on the relations the workload cannot start without.
+
+        A missing relation is the operator's to fix, so it blocks. A relation
+        that exists but carries no data yet is the remote application still
+        settling, which resolves on its own, so it waits.
+
+        Returns:
+            The status to report, or None when both relations are usable.
+        """
+        missing = [
+            name
+            for name, endpoint in (
+                ("PostgreSQL", DB_RELATION_NAME),
+                ("Redis", REDIS_RELATION_NAME),
+            )
+            if self.model.get_relation(endpoint) is None
+        ]
+        if missing:
+            return BlockedStatus(f"Needs a {missing[0]} relation")
+
+        if self.database.get_db_uri() is None:
+            return WaitingStatus("waiting for database relation data")
+
+        hostname, port = self.redis_handler.get_redis_relation_data()
+        if hostname is None or port is None:
+            return WaitingStatus("waiting for redis relation data")
+
+        return None
+
+    def ready_to_start(self, departing_relation=None):
         """Check if the charm is ready to start the application.
+
+        Args:
+            departing_relation: A relation that is being removed.
 
         Returns:
             True if config is valid and required relations exist, else False.
@@ -368,21 +521,48 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         if not self._validate_config():
             return False
 
-        if self.model.get_relation(DB_RELATION_NAME) is None:
-            self.unit.status = BlockedStatus("Needs a PostgreSQL relation")
+        try:
+            self._signing_keys()
+        except ValueError as e:
+            self.unit.status = BlockedStatus(str(e))
             return False
 
-        if self.model.get_relation(REDIS_RELATION_NAME) is None:
-            self.unit.status = BlockedStatus("Needs a Redis relation")
+        relation_status = self._relation_status()
+        if relation_status is not None:
+            self.unit.status = relation_status
             return False
 
-        if self.oauth.is_related and self.https_ingress_url is None:
+        if self.admin_password() is None:
+            # Only reachable on a follower before the leader has created the
+            # secret, or before the peer relation exists.
+            self.unit.status = WaitingStatus(
+                "waiting for the admin password secret"
+            )
+            return False
+
+        if (
+            self.oauth.is_related(departing_relation)
+            and self.https_ingress_url is None
+        ):
             self.unit.status = BlockedStatus(
                 "OAuth requires an HTTPS ingress URL"
             )
             return False
 
         return True
+
+    def _on_get_admin_password(self, event):
+        """Return the generated admin password, action handler.
+
+        Args:
+            event: The event triggered by the get-admin-password action.
+        """
+        password = self.admin_password()
+        if password is None:
+            event.fail("the admin password has not been generated yet")
+            return
+
+        event.set_results({"password": password})
 
     def _on_restart(self, event):
         """Restart application, action handler.
@@ -464,8 +644,11 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         return ret
 
-    def _create_env(self):
+    def _create_env(self, departing_relation=None):
         """Create state values from config to be used as environment variables.
+
+        Args:
+            departing_relation: A relation that is being removed.
 
         Returns:
             env: dictionary of environment variables
@@ -483,10 +666,12 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         if redis_hostname is None or redis_port is None:
             raise ValueError("redis relation data is not available")
 
+        signing_keys = self._signing_keys()
+
         env = {
             "ALLOW_IMAGE_DOMAINS": self.config["allow-image-domains"],
-            "SUPERSET_SECRET_KEY": self.config["superset-secret-key"],
-            "ADMIN_PASSWORD": self.config["admin-password"],
+            "SUPERSET_SECRET_KEY": signing_keys["secret-key"],
+            "ADMIN_PASSWORD": self.admin_password(),
             "CHARM_FUNCTION": self.config["charm-function"].value,
             "SQL_ALCHEMY_URI": sqlalchemy_uri,
             "REDIS_HOST": redis_hostname,
@@ -502,9 +687,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "HTML_SANITIZATION_SCHEMA_EXTENSIONS": self.config[
                 "html-sanitization-schema-extensions"
             ],
-            "GLOBAL_ASYNC_QUERIES_JWT": self.config[
-                "global-async-queries-jwt"
-            ],
+            "GLOBAL_ASYNC_QUERIES_JWT": signing_keys["async-queries-jwt"],
             "GLOBAL_ASYNC_QUERIES_POLLING_DELAY": self.config[
                 "global-async-queries-polling-delay"
             ],
@@ -545,7 +728,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         }
         if self.config["feature-flags"]:
             env.update(self.config["feature-flags"])
-        env.update(self._get_oauth_config())
+        env.update(self._get_oauth_config(departing_relation))
         env.update(self._get_smtp_config())
 
         http_proxy = os.environ.get("JUJU_CHARM_HTTP_PROXY")
@@ -563,9 +746,16 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         return env
 
-    def _get_oauth_config(self):
-        """Return OAuth provider information as workload environment values."""
-        provider = self.oauth.provider_info
+    def _get_oauth_config(self, departing_relation=None):
+        """Return OAuth provider information as workload environment values.
+
+        Args:
+            departing_relation: A relation that is being removed.
+
+        Returns:
+            The OAuth environment values, empty when OAuth is not configured.
+        """
+        provider = self.oauth.provider_info(departing_relation)
         if provider is None:
             return {}
 
@@ -663,7 +853,11 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         return pebble_layer
 
-    def reconcile(self, force_trino_credentials: bool = False):
+    def reconcile(
+        self,
+        departing_relation: Optional[ops.Relation] = None,
+        force_trino_credentials: bool = False,
+    ):
         """Reconcile the charm to its desired state.
 
         Single entry point for every observer: it reads the current config and
@@ -671,6 +865,9 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         workload plan matches.
 
         Args:
+            departing_relation: A relation that is being removed. Relation
+                data is still readable in `relation-broken`, so the relation
+                going away has to be passed in rather than inferred.
             force_trino_credentials: Whether to update every Trino database
                 connection unconditionally, used when the credentials secret
                 has rotated.
@@ -684,7 +881,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             )
             return
 
-        if not self.ready_to_start():
+        if not self.ready_to_start(departing_relation):
             return
 
         container = self.unit.get_container(self.name)
@@ -696,7 +893,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         logger.info("configuring %s", APP_NAME)
         try:
-            env = self._create_env()
+            env = self._create_env(departing_relation)
         except ValueError as e:
             self.unit.status = BlockedStatus(str(e))
             return
@@ -721,7 +918,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         self._sync_trino_catalogs(force_trino_credentials)
 
         self.unit.set_workload_version(f"v{SUPERSET_VERSION}")
-        self.unit.status = ActiveStatus()
+        self.unit.status = self._workload_status(container)
 
 
 if __name__ == "__main__":

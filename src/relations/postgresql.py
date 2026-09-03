@@ -26,17 +26,17 @@ class Database(framework.Object):
         """
         super().__init__(charm, "database")
         self.charm = charm
-        self.charm.postgresql_db = DatabaseRequires(
+        self.requirer = DatabaseRequires(
             self.charm,
             relation_name=DB_RELATION_NAME,
             database_name=DB_NAME,
             extra_user_roles="admin",
         )
         self.framework.observe(
-            charm.postgresql_db.on.database_created, self._on_database_changed
+            self.requirer.on.database_created, self._on_database_changed
         )
         self.framework.observe(
-            charm.postgresql_db.on.endpoints_changed, self._on_database_changed
+            self.requirer.on.endpoints_changed, self._on_database_changed
         )
         self.framework.observe(
             charm.on.postgresql_db_relation_changed, self._on_database_changed
@@ -70,15 +70,15 @@ class Database(framework.Object):
         """
         if (
             self.charm.model.get_relation(DB_RELATION_NAME) is None
-            or not self.charm.postgresql_db.is_resource_created()
+            or not self.requirer.is_resource_created()
         ):
             logger.debug(
                 "no postgresql_db relation found or resource not created"
             )
             return None
 
-        db_relation_id = self.charm.postgresql_db.relations[0].id
-        relation_data = self.charm.postgresql_db.fetch_relation_data().get(
+        db_relation_id = self.requirer.relations[0].id
+        relation_data = self.requirer.fetch_relation_data().get(
             db_relation_id, None
         )
         if not relation_data:

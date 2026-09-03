@@ -7,6 +7,7 @@
 import asyncio
 import logging
 import time
+from subprocess import PIPE, check_output  # nosec B404
 
 import requests
 from celery import Celery
@@ -36,17 +37,68 @@ UI_NAME = "superset-k8s-ui"
 CA_CERT_PATH = "/etc/ssl/certs/charm-ca.pem"
 CHARM_FUNCTIONS = {"app-gunicorn": "ui", "beat": "beat", "worker": "worker"}
 SCALABLE_SERVICES = {"app-gunicorn": "ui", "worker": "worker"}
-API_AUTH_PAYLOAD = {
-    "username": "admin",  # nosec
-    "password": "admin",  # nosec
-    "provider": "db",
-}
 APP_NAME = "superset-k8s"
-UI_CONFIG = {
-    "charm-function": "app-gunicorn",
-    "superset-secret-key": "juyIKSS7cFAqJlV",
-}
-SUPERSET_SECRET_KEY = "juyIKSS7cFAqJlV"  # nosec
+UI_CONFIG = {"charm-function": "app-gunicorn"}
+# The signing keys are user-supplied and shared by every application of one
+# deployment, so the suite creates one model secret and grants it to each.
+SIGNING_KEYS_SECRET_NAME = "superset-signing-keys"  # nosec B105
+SECRET_KEY = "juyIKSS7cFAqJlV"  # nosec
+ASYNC_QUERIES_JWT = (
+    "18b2f8fcd0d708d270c00508da6e8dfc7a21eff14ea438056809805150439a04"  # nosec
+)
+
+
+async def create_signing_keys_secret(ops_test: OpsTest):
+    """Create the model secret holding this deployment's signing keys.
+
+    Args:
+        ops_test: PyTest object.
+
+    Returns:
+        The secret URI to set as `signing-keys-secret-id`.
+    """
+    return_code, stdout, stderr = await ops_test.juju(
+        "add-secret",
+        SIGNING_KEYS_SECRET_NAME,
+        f"secret-key={SECRET_KEY}",
+        f"async-queries-jwt={ASYNC_QUERIES_JWT}",
+    )
+    assert (
+        return_code == 0
+    ), f"could not create the signing keys secret: {stderr}"
+    return stdout.strip()
+
+
+async def grant_signing_keys_secret(ops_test: OpsTest, app_name):
+    """Grant the signing keys secret to an application.
+
+    Args:
+        ops_test: PyTest object.
+        app_name: Name of the application to grant the secret to.
+    """
+    return_code, _, stderr = await ops_test.juju(
+        "grant-secret", SIGNING_KEYS_SECRET_NAME, app_name
+    )
+    assert (
+        return_code == 0
+    ), f"could not grant the signing keys secret: {stderr}"
+
+
+async def get_admin_password(ops_test: OpsTest, app_name=None, unit=0):
+    """Return the admin password the charm generated for an application.
+
+    Args:
+        ops_test: PyTest object.
+        app_name: Name of the application, defaulting to the UI application.
+        unit: Number of the unit to run the action on.
+
+    Returns:
+        The admin password.
+    """
+    application = ops_test.model.applications[app_name or UI_NAME]
+    action = await application.units[unit].run_action("get-admin-password")
+    result = await action.wait()
+    return result.results["password"]
 
 
 async def deploy_and_relate_superset_charm(
@@ -68,6 +120,10 @@ async def deploy_and_relate_superset_charm(
         config=config,
         num_units=1,
     )
+
+    # The secret can only be granted once the application exists, and the
+    # charm blocks until it can read it.
+    await grant_signing_keys_secret(ops_test, app_name)
 
     await ops_test.model.wait_for_idle(
         apps=[app_name],
@@ -159,12 +215,14 @@ async def read_workload_file(ops_test: OpsTest, unit: str, path: str):
     return return_code, stdout
 
 
-async def api_authentication(ops_test, base_url):
+async def api_authentication(ops_test, base_url, app_name=None):
     """Authenticate with the Superset API and set session tokens.
 
     Args:
         ops_test: PyTest object.
         base_url: Superset URL.
+        app_name: Application whose generated admin password to use,
+            defaulting to the UI application.
 
     Returns:
         session: The Requests session.
@@ -174,6 +232,11 @@ async def api_authentication(ops_test, base_url):
             timeout window.
     """
     session = requests.Session()
+    auth_payload = {
+        "username": "admin",
+        "password": await get_admin_password(ops_test, app_name),
+        "provider": "db",
+    }
 
     # Get access token, retrying while the Superset server finishes booting.
     deadline = time.monotonic() + API_READY_TIMEOUT
@@ -182,7 +245,7 @@ async def api_authentication(ops_test, base_url):
         try:
             auth_response = session.post(
                 base_url + "/api/v1/security/login",
-                json=API_AUTH_PAYLOAD,
+                json=auth_payload,
                 timeout=30,
             )
             access_token = auth_response.json().get("access_token")
@@ -274,6 +337,25 @@ async def simulate_crash(ops_test: OpsTest, charm: str, charm_image: str):
     }
     await deploy_and_relate_superset_charm(
         ops_test, UI_NAME, UI_CONFIG, charm, resources
+    )
+
+
+async def delete_unit_pod(ops_test: OpsTest, unit_name: str):
+    """Delete a unit's pod so Kubernetes reschedules it.
+
+    This is the reschedule a charm has to survive without losing state: the
+    container filesystem is wiped and the pebble plan is gone, so everything
+    the workload needs has to be re-derived by the charm.
+
+    Args:
+        ops_test: PyTest object.
+        unit_name: Name of the unit, e.g. `superset-k8s-ui/0`.
+    """
+    pod = unit_name.replace("/", "-")
+    check_output(  # nosec B603 B607
+        ["kubectl", "delete", "pod", pod, "-n", ops_test.model_name],
+        stderr=PIPE,
+        universal_newlines=True,
     )
 
 
