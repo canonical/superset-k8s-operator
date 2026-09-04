@@ -609,6 +609,28 @@ elif _mcp_auth_enabled_env == "true":
     if _google_mcp_auth_factory is not None:
         MCP_AUTH_FACTORY = _google_mcp_auth_factory
 
+    def _identity_candidates(provider, claims, client_id=None):
+        """Identities worth trying as a Superset username, in priority order.
+
+        Google's tokeninfo claims carry a numeric `sub` (Google's own
+        account id) alongside `email` -- Superset stores email as the
+        username for OIDC users (CustomSecurityManager.oauth_user_info),
+        so `sub` never matches there and must not be tried first. Hydra's
+        client_credentials tokens instead set `sub` to the client_id
+        itself, which *is* the Superset username directly.
+        """
+        primary, secondary = (
+            (claims.get("email"), claims.get("sub"))
+            if provider == "google"
+            else (claims.get("sub"), claims.get("email"))
+        )
+        result = []
+        for value in (primary, secondary, client_id):
+            if value and value not in result:
+                result.append(value)
+        return result
+    # End _identity_candidates
+
     # Bridge: 6.1.0's get_user_from_request() ignores FastMCP's per-request
     # JWT ContextVar.  Patch it to read get_access_token() first, then fall
     # back to g.user and MCP_DEV_USERNAME exactly as master does.
@@ -619,28 +641,21 @@ elif _mcp_auth_enabled_env == "true":
 
         # Priority 1: JWT ContextVar set by JWTVerifier after token validation.
         # AccessToken.subject is str|None on the SDK type and is not populated
-        # by FastMCP's JWTVerifier from the JWT sub claim.  Read sub directly
-        # from claims dict; fall back to client_id (client_credentials grants
-        # where sub == client_id), then to email for human OIDC users.
+        # by FastMCP's JWTVerifier from the JWT sub claim.  Read sub/email
+        # directly from claims, in an order that depends on the provider
+        # (see _identity_candidates), falling back to client_id last.
         access_token = get_access_token()
         if access_token is not None:
             claims = getattr(access_token, "claims", None) or {}
-            username = (
-                claims.get("sub")
-                or claims.get("email")
-                or getattr(access_token, "client_id", None)
+            provider = "google" if _google_mcp_auth_factory is not None else "oidc"
+            candidates = _identity_candidates(
+                provider, claims, getattr(access_token, "client_id", None)
             )
-            if username:
-                user = load_user_with_relationships(username)
-                if not user and "@" in str(username):
-                    # email fallback for OIDC human users
-                    from flask_appbuilder.security.sqla.models import User as _FABUser
-                    from superset.extensions import db as _db
-                    db_user = _db.session.query(_FABUser).filter_by(email=username).first()
-                    if db_user:
-                        user = load_user_with_relationships(db_user.username)
-                if user:
-                    return user
+            if candidates:
+                for identity in candidates:
+                    user = load_user_with_relationships(identity)
+                    if user:
+                        return user
                 # Fail closed: token resolved an identity that isn't in the DB.
                 raise ValueError(
                     "JWT authenticated user not found in Superset database"
