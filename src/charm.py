@@ -13,9 +13,11 @@ https://discourse.charmhub.io/t/4208
 import logging
 import os
 import secrets
+import time
 from typing import Optional
 
 import ops
+import requests
 from charms.data_platform_libs.v0.data_models import TypedCharmBase
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
 from charms.loki_k8s.v1.loki_push_api import LogForwarder
@@ -32,7 +34,6 @@ from ops import (
     pebble,
 )
 from ops.charm import ConfigChangedEvent, PebbleReadyEvent
-from ops.pebble import CheckStatus
 from pydantic import ValidationError
 
 from literals import (
@@ -43,6 +44,7 @@ from literals import (
     APPLICATION_PORT,
     CONFIG_PATH,
     DB_RELATION_NAME,
+    HEALTH_URL,
     INGRESS_RELATION_NAME,
     LOG_FILE,
     PROMETHEUS_METRICS_PORT,
@@ -53,6 +55,8 @@ from literals import (
     SUPERSET_VERSION,
     TRINO_CATALOG_RELATION_NAME,
     UI_FUNCTIONS,
+    WORKLOAD_READY_POLL,
+    WORKLOAD_READY_TIMEOUT,
 )
 from relations.oauth import ClientConfigError, OAuthRelation
 from relations.postgresql import Database
@@ -461,24 +465,38 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         peer.data[self.app][ADMIN_SECRET_ID_FIELD] = secret.id
         return content[ADMIN_SECRET_KEY]
 
-    def _workload_status(self, container):
-        """Return the status to report once the plan has been applied.
+    def _workload_status(self):
+        """Return the status the workload presents, once it has settled.
 
-        Args:
-            container: application container.
+        Pebble reports the service as started as soon as the process runs,
+        which is up to a minute before Superset can answer a request, so the
+        reconcile asks the workload rather than taking the plan's word for it.
 
         Returns:
-            MaintenanceStatus until the health check has passed, else
-            ActiveStatus.
+            ActiveStatus once Superset answers, MaintenanceStatus if it has
+            not answered by the deadline.
         """
         if self.config["charm-function"] not in UI_FUNCTIONS:
             return ActiveStatus()
 
-        check = container.get_check("up")
-        if check.status != CheckStatus.UP or check.successes == 0:
-            return MaintenanceStatus("Status check: DOWN")
+        deadline = time.monotonic() + WORKLOAD_READY_TIMEOUT
+        while True:
+            if self._workload_is_serving():
+                return ActiveStatus()
+            if time.monotonic() >= deadline:
+                return MaintenanceStatus("Status check: DOWN")
+            time.sleep(WORKLOAD_READY_POLL)
 
-        return ActiveStatus()
+    def _workload_is_serving(self):
+        """Ask the workload whether it is serving.
+
+        Returns:
+            True if Superset answered its health endpoint.
+        """
+        try:
+            return requests.get(HEALTH_URL, timeout=5).status_code == 200
+        except requests.exceptions.RequestException:
+            return False
 
     def _relation_status(self):
         """Report on the relations the workload cannot start without.
@@ -846,7 +864,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
                         "up": {
                             "override": "replace",
                             "period": "10s",
-                            "http": {"url": "http://localhost:8088/health"},
+                            "http": {"url": HEALTH_URL},
                         }
                     }
                 },
@@ -922,7 +940,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         self._sync_trino_catalogs(force_trino_credentials)
 
         self.unit.set_workload_version(f"v{SUPERSET_VERSION}")
-        self.unit.status = self._workload_status(container)
+        self.unit.status = self._workload_status()
 
 
 if __name__ == "__main__":

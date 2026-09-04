@@ -41,6 +41,10 @@ def ctx():
     ), mock.patch(
         "charm.query_metadata_database",
         return_value=["Public", "Gamma", "Alpha", "Admin"],
+    ), mock.patch(
+        "charm.requests.get", return_value=mock.Mock(status_code=200)
+    ), mock.patch(
+        "charm.WORKLOAD_READY_TIMEOUT", 0
     ):
         yield Context(
             SupersetK8SCharm,
