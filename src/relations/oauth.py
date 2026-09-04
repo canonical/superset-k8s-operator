@@ -13,7 +13,7 @@ from charms.hydra.v0.oauth import (
     OauthProviderConfig,
     OAuthRequirer,
 )
-from ops import BlockedStatus, ModelError, Relation, SecretNotFoundError
+from ops import BlockedStatus, ModelError, SecretNotFoundError
 from ops.framework import Object
 
 from literals import (
@@ -80,38 +80,22 @@ class OAuthRelation(Object):
             grant_types=OAUTH_GRANT_TYPES,
         )
 
-    def is_related(self, departing: Optional[Relation] = None) -> bool:
+    def is_related(self) -> bool:
         """Return whether an OAuth provider is related.
 
-        Args:
-            departing: A relation that is being removed. Its data is still
-                readable in `relation-broken`, so it has to be excluded
-                explicitly rather than inferred from the model.
-
         Returns:
-            True when a provider relation exists and is not the departing one.
+            True when a provider relation exists.
         """
-        relation = self.charm.model.get_relation(OAUTH_RELATION_NAME)
-        if relation is None:
-            return False
-        return departing is None or relation.id != departing.id
+        return self.charm.model.get_relation(OAUTH_RELATION_NAME) is not None
 
-    def provider_info(
-        self, departing: Optional[Relation] = None
-    ) -> Optional[OauthProviderConfig]:
+    def provider_info(self) -> Optional[OauthProviderConfig]:
         """Return live provider details once registration is complete.
-
-        Args:
-            departing: A relation that is being removed.
 
         Returns:
             The provider configuration, or None when the client registration
             is not complete or the relation is going away.
         """
-        if (
-            not self.is_related(departing)
-            or not self.requirer.is_client_created()
-        ):
+        if not self.is_related() or not self.requirer.is_client_created():
             return None
         try:
             relation = self.charm.model.get_relation(OAUTH_RELATION_NAME)
@@ -169,7 +153,7 @@ class OAuthRelation(Object):
         Args:
             event: OAuth relation-broken event.
         """
-        self.charm.reconcile(departing_relation=event.relation)
+        self.charm.reconcile()
 
     def _on_invalid_client_config(self, event) -> None:
         """Log client configuration rejected by the relation library."""

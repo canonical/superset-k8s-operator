@@ -250,7 +250,9 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         """
         self._refresh_ingress_address()
 
-        if not self._validate_config():
+        config_status = self._config_status()
+        if config_status is not None:
+            self.unit.status = config_status
             return
 
         container = self.unit.get_container(self.name)
@@ -362,27 +364,26 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         self.unit.status = MaintenanceStatus(f"restarting {APP_NAME}")
         container.restart(self.name)
 
-    def _validate_config(self):
-        """Check charm config is valid, setting BlockedStatus if not.
+    def _config_status(self):
+        """Report on config the charm cannot be run with.
 
         Returns:
-            True if config is valid, False otherwise.
+            The status to report, or None when the config is valid.
         """
         try:
             _ = self.config
-            return True
+            return None
         except ValidationError as e:
             missing = [
                 str(err["loc"][0]).replace("_", "-")
                 for err in e.errors()
                 if err["type"] == "value_error.missing"
             ]
-            self.unit.status = BlockedStatus(
+            return BlockedStatus(
                 f"missing required config: {', '.join(missing)}"
                 if missing
                 else str(e)
             )
-            return False
 
     @property
     def _peer_relation(self):
@@ -480,12 +481,12 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             return ActiveStatus()
 
         deadline = time.monotonic() + WORKLOAD_READY_TIMEOUT
-        while True:
-            if self._workload_is_serving():
-                return ActiveStatus()
+        while not self._workload_is_serving():
             if time.monotonic() >= deadline:
                 return MaintenanceStatus("Status check: DOWN")
             time.sleep(WORKLOAD_READY_POLL)
+
+        return ActiveStatus()
 
     def _workload_is_serving(self):
         """Ask the workload whether it is serving.
@@ -498,77 +499,77 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         except requests.exceptions.RequestException:
             return False
 
+    def _database_has_data(self):
+        """Return whether the PostgreSQL relation carries usable data."""
+        return self.database.get_db_uri() is not None
+
+    def _redis_has_data(self):
+        """Return whether the Redis relation carries usable data."""
+        return all(self.redis_handler.get_redis_relation_data())
+
     def _relation_status(self):
         """Report on the relations the workload cannot start without.
 
-        A missing relation is the operator's to fix, so it blocks. A relation
-        that exists but carries no data yet is the remote application still
-        settling, which resolves on its own, so it waits.
+        A missing relation is the operator's to fix, so it blocks, and every
+        one that is missing is named. A relation that exists but carries no
+        data yet is the remote application still settling, which resolves
+        on its own, so it waits.
 
         Returns:
-            The status to report, or None when both relations are usable.
+            The status to report, or None when every required relation is
+            usable.
         """
+        required = (
+            ("PostgreSQL", DB_RELATION_NAME, self._database_has_data),
+            ("Redis", REDIS_RELATION_NAME, self._redis_has_data),
+        )
+
         missing = [
             name
-            for name, endpoint in (
-                ("PostgreSQL", DB_RELATION_NAME),
-                ("Redis", REDIS_RELATION_NAME),
-            )
+            for name, endpoint, _ in required
             if self.model.get_relation(endpoint) is None
         ]
         if missing:
-            return BlockedStatus(f"Needs a {missing[0]} relation")
+            return BlockedStatus(
+                f"Required relations missing: {', '.join(missing)}"
+            )
 
-        if self.database.get_db_uri() is None:
-            return WaitingStatus("waiting for database relation data")
-
-        hostname, port = self.redis_handler.get_redis_relation_data()
-        if hostname is None or port is None:
-            return WaitingStatus("waiting for redis relation data")
+        unready = [name for name, _, has_data in required if not has_data()]
+        if unready:
+            return WaitingStatus(
+                f"Waiting for relation data: {', '.join(unready)}"
+            )
 
         return None
 
-    def ready_to_start(self, departing_relation=None):
-        """Check if the charm is ready to start the application.
-
-        Args:
-            departing_relation: A relation that is being removed.
+    def _not_ready_status(self):
+        """Report on whatever keeps the application from being started.
 
         Returns:
-            True if config is valid and required relations exist, else False.
+            The status to report, or None when the application can start.
         """
-        if not self._validate_config():
-            return False
+        config_status = self._config_status()
+        if config_status is not None:
+            return config_status
 
         try:
             self._signing_keys()
         except ValueError as e:
-            self.unit.status = BlockedStatus(str(e))
-            return False
+            return BlockedStatus(str(e))
 
         relation_status = self._relation_status()
         if relation_status is not None:
-            self.unit.status = relation_status
-            return False
+            return relation_status
 
         if self.admin_password() is None:
             # Only reachable on a follower before the leader has created the
             # secret, or before the peer relation exists.
-            self.unit.status = WaitingStatus(
-                "waiting for the admin password secret"
-            )
-            return False
+            return WaitingStatus("waiting for the admin password secret")
 
-        if (
-            self.oauth.is_related(departing_relation)
-            and self.https_ingress_url is None
-        ):
-            self.unit.status = BlockedStatus(
-                "OAuth requires an HTTPS ingress URL"
-            )
-            return False
+        if self.oauth.is_related() and self.https_ingress_url is None:
+            return BlockedStatus("OAuth requires an HTTPS ingress URL")
 
-        return True
+        return None
 
     def _on_get_admin_password(self, event):
         """Return the generated admin password, action handler.
@@ -663,11 +664,8 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         return ret
 
-    def _create_env(self, departing_relation=None):
+    def _create_env(self):
         """Create state values from config to be used as environment variables.
-
-        Args:
-            departing_relation: A relation that is being removed.
 
         Returns:
             env: dictionary of environment variables
@@ -747,7 +745,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         }
         if self.config["feature-flags"]:
             env.update(self.config["feature-flags"])
-        env.update(self._get_oauth_config(departing_relation))
+        env.update(self._get_oauth_config())
         env.update(self._get_smtp_config())
 
         http_proxy = os.environ.get("JUJU_CHARM_HTTP_PROXY")
@@ -765,16 +763,13 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         return env
 
-    def _get_oauth_config(self, departing_relation=None):
+    def _get_oauth_config(self):
         """Return OAuth provider information as workload environment values.
-
-        Args:
-            departing_relation: A relation that is being removed.
 
         Returns:
             The OAuth environment values, empty when OAuth is not configured.
         """
-        provider = self.oauth.provider_info(departing_relation)
+        provider = self.oauth.provider_info()
         if provider is None:
             return {}
 
@@ -872,11 +867,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         return pebble_layer
 
-    def reconcile(
-        self,
-        departing_relation: Optional[ops.Relation] = None,
-        force_trino_credentials: bool = False,
-    ):
+    def reconcile(self, force_trino_credentials: bool = False):
         """Reconcile the charm to its desired state.
 
         Single entry point for every observer: it reads the current config and
@@ -884,9 +875,6 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         workload plan matches.
 
         Args:
-            departing_relation: A relation that is being removed. Relation
-                data is still readable in `relation-broken`, so the relation
-                going away has to be passed in rather than inferred.
             force_trino_credentials: Whether to update every Trino database
                 connection unconditionally, used when the credentials secret
                 has rotated.
@@ -900,7 +888,9 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             )
             return
 
-        if not self.ready_to_start(departing_relation):
+        not_ready_status = self._not_ready_status()
+        if not_ready_status is not None:
+            self.unit.status = not_ready_status
             return
 
         container = self.unit.get_container(self.name)
@@ -912,7 +902,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         logger.info("configuring %s", APP_NAME)
         try:
-            env = self._create_env(departing_relation)
+            env = self._create_env()
         except ValueError as e:
             self.unit.status = BlockedStatus(str(e))
             return

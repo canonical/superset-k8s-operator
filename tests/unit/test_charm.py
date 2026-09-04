@@ -740,7 +740,7 @@ def test_update_status_republishes_ingress_address(ctx):
     state_out = ctx.run(ctx.on.update_status(), state_in)
 
     assert state_out.unit_status == BlockedStatus(
-        "Needs a PostgreSQL relation"
+        "Required relations missing: PostgreSQL"
     )
     assert state_out.get_relation(ingress.id).local_unit_data["ip"]
 
@@ -757,7 +757,7 @@ def test_database_relation_broken_blocks_without_deferring(ctx):
     state_out = ctx.run(ctx.on.relation_broken(database), state_mid)
 
     assert state_out.unit_status == BlockedStatus(
-        "Needs a PostgreSQL relation"
+        "Required relations missing: PostgreSQL"
     )
     assert state_out.deferred == []
 
@@ -773,7 +773,9 @@ def test_redis_relation_broken_blocks_without_deferring(ctx):
 
     state_out = ctx.run(ctx.on.relation_broken(redis), state_mid)
 
-    assert state_out.unit_status == BlockedStatus("Needs a Redis relation")
+    assert state_out.unit_status == BlockedStatus(
+        "Required relations missing: Redis"
+    )
     assert state_out.deferred == []
 
 
@@ -883,7 +885,7 @@ def test_unready_database_relation_waits_rather_than_blocks(ctx):
     state_out = ctx.run(ctx.on.config_changed(), state_in)
 
     assert state_out.unit_status == WaitingStatus(
-        "waiting for database relation data"
+        "Waiting for relation data: PostgreSQL"
     )
 
 
@@ -897,7 +899,7 @@ def test_unready_redis_relation_waits_rather_than_blocks(ctx):
         state_out = ctx.run(ctx.on.config_changed(), state_in)
 
     assert state_out.unit_status == WaitingStatus(
-        "waiting for redis relation data"
+        "Waiting for relation data: Redis"
     )
 
 
@@ -908,7 +910,23 @@ def test_missing_relation_still_blocks(ctx):
     )
 
     assert state_out.unit_status == BlockedStatus(
-        "Needs a PostgreSQL relation"
+        "Required relations missing: PostgreSQL"
+    )
+
+
+def test_every_missing_relation_is_reported_at_once(ctx):
+    """All the relations an operator has to make are named together.
+
+    Reporting them one at a time makes the operator relate, wait for the
+    next status, and relate again.
+    """
+    state_out = ctx.run(
+        ctx.on.config_changed(),
+        build_state(with_database=False, with_redis=False),
+    )
+
+    assert state_out.unit_status == BlockedStatus(
+        "Required relations missing: PostgreSQL, Redis"
     )
 
 
