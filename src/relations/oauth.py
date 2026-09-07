@@ -135,8 +135,8 @@ class OAuthRelation(Object):
             self.publish_client_config()
         except ClientConfigError as exc:
             logger.error("Invalid OAuth client configuration: %s", exc)
-            self.charm.unit.status = BlockedStatus(
-                "invalid OAuth client configuration"
+            self.charm.report_failure(
+                BlockedStatus("invalid OAuth client configuration")
             )
 
     def _on_reconcile(self, event) -> None:
@@ -153,8 +153,8 @@ class OAuthRelation(Object):
     def _on_invalid_client_config(self, event) -> None:
         """Log client configuration rejected by the relation library."""
         logger.error("Invalid OAuth client configuration: %s", event.error)
-        self.charm.unit.status = BlockedStatus(
-            "invalid OAuth client configuration"
+        self.charm.report_failure(
+            BlockedStatus("invalid OAuth client configuration")
         )
 
 

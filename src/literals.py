@@ -47,8 +47,7 @@ CONFIG_PATH = "/app/pythonpath"
 UI_FUNCTIONS = ["app", "app-gunicorn"]
 SQL_AB_ROLE = "SELECT name FROM ab_role;"
 HEALTH_URL = f"http://localhost:{APPLICATION_PORT}/health"
-WORKLOAD_READY_TIMEOUT = 60
-WORKLOAD_READY_POLL = 3
+HEALTH_PROBE_TIMEOUT = 5
 
 # Observability literals
 LOG_FILE = "/var/log/superset.log"

@@ -3,33 +3,15 @@
 
 """Unit tests for the status the charm reports for its workload."""
 
+import dataclasses
 from unittest import mock
 
 import pytest
 import requests
-from ops import ActiveStatus, MaintenanceStatus
+from ops import ActiveStatus, BlockedStatus, MaintenanceStatus, WaitingStatus
+from ops.testing import CheckInfo
 
-from tests.unit.helpers import build_state
-
-
-def serving(*statuses):
-    """Return responses for successive health probes.
-
-    Args:
-        statuses: the HTTP status code each probe answers with, or an
-            exception for a probe that does not connect at all.
-
-    Returns:
-        A `side_effect` for the patched `requests.get`.
-    """
-    return [
-        (
-            status
-            if isinstance(status, Exception)
-            else mock.Mock(status_code=status)
-        )
-        for status in statuses
-    ]
+from tests.unit.helpers import build_state, superset_container
 
 
 @pytest.fixture(name="probe")
@@ -52,7 +34,7 @@ def test_update_status_is_active_while_superset_answers(ctx, probe):
 
     state_out = ctx.run(ctx.on.update_status(), state_mid)
 
-    assert state_out.unit_status == ActiveStatus()
+    assert state_out.unit_status == ActiveStatus("Status check: UP")
 
 
 def test_update_status_reports_a_workload_that_stopped_answering(ctx, probe):
@@ -66,10 +48,11 @@ def test_update_status_reports_a_workload_that_stopped_answering(ctx, probe):
 
 
 def test_reconcile_does_not_report_active_over_a_dead_workload(ctx, probe):
-    """The reconcile reports the workload, not the plan it just applied.
+    """The status reports the workload, not the plan just applied to it.
 
-    Waiting for the next update-status to notice would leave the unit
-    reading Active for a whole hook interval while the workload is down.
+    Pebble calls a service started as soon as its process runs, so taking
+    the plan at its word would report Active over a workload that never
+    answers.
     """
     probe.side_effect = requests.exceptions.ConnectionError()
 
@@ -78,34 +61,66 @@ def test_reconcile_does_not_report_active_over_a_dead_workload(ctx, probe):
     assert state_out.unit_status == MaintenanceStatus("Status check: DOWN")
 
 
-def test_reconcile_waits_for_a_workload_that_is_still_starting(ctx, probe):
-    """A booting workload is waited on rather than reported as down.
+def test_the_workload_is_asked_once_per_event(ctx, probe):
+    """The status is collected without waiting on the workload.
 
-    Pebble reports the service as started as soon as the process runs, and
-    Superset answers a request some way after that.
+    Nothing polls: the reconcile applies the plan and the collector asks the
+    workload once, so a hook costs one request whatever the answer is.
     """
-    probe.side_effect = serving(
-        requests.exceptions.ConnectionError(), 503, 200
-    )
-
-    with mock.patch("charm.WORKLOAD_READY_TIMEOUT", 60), mock.patch(
-        "charm.WORKLOAD_READY_POLL", 0
-    ):
-        state_out = ctx.run(ctx.on.config_changed(), build_state())
-
-    assert probe.call_count == 3
-    assert state_out.unit_status == ActiveStatus()
-
-
-def test_a_workload_that_never_answers_is_reported_down(ctx, probe):
-    """The wait is bounded; the pebble check covers the slower workload."""
     probe.side_effect = requests.exceptions.ConnectionError()
 
-    with mock.patch("charm.WORKLOAD_READY_TIMEOUT", 0):
-        state_out = ctx.run(ctx.on.config_changed(), build_state())
+    ctx.run(ctx.on.config_changed(), build_state())
 
     assert probe.call_count == 1
+
+
+def test_a_check_failure_reports_the_workload_down(ctx, probe):
+    """A tripped pebble check is what reports a workload dying between hooks.
+
+    Juju only dispatches this when the check crosses its threshold, so it is
+    the charm's notice that the workload stopped answering since the last
+    hook.
+    """
+    state_mid = ctx.run(ctx.on.config_changed(), build_state())
+    probe.side_effect = requests.exceptions.ConnectionError()
+
+    state_out = ctx.run(
+        ctx.on.pebble_check_failed(
+            state_mid.get_container("superset"), CheckInfo("up")
+        ),
+        state_mid,
+    )
+
     assert state_out.unit_status == MaintenanceStatus("Status check: DOWN")
+
+
+def test_a_recovered_check_returns_the_unit_to_active(ctx, probe):
+    """A workload that comes back is reported without waiting for a hook."""
+    state_mid = ctx.run(ctx.on.config_changed(), build_state())
+
+    state_out = ctx.run(
+        ctx.on.pebble_check_recovered(
+            state_mid.get_container("superset"), CheckInfo("up")
+        ),
+        state_mid,
+    )
+
+    assert state_out.unit_status == ActiveStatus("Status check: UP")
+
+
+def test_the_health_check_trips_on_a_single_failure(ctx, probe):
+    """The check exists to wake the charm, so it must not debounce.
+
+    Juju fires a check event only when the check crosses its threshold, so a
+    workload that recovers before crossing it fires nothing leaving the status
+    unchanged until the next update-status. Tripping on one failure is safe:
+    the status comes from the probe and `on-check-failure` is `ignore`.
+    """
+    state_out = ctx.run(ctx.on.config_changed(), build_state())
+
+    plan = state_out.get_container("superset").plan.to_dict()
+    assert plan["checks"]["up"]["threshold"] == 1
+    assert plan["services"]["superset"]["on-check-failure"] == {"up": "ignore"}
 
 
 def test_a_worker_is_active_without_being_asked(ctx, probe):
@@ -115,4 +130,49 @@ def test_a_worker_is_active_without_being_asked(ctx, probe):
     state_out = ctx.run(ctx.on.config_changed(), state_in)
 
     probe.assert_not_called()
-    assert state_out.unit_status == ActiveStatus()
+    assert state_out.unit_status == ActiveStatus("Status check: UP")
+
+
+def test_an_unreachable_container_waits(ctx, probe):
+    """A workload container that has not come up yet resolves on its own."""
+    container = dataclasses.replace(superset_container(), can_connect=False)
+    state_in = build_state(container=container)
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    assert state_out.unit_status == WaitingStatus(
+        "waiting for superset container"
+    )
+
+
+def test_status_is_reported_on_an_event_with_no_handler(ctx, probe):
+    """The status does not depend on a reconcile having run.
+
+    It is collected at the end of every dispatch from what the model says,
+    so an event the charm does not observe at all still reports the truth.
+    """
+    state_in = build_state(with_database=False, with_redis=False)
+
+    state_out = ctx.run(ctx.on.install(), state_in)
+
+    assert state_out.unit_status == BlockedStatus(
+        "Required relations missing: PostgreSQL, Redis"
+    )
+
+
+def test_collecting_the_status_creates_no_secret(ctx, probe):
+    """Reporting the status never has a side effect on the model.
+
+    The admin password is generated by the reconcile, so an event that only
+    collects a status must leave the peer databag alone.
+    """
+    state_in = build_state(with_database=False)
+
+    state_out = ctx.run(ctx.on.start(), state_in)
+
+    peer = [
+        relation
+        for relation in state_out.relations
+        if relation.endpoint == "peer"
+    ][0]
+    assert "admin-password-secret-id" not in peer.local_app_data

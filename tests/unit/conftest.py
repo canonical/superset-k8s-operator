@@ -31,9 +31,10 @@ def _load(name: str) -> dict:
 def ctx():
     """Return a Scenario `Context` for the Superset charm.
 
-    Redis relation data and the metadata database query are patched for the
-    duration of the test: both reach outside the charm, to the Redis library
-    and to a live PostgreSQL connection respectively.
+    Redis relation data, the metadata database query and the workload health
+    probe are patched for the duration of the test: all three reach outside
+    the charm, to the Redis library, to a live PostgreSQL connection and to
+    the workload's HTTP endpoint respectively.
     """
     with mock.patch(
         "charm.Redis.get_redis_relation_data",
@@ -43,8 +44,6 @@ def ctx():
         return_value=["Public", "Gamma", "Alpha", "Admin"],
     ), mock.patch(
         "charm.requests.get", return_value=mock.Mock(status_code=200)
-    ), mock.patch(
-        "charm.WORKLOAD_READY_TIMEOUT", 0
     ):
         yield Context(
             SupersetK8SCharm,
