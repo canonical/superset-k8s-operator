@@ -44,7 +44,8 @@ CONFIG_FILES = [
     "permission_error_messages.py",
 ]
 CONFIG_PATH = "/app/pythonpath"
-UI_FUNCTIONS = ["app", "app-gunicorn"]
+UI_FUNCTION = "app-gunicorn"
+WORKER_FUNCTION = "worker"
 SQL_AB_ROLE = "SELECT name FROM ab_role;"
 HEALTH_URL = f"http://localhost:{APPLICATION_PORT}/health"
 HEALTH_PROBE_TIMEOUT = 5
@@ -52,4 +53,6 @@ HEALTH_PROBE_TIMEOUT = 5
 # Observability literals
 LOG_FILE = "/var/log/superset.log"
 PROMETHEUS_METRICS_PORT = 9102
+CELERY_METRICS_PORT = 9103
 STATSD_PORT = 9125
+METRICS_FUNCTIONS = [UI_FUNCTION, WORKER_FUNCTION]

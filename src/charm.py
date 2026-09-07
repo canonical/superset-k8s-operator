@@ -46,15 +46,15 @@ from literals import (
     HEALTH_URL,
     INGRESS_RELATION_NAME,
     LOG_FILE,
-    PROMETHEUS_METRICS_PORT,
     REDIS_RELATION_NAME,
     SIGNING_KEYS_SECRET_KEYS,
     SQL_AB_ROLE,
     STATSD_PORT,
     SUPERSET_VERSION,
     TRINO_CATALOG_RELATION_NAME,
-    UI_FUNCTIONS,
+    UI_FUNCTION,
 )
+from observability import metrics_services, metrics_targets, open_metrics_ports
 from relations.oauth import ClientConfigError, OAuthRelation
 from relations.postgresql import Database
 from relations.redis import Redis
@@ -161,18 +161,14 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         )
 
         # Prometheus
-        self._prometheus_scraping = MetricsEndpointProvider(
-            self,
-            relation_name="metrics-endpoint",
-            jobs=[
-                {
-                    "static_configs": [
-                        {"targets": [f"*:{PROMETHEUS_METRICS_PORT}"]}
-                    ]
-                }
-            ],
-            refresh_event=self.on.config_changed,
-        )
+        targets = metrics_targets(self.model.config.get("charm-function"))
+        if targets:
+            self._prometheus_scraping = MetricsEndpointProvider(
+                self,
+                relation_name="metrics-endpoint",
+                jobs=[{"static_configs": [{"targets": targets}]}],
+                refresh_event=self.on.config_changed,
+            )
 
     def _on_reconcile(self, event):
         """Re-apply the desired state.
@@ -412,7 +408,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             ActiveStatus when Superset answers, MaintenanceStatus when it
             does not.
         """
-        if self.config["charm-function"] not in UI_FUNCTIONS:
+        if self.config["charm-function"] != UI_FUNCTION:
             return ActiveStatus("Status check: UP")
 
         if self._workload_is_serving():
@@ -479,6 +475,29 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         return None
 
+    def _metadata_database_status(self):
+        """Report on a metadata database no UI application has migrated yet.
+
+        Only the UI migrates the database; a worker and a beat scheduler
+        start Celery straight away. Each application holds its own PostgreSQL
+        relation, so its own database user, and a table belongs to whichever
+        user created it: a worker that reaches an empty database first has
+        Flask-AppBuilder create the `ab_*` tables under the worker's user, and
+        the UI's migration then fails on `must be owner of table ab_view_menu`.
+
+        Returns:
+            The status to report, or None for a UI application and for any
+            other function once the roles can be read.
+        """
+        if self.config["charm-function"] == UI_FUNCTION:
+            return None
+
+        uri = self.database.get_db_uri()
+        if uri and query_metadata_database(uri, SQL_AB_ROLE):
+            return None
+
+        return WaitingStatus("waiting for the UI to initialise the database")
+
     def _not_ready_status(self):
         """Report on whatever keeps the application from being started.
 
@@ -494,9 +513,11 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         except ValueError as e:
             return BlockedStatus(str(e))
 
-        relation_status = self._relation_status()
-        if relation_status is not None:
-            return relation_status
+        dependency_status = (
+            self._relation_status() or self._metadata_database_status()
+        )
+        if dependency_status is not None:
+            return dependency_status
 
         if self.admin_password() is None:
             # Only reachable on a follower before the leader has created the
@@ -555,6 +576,13 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         Args:
             event: The event triggered by the get-admin-password action.
         """
+        if self.config["charm-function"] != UI_FUNCTION:
+            event.fail(
+                "the admin password belongs to the UI application, "
+                "run this action there"
+            )
+            return
+
         password = self.admin_password()
         if password is None:
             event.fail("the admin password has not been generated yet")
@@ -763,16 +791,13 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         }
 
     def _open_workload_ports(self):
-        """Open the ports a UI application serves on."""
-        if self.config["charm-function"] not in UI_FUNCTIONS:
-            return
+        """Open the ports the configured charm function serves on."""
+        function = self.config["charm-function"]
+        open_metrics_ports(self.model.unit, function)
 
-        # Open port for cache warm-up.
-        self.model.unit.open_port(port=APPLICATION_PORT, protocol="tcp")
-
-        # Open ports for accepting and exposing metrics
-        self.model.unit.open_port(port=PROMETHEUS_METRICS_PORT, protocol="tcp")
-        self.model.unit.open_port(port=STATSD_PORT, protocol="udp")
+        if function == UI_FUNCTION:
+            # Open port for cache warm-up.
+            self.model.unit.open_port(port=APPLICATION_PORT, protocol="tcp")
 
     def _sync_trino_catalogs(self, force_update_credentials):
         """Synchronise Trino catalogs into Superset database connections.
@@ -797,17 +822,6 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         Returns:
             The pebble layer as a dictionary.
         """
-        (
-            redis_hostname,
-            redis_port,
-        ) = self.redis_handler.get_redis_relation_data()
-
-        metrics_exporter_command = (
-            f"/usr/bin/celery-exporter --broker-url redis://{redis_hostname}:{redis_port}/4 --port {PROMETHEUS_METRICS_PORT}"
-            if self.config["charm-function"] == "worker"
-            else "/usr/bin/statsd_exporter"
-        )
-
         pebble_layer = {
             "summary": f"{APP_NAME} layer",
             "description": f"pebble config layer for {APP_NAME}",
@@ -820,17 +834,15 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
                     "environment": env,
                     "on-check-failure": {"up": "ignore"},
                 },
-                "metrics-exporter": {
-                    "override": "replace",
-                    "summary": "metrics exporter",
-                    "command": metrics_exporter_command,
-                    "startup": "enabled",
-                    "after": [self.name],
-                },
+                **metrics_services(
+                    self.config["charm-function"],
+                    self.name,
+                    *self.redis_handler.get_redis_relation_data(),
+                ),
             },
         }
 
-        if self.config["charm-function"] in UI_FUNCTIONS:
+        if self.config["charm-function"] == UI_FUNCTION:
             pebble_layer.update(
                 {
                     "checks": {

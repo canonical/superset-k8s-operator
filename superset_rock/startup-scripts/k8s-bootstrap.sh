@@ -45,15 +45,15 @@ if [[ "${CHARM_FUNCTION}" == "worker" ]]; then
   if [[ "${CELERY_WORKER_CONCURRENCY:-0}" != "0" ]]; then
     celery_worker_args+=("--concurrency=${CELERY_WORKER_CONCURRENCY}")
   fi
-  celery --app=superset.tasks.celery_app:app worker -O fair -l INFO --uid 0 --without-mingle "${celery_worker_args[@]}"
+  celery --app=superset.tasks.celery_app:app worker -O fair -l INFO --uid 0 --without-mingle -E "${celery_worker_args[@]}"
 elif [[ "${CHARM_FUNCTION}" == "beat" ]]; then
   echo "Starting Celery beat..."
   celery --app=superset.tasks.celery_app:app beat --pidfile /tmp/celerybeat.pid -l INFO -s "${SUPERSET_HOME}"/celerybeat-schedule
-elif [[ "${CHARM_FUNCTION}" == "app" ]]; then
-  echo "Starting web app..."
-  flask run -p 8088 --with-threads --reload --debugger --host=0.0.0.0
 elif [[ "${CHARM_FUNCTION}" == "app-gunicorn" ]]; then
   echo "Starting web app..."
   /app/k8s/k8s-init.sh
   /app/k8s/run-server.sh
+else
+  echo "Unknown CHARM_FUNCTION '${CHARM_FUNCTION}'" >&2
+  exit 1
 fi

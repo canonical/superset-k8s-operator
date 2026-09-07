@@ -17,7 +17,7 @@ from charms.trino_k8s.v0.trino_catalog import (
     TrinoCatalogRequirer,
 )
 
-from literals import TRINO_CATALOG_RELATION_NAME, UI_FUNCTIONS
+from literals import TRINO_CATALOG_RELATION_NAME, UI_FUNCTION
 from superset_api import SupersetApiClient, SupersetApiError, TrinoConnection
 
 logger = logging.getLogger(__name__)
@@ -156,7 +156,7 @@ class TrinoCatalogRelationHandler(ops.Object):
             logger.debug("Skipping trino-catalog sync: not the leader unit")
             return False
 
-        if self.charm.config["charm-function"] not in UI_FUNCTIONS:
+        if self.charm.config["charm-function"] != UI_FUNCTION:
             logger.debug(
                 "Skipping trino-catalog sync: charm-function '%s' "
                 "is not a UI function",
