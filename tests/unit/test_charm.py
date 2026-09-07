@@ -107,13 +107,14 @@ def test_ready(ctx):
 
     plan = state_out.get_container("superset").plan.to_dict()
     environment = plan["services"]["superset"]["environment"]
-    assert environment.pop("ADMIN_PASSWORD")
+    assert environment["ADMIN_PASSWORD"]
     assert plan["services"]["superset"] == {
         "override": "replace",
         "summary": "superset server",
         "command": "/app/k8s/k8s-bootstrap.sh",
         "startup": "enabled",
-        "environment": WANT_ENVIRONMENT,
+        "environment": WANT_ENVIRONMENT
+        | {"ADMIN_PASSWORD": environment["ADMIN_PASSWORD"]},
         "on-check-failure": {"up": "ignore"},
     }
 
@@ -147,7 +148,8 @@ def test_config_changed(ctx):
         }
     )
     environment = superset_environment(state_out)
-    assert environment.pop("ADMIN_PASSWORD")
+    assert environment["ADMIN_PASSWORD"]
+    want_environment["ADMIN_PASSWORD"] = environment["ADMIN_PASSWORD"]
     assert environment == want_environment
     assert state_out.unit_status == ActiveStatus()
 

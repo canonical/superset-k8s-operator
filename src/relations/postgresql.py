@@ -32,33 +32,19 @@ class Database(framework.Object):
             database_name=DB_NAME,
             extra_user_roles="admin",
         )
-        self.framework.observe(
-            self.requirer.on.database_created, self._on_database_changed
-        )
-        self.framework.observe(
-            self.requirer.on.endpoints_changed, self._on_database_changed
-        )
-        self.framework.observe(
-            charm.on.postgresql_db_relation_changed, self._on_database_changed
-        )
-        self.framework.observe(
+        for event in (
+            self.requirer.on.database_created,
+            self.requirer.on.endpoints_changed,
+            charm.on.postgresql_db_relation_changed,
             charm.on.postgresql_db_relation_broken,
-            self._on_database_relation_broken,
-        )
+        ):
+            self.framework.observe(event, self._on_reconcile)
 
-    def _on_database_changed(self, event: RelationEvent) -> None:
-        """Handle database changed event.
-
-        Args:
-            event: The event triggered when the relation changed.
-        """
-        self.charm.reconcile()
-
-    def _on_database_relation_broken(self, event):
-        """Handle database broken event.
+    def _on_reconcile(self, event: RelationEvent) -> None:
+        """Re-apply the desired state when the relation changes.
 
         Args:
-            event: The event triggered when the relation departs.
+            event: The event triggered when the relation changed or departed.
         """
         self.charm.reconcile()
 

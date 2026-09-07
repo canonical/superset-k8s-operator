@@ -35,6 +35,16 @@ UI_NAME = "superset-k8s-ui"
 # Mirrors CA_CERT_PATH in src/literals.py; hard-coded because it is part of
 # the charm's user-facing contract.
 CA_CERT_PATH = "/etc/ssl/certs/charm-ca.pem"
+# Mirrors CONFIG_FILES and CONFIG_PATH in src/literals.py. The charm pushes
+# these into the workload container on every reconcile, so they are the
+# container-filesystem state a rescheduled pod has to get back.
+CONFIG_PATH = "/app/pythonpath"
+CONFIG_FILES = [
+    "superset_config.py",
+    "custom_security_manager.py",
+    "sentry_interceptor.py",
+    "permission_error_messages.py",
+]
 CHARM_FUNCTIONS = {"app-gunicorn": "ui", "beat": "beat", "worker": "worker"}
 SCALABLE_SERVICES = {"app-gunicorn": "ui", "worker": "worker"}
 APP_NAME = "superset-k8s"

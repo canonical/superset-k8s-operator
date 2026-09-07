@@ -53,11 +53,11 @@ class OAuthRelation(Object):
         )
         self.framework.observe(
             self.requirer.on.oauth_info_changed,
-            self._on_oauth_info_changed,
+            self._on_reconcile,
         )
         self.framework.observe(
             charm.on[OAUTH_RELATION_NAME].relation_broken,
-            self._on_oauth_relation_broken,
+            self._on_reconcile,
         )
         self.framework.observe(
             self.requirer.on.invalid_client_config,
@@ -139,19 +139,14 @@ class OAuthRelation(Object):
                 "invalid OAuth client configuration"
             )
 
-    def _on_oauth_info_changed(self, event) -> None:
-        """Reconfigure Superset when provider information changes.
+    def _on_reconcile(self, event) -> None:
+        """Reconfigure Superset when the provider relation changes.
+
+        Covers both provider information changing and the relation going
+        away, which drops the OAuth settings from the workload environment.
 
         Args:
-            event: OAuth information changed event.
-        """
-        self.charm.reconcile()
-
-    def _on_oauth_relation_broken(self, event) -> None:
-        """Remove OAuth configuration when the provider relation goes away.
-
-        Args:
-            event: OAuth relation-broken event.
+            event: OAuth information changed or relation-broken event.
         """
         self.charm.reconcile()
 

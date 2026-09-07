@@ -11,6 +11,8 @@ import requests
 from integration.conftest import deploy  # noqa: F401, pylint: disable=W0611
 from integration.helpers import (
     CA_CERT_PATH,
+    CONFIG_FILES,
+    CONFIG_PATH,
     POSTGRES_NAME,
     REDIS_NAME,
     TLS_NAME,
@@ -131,8 +133,13 @@ class TestDeployment:
         """A rescheduled pod recovers on its own with its state intact.
 
         The charm holds no state of its own, so everything the workload needs
-        has to survive the container filesystem and the pebble plan being
-        wiped.
+        has to survive the container filesystem and the pebble plan being wiped:
+
+        - Charts, which live in the metadata database.
+        - The workload configuration files, which the charm pushes into the
+          container filesystem on every reconcile.
+        - The generated admin password, which lives in a peer secret and is
+          what `api_authentication` logs in with.
         """
         url = await get_unit_url(
             ops_test, application=UI_NAME, unit=0, port=8088
@@ -148,6 +155,14 @@ class TestDeployment:
             raise_on_blocked=False,
             timeout=2000,
         )
+
+        for file in CONFIG_FILES:
+            path = f"{CONFIG_PATH}/{file}"
+            return_code, contents = await read_workload_file(
+                ops_test, f"{UI_NAME}/0", path
+            )
+            assert return_code == 0, f"{path} was not restored"
+            assert contents.strip(), f"{path} is empty"
 
         url = await get_unit_url(
             ops_test, application=UI_NAME, unit=0, port=8088

@@ -26,11 +26,11 @@ class Redis(framework.Object):
         self.charm = charm
         self.requirer = RedisRequires(charm)
         self.framework.observe(
-            charm.on.redis_relation_updated, self._on_redis_relation_changed
+            charm.on.redis_relation_updated, self._on_reconcile
         )
 
-    def _on_redis_relation_changed(self, event):
-        """Handle redis relation updated event.
+    def _on_reconcile(self, event):
+        """Re-apply the desired state when the relation changes.
 
         Args:
             event: The event triggered when the relation changed.

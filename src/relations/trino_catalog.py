@@ -46,15 +46,15 @@ class TrinoCatalogRelationHandler(ops.Object):
 
         self.framework.observe(
             charm.on[TRINO_CATALOG_RELATION_NAME].relation_changed,
-            self._on_relation_changed,
+            self._on_reconcile,
         )
         self.framework.observe(
             charm.on[TRINO_CATALOG_RELATION_NAME].relation_broken,
             self._on_relation_broken,
         )
 
-    def _on_relation_changed(self, event: ops.RelationEvent) -> None:
-        """Handle trino-catalog relation changed.
+    def _on_reconcile(self, event: ops.RelationEvent) -> None:
+        """Re-apply the desired state when the relation changes.
 
         Args:
             event: The event triggered when the relation changed.

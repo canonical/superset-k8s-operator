@@ -33,7 +33,6 @@ from ops import (
     WaitingStatus,
     pebble,
 )
-from ops.charm import ConfigChangedEvent, PebbleReadyEvent
 from pydantic import ValidationError
 
 from literals import (
@@ -120,25 +119,22 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         # Handle basic charm lifecycle
         self.framework.observe(self.on.install, self._on_install)
-        self.framework.observe(
-            self.on.superset_pebble_ready, self._on_pebble_ready
-        )
-        self.framework.observe(
-            self.on.superset_pebble_check_failed, self._on_pebble_check
-        )
-        self.framework.observe(
-            self.on.superset_pebble_check_recovered, self._on_pebble_check
-        )
-        self.framework.observe(self.on.config_changed, self._on_config_changed)
         self.framework.observe(self.on.restart_action, self._on_restart)
         self.framework.observe(
             self.on.get_admin_password_action, self._on_get_admin_password
         )
         self.framework.observe(self.on.update_status, self._on_update_status)
-        self.framework.observe(
-            self.on.peer_relation_changed, self._on_peer_relation_changed
-        )
         self.framework.observe(self.on.secret_changed, self._on_secret_changed)
+
+        # Handle events that only have to re-apply the desired state.
+        for event in (
+            self.on.config_changed,
+            self.on.peer_relation_changed,
+            self.on.superset_pebble_ready,
+            self.on.superset_pebble_check_failed,
+            self.on.superset_pebble_check_recovered,
+        ):
+            self.framework.observe(event, self._on_reconcile)
 
         # Handle Ingress
         self.ingress = IngressPerAppRequirer(
@@ -149,10 +145,8 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             strip_prefix=True,
             redirect_https=True,
         )
-        self.framework.observe(self.ingress.on.ready, self._on_ingress_changed)
-        self.framework.observe(
-            self.ingress.on.revoked, self._on_ingress_changed
-        )
+        self.framework.observe(self.ingress.on.ready, self._on_reconcile)
+        self.framework.observe(self.ingress.on.revoked, self._on_reconcile)
 
         # Loki
         self._log_forwarder = LogForwarder(self, relation_name="logging")
@@ -176,11 +170,11 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             refresh_event=self.on.config_changed,
         )
 
-    def _on_ingress_changed(self, event):
-        """Handle the external URL being granted or revoked by the provider.
+    def _on_reconcile(self, event):
+        """Re-apply the desired state.
 
         Args:
-            event: The ingress ready or revoked event.
+            event: The event that triggered the reconciliation.
         """
         self.reconcile()
 
@@ -191,42 +185,6 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             event: The event triggered when the relation changed.
         """
         self.unit.status = MaintenanceStatus(f"installing {APP_NAME}")
-
-    def _on_pebble_ready(self, event: PebbleReadyEvent):
-        """Define and start a workload using the Pebble API.
-
-        Args:
-            event: The event triggered when the relation changed.
-        """
-        self.reconcile()
-
-    def _on_pebble_check(self, event):
-        """Reconcile when the workload health check changes verdict.
-
-        Without this the charm only learns the check has tripped on the next
-        `update-status`, so the unit reports Active for up to a whole hook
-        interval while the workload is down.
-
-        Args:
-            event: The pebble check failed or recovered event.
-        """
-        self.reconcile()
-
-    def _on_config_changed(self, event: ConfigChangedEvent):
-        """Handle changed configuration.
-
-        Args:
-            event: The event triggered when the configuration changed.
-        """
-        self.reconcile()
-
-    def _on_peer_relation_changed(self, event):
-        """Handle peer relation changes.
-
-        Args:
-            event: The event triggered when the peer relation changed.
-        """
-        self.reconcile()
 
     def _on_secret_changed(self, event):
         """Handle secret changes.
