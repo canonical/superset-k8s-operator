@@ -152,6 +152,13 @@ class TestRewriteString(unittest.TestCase):
         self.assertIn("html_url, login", out)
         self.assertIn(REQ, out)
 
+    def test_table_denied(self):
+        """A table-level denial names the restricted table."""
+        msg = "Access Denied: Cannot select from table analytics.default.users"
+        out = pem._rewrite_permission_denied_string(msg, REQ)
+        self.assertIn("table 'analytics.default.users'", out)
+        self.assertIn(REQ, out)
+
     def test_catalog_denied(self):
         """A catalog-level denial names the restricted catalog."""
         msg = "Access Denied: Cannot access catalog sales"
@@ -159,11 +166,58 @@ class TestRewriteString(unittest.TestCase):
         self.assertIn("catalog 'sales'", out)
         self.assertIn(REQ, out)
 
-    def test_generic_permission_denied(self):
-        """Generic denial markers map to the default dataset message."""
-        for msg in ("PERMISSION_DENIED", "User is not authorized"):
-            out = pem._rewrite_permission_denied_string(msg, REQ)
-            self.assertIn("don’t have access to this dataset", out)
+    def test_other_denied_read(self):
+        """A denied read with no dedicated pattern still gets the default."""
+        msg = "Access Denied: Cannot show tables of schema analytics.default"
+        out = pem._rewrite_permission_denied_string(msg, REQ)
+        self.assertIn("don\u2019t have access to this dataset", out)
+        self.assertIn(REQ, out)
+
+    def test_denial_wrapped_in_a_trino_error_is_found(self):
+        """The denial arrives wrapped in Superset's TrinoUserError text."""
+        msg = (
+            "trino error: TrinoUserError(type=USER_ERROR, "
+            'name=PERMISSION_DENIED, message="Access Denied: Cannot access '
+            'catalog sales", query_id=20260907_171705_00000_umrxr)'
+        )
+        out = pem._rewrite_permission_denied_string(msg, REQ)
+        self.assertIn("catalog 'sales'", out)
+
+    def test_impersonation_failure_is_left_raw(self):
+        """`denySetUser` reports a misconfiguration, not a missing privilege."""
+        msg = (
+            "trino error: TrinoUserError(type=USER_ERROR, "
+            'name=PERMISSION_DENIED, message="Access Denied: Principal admin '
+            'cannot become user admin", query_id=20260907_171705_00000_umrxr)'
+        )
+        self.assertEqual(pem._rewrite_permission_denied_string(msg, REQ), msg)
+
+    def test_user_impersonation_failure_is_left_raw(self):
+        """`denyImpersonateUser`, the other non-`Cannot` denial."""
+        msg = "Access Denied: User bob cannot impersonate user alice"
+        self.assertEqual(pem._rewrite_permission_denied_string(msg, REQ), msg)
+
+    def test_invalid_credentials_is_left_raw(self):
+        """A connection fault, matched by Superset's own Presto spec."""
+        msg = "Access Denied: Invalid credentials"
+        self.assertEqual(pem._rewrite_permission_denied_string(msg, REQ), msg)
+
+    def test_superset_own_authorization_error_is_left_raw(self):
+        """Superset's own wording, from `not_authorized_object.py`."""
+        msg = "The user is not authorized to access the datasource"
+        self.assertEqual(pem._rewrite_permission_denied_string(msg, REQ), msg)
+
+    def test_bare_permission_denied_is_left_raw(self):
+        """`PERMISSION_DENIED` alone does not say what was denied."""
+        self.assertEqual(
+            pem._rewrite_permission_denied_string("PERMISSION_DENIED", REQ),
+            "PERMISSION_DENIED",
+        )
+
+    def test_denied_write_is_left_raw(self):
+        """Only reads are rewritten."""
+        msg = "Access Denied: Cannot insert into table analytics.default.users"
+        self.assertEqual(pem._rewrite_permission_denied_string(msg, REQ), msg)
 
     def test_non_denied_unchanged(self):
         """A non-permission error is returned unchanged."""
@@ -172,9 +226,50 @@ class TestRewriteString(unittest.TestCase):
 
     def test_rewrite_any_nested(self):
         """Denied strings nested in dicts/lists are rewritten in place."""
-        payload = {"errors": [{"message": "Cannot access catalog sales"}]}
+        payload = {
+            "errors": [
+                {"message": "Access Denied: Cannot access catalog sales"}
+            ]
+        }
         out = pem._rewrite_any(payload, REQ)
         self.assertIn("catalog 'sales'", out["errors"][0]["message"])
+
+    def test_async_event_nesting_is_reached(self):
+        """`result[].errors[].message`, the async-event nesting."""
+        payload = {
+            "result": [
+                {
+                    "errors": [
+                        {
+                            "message": (
+                                "Access Denied: Cannot access catalog sales"
+                            )
+                        }
+                    ]
+                }
+            ]
+        }
+        out = pem._rewrite_any(payload, REQ)
+        message = out["result"][0]["errors"][0]["message"]
+        self.assertIn("catalog 'sales'", message)
+
+    def test_the_echoed_query_is_not_rewritten(self):
+        """A `sql` value is data, so it is left alone beside a real denial."""
+        denial = "Access Denied: Cannot access catalog sales"
+        payload = {
+            "sql": f"SELECT '{denial}' AS note",
+            "query": {"sql": f"SELECT '{denial}' AS note"},
+            "errors": [{"message": denial}],
+        }
+        out = pem._rewrite_any(payload, REQ)
+        self.assertEqual(out["sql"], f"SELECT '{denial}' AS note")
+        self.assertEqual(out["query"]["sql"], f"SELECT '{denial}' AS note")
+        self.assertIn("catalog 'sales'", out["errors"][0]["message"])
+
+    def test_a_denial_under_an_unrelated_key_is_not_rewritten(self):
+        """Only values under a message key are candidates."""
+        payload = {"description": "Access Denied: Cannot access catalog sales"}
+        self.assertEqual(pem._rewrite_any(payload, REQ), payload)
 
 
 class TestHookGating(unittest.TestCase):
@@ -202,7 +297,8 @@ class TestHookGating(unittest.TestCase):
     def test_error_response_rewritten(self):
         """A 4xx JSON error on an API path is rewritten."""
         resp = _FakeResponse(
-            {"message": "Cannot access catalog sales"}, status_code=403
+            {"message": "Access Denied: Cannot access catalog sales"},
+            status_code=403,
         )
         self._run(resp, "/api/v1/chart/data")
         self.assertIn("catalog 'sales'", resp.get_data().decode())
@@ -210,15 +306,28 @@ class TestHookGating(unittest.TestCase):
     def test_async_event_200_rewritten(self):
         """An async-event 200 with an embedded error is rewritten."""
         resp = _FakeResponse(
-            {"message": "Cannot access catalog sales"}, status_code=200
+            {"message": "Access Denied: Cannot access catalog sales"},
+            status_code=200,
         )
         self._run(resp, "/api/v1/async_event/")
         self.assertIn("catalog 'sales'", resp.get_data().decode())
 
+    def test_a_response_with_nothing_to_rewrite_is_not_reserialised(self):
+        """An untouched payload keeps the bytes Superset produced."""
+        resp = _FakeResponse(
+            {
+                "message": "Access Denied: Principal admin cannot become user admin"
+            },
+            status_code=500,
+        )
+        self._run(resp, "/api/v1/sqllab/execute/")
+        self.assertEqual(resp.get_data(), b"")
+
     def test_successful_non_async_response_untouched(self):
         """A 2xx non-async response is left untouched."""
         resp = _FakeResponse(
-            {"message": "Cannot access catalog sales"}, status_code=200
+            {"message": "Access Denied: Cannot access catalog sales"},
+            status_code=200,
         )
         self._run(resp, "/api/v1/chart/data")
         # Hook returned early without re-serialising the body.
@@ -227,7 +336,7 @@ class TestHookGating(unittest.TestCase):
     def test_non_json_untouched(self):
         """A non-JSON response is left untouched."""
         resp = _FakeResponse(
-            {"message": "Cannot access catalog sales"},
+            {"message": "Access Denied: Cannot access catalog sales"},
             status_code=500,
             content_type="text/html",
         )
@@ -237,7 +346,8 @@ class TestHookGating(unittest.TestCase):
     def test_non_api_path_untouched(self):
         """A response on a non-API path is left untouched."""
         resp = _FakeResponse(
-            {"message": "Cannot access catalog sales"}, status_code=500
+            {"message": "Access Denied: Cannot access catalog sales"},
+            status_code=500,
         )
         self._run(resp, "/static/something")
         self.assertEqual(resp.get_data(), b"")
