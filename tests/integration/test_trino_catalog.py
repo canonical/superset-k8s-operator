@@ -11,9 +11,10 @@ import pytest_asyncio
 from integration.helpers import (
     POSTGRES_NAME,
     REDIS_NAME,
-    SUPERSET_SECRET_KEY,
     api_authentication,
+    create_signing_keys_secret,
     get_unit_url,
+    grant_signing_keys_secret,
     perform_superset_integrations,
 )
 from pytest_operator.plugin import OpsTest
@@ -70,7 +71,7 @@ async def get_trino_databases(
     url = await get_unit_url(
         ops_test, application=SUPERSET_APP, unit=0, port=8088
     )
-    session = await api_authentication(ops_test, url)
+    session = await api_authentication(ops_test, url, app_name=SUPERSET_APP)
 
     def _fetch_trino_dbs() -> list[dict]:
         """Fetch Trino databases from Superset API."""
@@ -132,26 +133,20 @@ def build_catalog_config(
     catalog_entries = []
 
     if "pgsql" in catalogs:
-        catalog_entries.append(
-            f"""  pgsql:
+        catalog_entries.append(f"""  pgsql:
     backend: dwh
     database: example
-    secret-id: {catalog_secrets['postgresql']}"""
-        )
+    secret-id: {catalog_secrets['postgresql']}""")
 
     if "mysql" in catalogs:
-        catalog_entries.append(
-            f"""  mysql:
+        catalog_entries.append(f"""  mysql:
     backend: mysql
-    secret-id: {catalog_secrets['mysql']}"""
-        )
+    secret-id: {catalog_secrets['mysql']}""")
 
     if "redshift" in catalogs:
-        catalog_entries.append(
-            f"""  redshift:
+        catalog_entries.append(f"""  redshift:
     backend: redshift
-    secret-id: {catalog_secrets['redshift']}"""
-        )
+    secret-id: {catalog_secrets['redshift']}""")
 
     backends = """backends:
   dwh:
@@ -167,7 +162,6 @@ def build_catalog_config(
     return "catalogs:\n" + "\n".join(catalog_entries) + "\n" + backends
 
 
-@pytest.mark.skip_if_deployed
 @pytest_asyncio.fixture(name="deploy-trino-superset", scope="module")
 async def deploy_trino_superset(
     ops_test: OpsTest, charm: str, charm_image: str, secret_ids: dict[str, str]
@@ -197,10 +191,10 @@ async def deploy_trino_superset(
 
     # Deploy Superset
     resources = {"superset-image": charm_image}
+    signing_keys_secret_id = await create_signing_keys_secret(ops_test)
     superset_config = {
         "charm-function": "app-gunicorn",
-        "superset-secret-key": SUPERSET_SECRET_KEY,
-        "admin-password": "admin",
+        "signing-keys-secret-id": signing_keys_secret_id,
         "feature-flags": "GLOBAL_ASYNC_QUERIES",
     }
 
@@ -211,6 +205,7 @@ async def deploy_trino_superset(
         config=superset_config,
         num_units=1,
     )
+    await grant_signing_keys_secret(ops_test, SUPERSET_APP)
 
     async with ops_test.fast_forward():
         await ops_test.model.wait_for_idle(

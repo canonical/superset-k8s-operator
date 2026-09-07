@@ -11,15 +11,16 @@ options:
     description: |
         Comma separated list of domains from which to allow images according to the CSP.
     type: string
-  superset-secret-key:
+  signing-keys-secret-id:
     description: |
-        Your App secret key will be used for securely signing the session cookie
-        and encrypting sensitive information on the database. This secret is required.
-    type: string
-  admin-password:
-    description: |
-        The secret for the admin account created on app initialisation. Default is 'admin'.
-    default: admin
+        ID of the Juju secret holding the signing keys for this deployment. The
+        secret must contain `secret-key`, used to sign the session cookie and to
+        encrypt the database connection passwords stored in the metadata
+        database, and `async-queries-jwt`, used to sign the asynchronous query
+        channel cookie. It must be granted with `juju grant-secret` to the UI,
+        worker and beat applications of one deployment, which must all name the
+        same secret. Keep `secret-key` stable for the lifetime of a deployment:
+        changing it makes every stored connection password unreadable.
     type: string
   charm-function:
     description: |
@@ -78,11 +79,6 @@ options:
        A comma-separated list of feature defined in https://github.com/apache/superset/blob/HEAD/RESOURCES/FEATURE_FLAGS.md.
        To disable features enabled by default, precede them with a ! symbol. E.g: ENABLED_FEATURE,!DISABLED_FEATURE.
     type: string
-  global-async-queries-jwt:
-    description: |
-      jwt for communication with redis database for async querying
-    type: string
-    default: "18b2f8fcd0d708d270c00508da6e8dfc7a21eff14ea438056809805150439a04"
   global-async-queries-polling-delay:
     description: |
       The timedelay in milliseconds for polling during asynchronous query execution.

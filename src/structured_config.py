@@ -3,6 +3,7 @@
 # See LICENSE file for licensing details.
 
 """Structured configuration for the Superset charm."""
+
 import logging
 from enum import Enum
 from typing import Dict, Optional
@@ -40,8 +41,7 @@ class CharmConfig(BaseConfigModel):
     """Manager for the structured configuration."""
 
     allow_image_domains: Optional[str]
-    superset_secret_key: str
-    admin_password: str
+    signing_keys_secret_id: str
     charm_function: FunctionType
     cache_warmup: bool
     sqlalchemy_pool_size: int
@@ -55,7 +55,6 @@ class CharmConfig(BaseConfigModel):
     load_examples: bool
     html_sanitization: bool
     html_sanitization_schema_extensions: Optional[str]
-    global_async_queries_jwt: Optional[str]
     global_async_queries_polling_delay: int
     sentry_dsn: Optional[str]
     sentry_release: Optional[str]

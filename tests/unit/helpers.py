@@ -3,6 +3,8 @@
 
 """Literals and Scenario state builders for the Superset K8s charm unit tests."""
 
+import json
+
 from ops.testing import (
     CheckInfo,
     Container,
@@ -17,6 +19,11 @@ from ops.testing import (
 SERVER_PORT = "8088"
 MODEL_NAME = "superset-model"
 SECRET_KEY = "example-pass"  # nosec B105
+ASYNC_QUERIES_JWT = "example-jwt"  # nosec B105
+SIGNING_KEYS = {
+    "secret-key": SECRET_KEY,
+    "async-queries-jwt": ASYNC_QUERIES_JWT,
+}
 
 CA_PEM = (
     "-----BEGIN CERTIFICATE-----\nMIIBexample\n-----END CERTIFICATE-----\n"
@@ -33,6 +40,16 @@ OAUTH_PROVIDER_DATA = {
     "jwks_endpoint": "https://idp.example/jwks",
     "scope": "openid email profile",
     "client_id": "superset-client",
+}
+
+TRINO_CREDENTIALS = {
+    "username": "trino",
+    "password": "trino-password",  # nosec B105
+}
+
+TRINO_CREDENTIALS_NEW = {
+    "username": "trino",
+    "password": "rotated-trino-password",  # nosec B105
 }
 
 SMTP_SECRET_CONTENTS = {
@@ -84,6 +101,21 @@ def superset_container(*, check_status=None, exec_return_code=0):
     )
 
 
+def signing_keys_secret(content=None):
+    """Build the user secret holding this deployment's signing keys.
+
+    Args:
+        content: secret content, defaulting to both required keys.
+
+    Returns:
+        A Scenario `Secret` owned by the user.
+    """
+    return Secret(
+        tracked_content=SIGNING_KEYS if content is None else content,
+        owner=None,
+    )
+
+
 def build_state(
     *,
     leader=True,
@@ -93,6 +125,7 @@ def build_state(
     secrets=(),
     with_database=True,
     with_redis=True,
+    signing_keys=None,
 ):
     """Build the input `State` for a healthy Superset UI application.
 
@@ -104,6 +137,8 @@ def build_state(
         secrets: secrets to include in the state.
         with_database: whether to include the PostgreSQL relation.
         with_redis: whether to include the Redis relation.
+        signing_keys: the signing keys secret to use, or None for a valid
+            one built by `signing_keys_secret`.
 
     Returns:
         A Scenario `State`.
@@ -127,7 +162,10 @@ def build_state(
         )
     relations.update(extra_relations)
 
-    base_config = {"superset-secret-key": SECRET_KEY}
+    keys_secret = (
+        signing_keys_secret() if signing_keys is None else signing_keys
+    )
+    base_config = {"signing-keys-secret-id": keys_secret.id}
     if config:
         base_config.update(config)
 
@@ -137,7 +175,7 @@ def build_state(
         config=base_config,
         containers={container or superset_container()},
         relations=relations,
-        secrets=set(secrets),
+        secrets=set(secrets) | {keys_secret},
     )
 
 
@@ -195,6 +233,32 @@ def ingress_relation(url="https://superset.example"):
         "ingress",
         remote_app_name="traefik-k8s",
         remote_app_data=remote_data,
+    )
+
+
+def trino_catalog_relation(secret_id, catalogs=("marketing",)):
+    """Build a trino-catalog relation carrying complete provider data.
+
+    Args:
+        secret_id: id of the Juju secret holding the Trino credentials.
+        catalogs: names of the catalogs the provider publishes.
+
+    Returns:
+        A Scenario `Relation`.
+    """
+    return Relation(
+        "trino-catalog",
+        remote_app_name="trino-k8s",
+        remote_app_data={
+            "trino_url": "trino.example:443",
+            "trino_catalogs": json.dumps(
+                [
+                    {"name": name, "connector": "postgresql"}
+                    for name in catalogs
+                ]
+            ),
+            "trino_credentials_secret_id": secret_id,
+        },
     )
 
 

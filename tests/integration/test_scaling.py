@@ -12,8 +12,8 @@ from integration.helpers import (
     POSTGRES_NAME,
     REDIS_NAME,
     SCALABLE_SERVICES,
-    SUPERSET_SECRET_KEY,
     UI_NAME,
+    create_signing_keys_secret,
     deploy_and_relate_superset_charm,
     get_active_workers,
     scale,
@@ -25,7 +25,6 @@ SCALABLE_APPS = ["superset-k8s-ui", "superset-k8s-worker"]
 logger = logging.getLogger(__name__)
 
 
-@pytest.mark.skip_if_deployed
 @pytest_asyncio.fixture(name="deploy-scale", scope="module")
 async def deploy(ops_test: OpsTest, charm: str, charm_image: str):
     """Deploy the app."""
@@ -45,12 +44,13 @@ async def deploy(ops_test: OpsTest, charm: str, charm_image: str):
         resources = {
             "superset-image": charm_image,
         }
+        signing_keys_secret_id = await create_signing_keys_secret(ops_test)
         # Iterate through UI and worker charms
         for function, alias in SCALABLE_SERVICES.items():
             app_name = f"superset-k8s-{alias}"
             superset_config = {
                 "charm-function": function,
-                "superset-secret-key": SUPERSET_SECRET_KEY,
+                "signing-keys-secret-id": signing_keys_secret_id,
                 "server-alias": UI_NAME,
                 "feature-flags": "GLOBAL_ASYNC_QUERIES",
             }

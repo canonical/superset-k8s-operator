@@ -64,12 +64,16 @@ def load_superset_files(container):
 def query_metadata_database(uri, sql):
     """Query metadata database.
 
+    A query the database cannot answer returns nothing rather than raising:
+    on a fresh deployment Superset has not created its tables yet, so callers
+    have to treat an empty result as "not readable" instead of as an answer.
+
     Args:
         uri: database uri string.
         sql: SQL query to execute.
 
     Return:
-        List of returned values.
+        List of returned values, empty when the database cannot answer.
     """
     try:
         engine = create_engine(uri)
@@ -77,7 +81,7 @@ def query_metadata_database(uri, sql):
             result = connection.execute(sql)
             return [row[0] for row in result.fetchall()]
     except SQLAlchemyError as e:
-        logger.exception("Error accessing database: %s", str(e))
+        logger.warning("Metadata database query failed: %s", e)
         return []
 
 

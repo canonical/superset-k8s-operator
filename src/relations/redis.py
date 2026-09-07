@@ -9,7 +9,6 @@ from charms.redis_k8s.v0.redis import RedisRequires
 from ops import framework
 
 from literals import REDIS_RELATION_NAME
-from log import log_event_handler
 
 logger = logging.getLogger(__name__)
 
@@ -25,19 +24,18 @@ class Redis(framework.Object):
         """
         super().__init__(charm, "redis")
         self.charm = charm
-        self.charm.redis = RedisRequires(charm)
+        self.requirer = RedisRequires(charm)
         self.framework.observe(
-            charm.on.redis_relation_updated, self._on_redis_relation_changed
+            charm.on.redis_relation_updated, self._on_reconcile
         )
 
-    @log_event_handler(logger)
-    def _on_redis_relation_changed(self, event):
-        """Handle redis relation updated event.
+    def _on_reconcile(self, event):
+        """Re-apply the desired state when the relation changes.
 
         Args:
             event: The event triggered when the relation changed.
         """
-        self.charm._update(event)
+        self.charm.reconcile()
 
     def get_redis_relation_data(self):
         """Get the hostname and port from the redis relation data.
@@ -50,7 +48,7 @@ class Redis(framework.Object):
             logger.debug("no redis relation found")
             return None, None
 
-        unit_data = self.charm.redis.relation_data or {}
+        unit_data = self.requirer.relation_data or {}
         relation = self.model.get_relation(REDIS_RELATION_NAME)
         application_data = relation.data[relation.app] if relation else {}
 

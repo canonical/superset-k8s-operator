@@ -11,7 +11,6 @@ from ops import framework
 from ops.charm import RelationEvent
 
 from literals import DB_NAME, DB_RELATION_NAME
-from log import log_event_handler
 
 logger = logging.getLogger(__name__)
 
@@ -27,43 +26,27 @@ class Database(framework.Object):
         """
         super().__init__(charm, "database")
         self.charm = charm
-        self.charm.postgresql_db = DatabaseRequires(
+        self.requirer = DatabaseRequires(
             self.charm,
             relation_name=DB_RELATION_NAME,
             database_name=DB_NAME,
             extra_user_roles="admin",
         )
-        self.framework.observe(
-            charm.postgresql_db.on.database_created, self._on_database_changed
-        )
-        self.framework.observe(
-            charm.postgresql_db.on.endpoints_changed, self._on_database_changed
-        )
-        self.framework.observe(
-            charm.on.postgresql_db_relation_changed, self._on_database_changed
-        )
-        self.framework.observe(
+        for event in (
+            self.requirer.on.database_created,
+            self.requirer.on.endpoints_changed,
+            charm.on.postgresql_db_relation_changed,
             charm.on.postgresql_db_relation_broken,
-            self._on_database_relation_broken,
-        )
+        ):
+            self.framework.observe(event, self._on_reconcile)
 
-    @log_event_handler(logger)
-    def _on_database_changed(self, event: RelationEvent) -> None:
-        """Handle database changed event.
-
-        Args:
-            event: The event triggered when the relation changed.
-        """
-        self.charm._update(event)
-
-    @log_event_handler(logger)
-    def _on_database_relation_broken(self, event):
-        """Handle database broken event.
+    def _on_reconcile(self, event: RelationEvent) -> None:
+        """Re-apply the desired state when the relation changes.
 
         Args:
-            event: The event triggered when the relation departs.
+            event: The event triggered when the relation changed or departed.
         """
-        self.charm._update(event)
+        self.charm.reconcile()
 
     def get_db_info(self) -> Optional[Dict]:
         """Get database connection info by reading relation data.
@@ -73,15 +56,15 @@ class Database(framework.Object):
         """
         if (
             self.charm.model.get_relation(DB_RELATION_NAME) is None
-            or not self.charm.postgresql_db.is_resource_created()
+            or not self.requirer.is_resource_created()
         ):
             logger.debug(
                 "no postgresql_db relation found or resource not created"
             )
             return None
 
-        db_relation_id = self.charm.postgresql_db.relations[0].id
-        relation_data = self.charm.postgresql_db.fetch_relation_data().get(
+        db_relation_id = self.requirer.relations[0].id
+        relation_data = self.requirer.fetch_relation_data().get(
             db_relation_id, None
         )
         if not relation_data:

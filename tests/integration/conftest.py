@@ -13,10 +13,10 @@ from integration.helpers import (
     CHARM_FUNCTIONS,
     POSTGRES_NAME,
     REDIS_NAME,
-    SUPERSET_SECRET_KEY,
     TRAEFIK_CONFIG,
     TRAEFIK_NAME,
     UI_NAME,
+    create_signing_keys_secret,
     deploy_and_relate_superset_charm,
 )
 from pytest import FixtureRequest
@@ -48,7 +48,6 @@ async def charm_fixture(
     return charms[0]
 
 
-@pytest.mark.skip_if_deployed
 @pytest_asyncio.fixture(name="deploy", scope="module")
 async def deploy(ops_test: OpsTest, charm: str, charm_image: str):
     """Deploy the app."""
@@ -71,13 +70,14 @@ async def deploy(ops_test: OpsTest, charm: str, charm_image: str):
             timeout=2000,
         )
         resources = {"superset-image": charm_image}
+        signing_keys_secret_id = await create_signing_keys_secret(ops_test)
 
         # Iterate through UI, worker and beat charms
         for function, alias in CHARM_FUNCTIONS.items():
             app_name = f"superset-k8s-{alias}"
             superset_config = {
                 "charm-function": function,
-                "superset-secret-key": SUPERSET_SECRET_KEY,
+                "signing-keys-secret-id": signing_keys_secret_id,
                 "server-alias": UI_NAME,
                 "feature-flags": "GLOBAL_ASYNC_QUERIES",
             }

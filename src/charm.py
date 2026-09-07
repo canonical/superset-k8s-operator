@@ -12,9 +12,12 @@ https://discourse.charmhub.io/t/4208
 
 import logging
 import os
+import secrets
+import time
 from typing import Optional
 
 import ops
+import requests
 from charms.data_platform_libs.v0.data_models import TypedCharmBase
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
 from charms.loki_k8s.v1.loki_push_api import LogForwarder
@@ -30,27 +33,30 @@ from ops import (
     WaitingStatus,
     pebble,
 )
-from ops.charm import ConfigChangedEvent, PebbleReadyEvent
-from ops.pebble import CheckStatus
 from pydantic import ValidationError
 
 from literals import (
+    ADMIN_SECRET_ID_FIELD,
+    ADMIN_SECRET_KEY,
+    ADMIN_SECRET_LABEL,
     APP_NAME,
     APPLICATION_PORT,
     CONFIG_PATH,
     DB_RELATION_NAME,
-    DEFAULT_ROLES,
+    HEALTH_URL,
     INGRESS_RELATION_NAME,
     LOG_FILE,
     PROMETHEUS_METRICS_PORT,
     REDIS_RELATION_NAME,
+    SIGNING_KEYS_SECRET_KEYS,
     SQL_AB_ROLE,
     STATSD_PORT,
     SUPERSET_VERSION,
     TRINO_CATALOG_RELATION_NAME,
     UI_FUNCTIONS,
+    WORKLOAD_READY_POLL,
+    WORKLOAD_READY_TIMEOUT,
 )
-from log import log_event_handler
 from relations.oauth import ClientConfigError, OAuthRelation
 from relations.postgresql import Database
 from relations.redis import Redis
@@ -113,16 +119,22 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         # Handle basic charm lifecycle
         self.framework.observe(self.on.install, self._on_install)
-        self.framework.observe(
-            self.on.superset_pebble_ready, self._on_pebble_ready
-        )
-        self.framework.observe(self.on.config_changed, self._on_config_changed)
         self.framework.observe(self.on.restart_action, self._on_restart)
-        self.framework.observe(self.on.update_status, self._on_update_status)
         self.framework.observe(
-            self.on.peer_relation_changed, self._on_peer_relation_changed
+            self.on.get_admin_password_action, self._on_get_admin_password
         )
+        self.framework.observe(self.on.update_status, self._on_update_status)
         self.framework.observe(self.on.secret_changed, self._on_secret_changed)
+
+        # Handle events that only have to re-apply the desired state.
+        for event in (
+            self.on.config_changed,
+            self.on.peer_relation_changed,
+            self.on.superset_pebble_ready,
+            self.on.superset_pebble_check_failed,
+            self.on.superset_pebble_check_recovered,
+        ):
+            self.framework.observe(event, self._on_reconcile)
 
         # Handle Ingress
         self.ingress = IngressPerAppRequirer(
@@ -133,10 +145,8 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             strip_prefix=True,
             redirect_https=True,
         )
-        self.framework.observe(self.ingress.on.ready, self._on_ingress_changed)
-        self.framework.observe(
-            self.ingress.on.revoked, self._on_ingress_changed
-        )
+        self.framework.observe(self.ingress.on.ready, self._on_reconcile)
+        self.framework.observe(self.ingress.on.revoked, self._on_reconcile)
 
         # Loki
         self._log_forwarder = LogForwarder(self, relation_name="logging")
@@ -160,16 +170,14 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             refresh_event=self.on.config_changed,
         )
 
-    @log_event_handler(logger)
-    def _on_ingress_changed(self, event):
-        """Handle the external URL being granted or revoked by the provider.
+    def _on_reconcile(self, event):
+        """Re-apply the desired state.
 
         Args:
-            event: The ingress ready or revoked event.
+            event: The event that triggered the reconciliation.
         """
-        self._update(event)
+        self.reconcile()
 
-    @log_event_handler(logger)
     def _on_install(self, event):
         """Install application.
 
@@ -178,75 +186,53 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         """
         self.unit.status = MaintenanceStatus(f"installing {APP_NAME}")
 
-    @log_event_handler(logger)
-    def _on_pebble_ready(self, event: PebbleReadyEvent):
-        """Define and start a workload using the Pebble API.
-
-        Args:
-            event: The event triggered when the relation changed.
-        """
-        self._update(event)
-
-    @log_event_handler(logger)
-    def _on_config_changed(self, event: ConfigChangedEvent):
-        """Handle changed configuration.
-
-        Args:
-            event: The event triggered when the relation changed.
-        """
-        self.unit.status = WaitingStatus(f"configuring {APP_NAME}")
-        self._update(event)
-
-    @log_event_handler(logger)
-    def _on_peer_relation_changed(self, event):
-        """Handle peer relation changes.
-
-        Args:
-            event: The event triggered when the peer relation changed.
-        """
-        self.unit.status = WaitingStatus(f"configuring {APP_NAME}")
-        self._update(event)
-
-    @log_event_handler(logger)
     def _on_secret_changed(self, event):
         """Handle secret changes.
 
         Args:
             event: The event triggered when the secret changed.
         """
-        self._update(event)
+        self.reconcile(
+            force_trino_credentials=(
+                self.trino_catalog_handler.is_trino_credentials_secret(
+                    event.secret
+                )
+            )
+        )
 
-    @log_event_handler(logger)
     def _on_update_status(self, event):
         """Handle `update-status` events.
 
         Args:
             event: The `update-status` event triggered at intervals
         """
-        if not self.ready_to_start():
+        self._refresh_ingress_address()
+
+        config_status = self._config_status()
+        if config_status is not None:
+            self.unit.status = config_status
             return
 
         container = self.unit.get_container(self.name)
-        valid_pebble_plan = self._validate_pebble_plan(container)
-        if not valid_pebble_plan:
-            self._update(event)
+        if not container.can_connect():
+            self.unit.status = MaintenanceStatus("Status check: NOT READY")
             return
 
-        if not self.reconcile_certificates():
+        if not self._validate_pebble_plan(container):
+            self.reconcile()
             return
 
-        if self.config["charm-function"] in UI_FUNCTIONS:
-            check = container.get_check("up")
-            if check.status != CheckStatus.UP:
-                self.unit.status = MaintenanceStatus("Status check: DOWN")
-                return
+        self.reconcile()
 
-        # Sync Trino catalog databases if the relation exists
-        if self.model.get_relation(TRINO_CATALOG_RELATION_NAME):
-            self.trino_catalog_handler.sync_databases()
+    def _refresh_ingress_address(self):
+        """Republish the unit's address on the ingress relation.
 
-        self.unit.set_workload_version(f"v{SUPERSET_VERSION}")
-        self.unit.status = ActiveStatus("Status check: UP")
+        `IngressPerAppRequirer` publishes the address on relation churn,
+        `leader-elected` and `upgrade-charm` only so one bad read
+        routes the ingress at a dead IP indefinitely. It is a no-op when
+        the value has not changed.
+        """
+        self.ingress.provide_ingress_requirements(port=APPLICATION_PORT)
 
     def reconcile_certificates(self, relation_broken: bool = False):
         """Sync the workload CA trust store with the certificates relation.
@@ -301,7 +287,11 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             return False
 
     def _validate_self_registration_role(self, sqlalchemy_uri: str):
-        """Determine allowed Superset roles.
+        """Check the configured self-registration role exists in Superset.
+
+        The roles live in the metadata database, which does not carry the
+        `ab_role` table until Superset has migrated it. Until then, and
+        whenever the database cannot answer, the role is left unvalidated.
 
         Args:
             sqlalchemy_uri (str): the SQL Alchemy URI.
@@ -309,18 +299,16 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         Raises:
             ValueError: in case role value is not allowed.
         """
-        sql = SQL_AB_ROLE
-
-        allowed_roles = query_metadata_database(sqlalchemy_uri, sql)
+        allowed_roles = query_metadata_database(sqlalchemy_uri, SQL_AB_ROLE)
         if not allowed_roles:
-            allowed_roles = DEFAULT_ROLES
+            logger.debug(
+                "Superset roles are not readable yet, "
+                "leaving self-registration-role unvalidated"
+            )
+            return
+
         role = self.config["self-registration-role"]
         if role not in allowed_roles:
-            logger.error(
-                "The self-registration role %s is not allowed. Use only %s.",
-                role,
-                allowed_roles,
-            )
             raise ValueError(
                 f"The self-registration role {role} is not allowed. Use only {allowed_roles}."
             )
@@ -334,54 +322,226 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         self.unit.status = MaintenanceStatus(f"restarting {APP_NAME}")
         container.restart(self.name)
 
-    def _validate_config(self):
-        """Check charm config is valid, setting BlockedStatus if not.
+    def _config_status(self):
+        """Report on config the charm cannot be run with.
 
         Returns:
-            True if config is valid, False otherwise.
+            The status to report, or None when the config is valid.
         """
         try:
             _ = self.config
-            return True
+            return None
         except ValidationError as e:
             missing = [
                 str(err["loc"][0]).replace("_", "-")
                 for err in e.errors()
                 if err["type"] == "value_error.missing"
             ]
-            self.unit.status = BlockedStatus(
+            return BlockedStatus(
                 f"missing required config: {', '.join(missing)}"
                 if missing
                 else str(e)
             )
-            return False
 
-    def ready_to_start(self):
-        """Check if the charm is ready to start the application.
+    @property
+    def _peer_relation(self):
+        """Return the peer relation, or None before it is established."""
+        return self.model.get_relation("peer")
+
+    def _signing_keys(self):
+        """Return the contents of the signing keys secret.
 
         Returns:
-            True if config is valid and required relations exist, else False.
+            The secret content as a mapping.
+
+        Raises:
+            ValueError: When the option is unset, or the secret cannot be
+                read, or it does not carry both keys.
         """
-        if not self._validate_config():
-            return False
+        secret_id = self.config["signing-keys-secret-id"]
+        if not secret_id:
+            raise ValueError("missing required config: signing-keys-secret-id")
 
-        if self.model.get_relation(DB_RELATION_NAME) is None:
-            self.unit.status = BlockedStatus("Needs a PostgreSQL relation")
-            return False
-
-        if self.model.get_relation(REDIS_RELATION_NAME) is None:
-            self.unit.status = BlockedStatus("Needs a Redis relation")
-            return False
-
-        if self.oauth.is_related and self.https_ingress_url is None:
-            self.unit.status = BlockedStatus(
-                "OAuth requires an HTTPS ingress URL"
+        try:
+            content = self.model.get_secret(id=secret_id).get_content(
+                refresh=True
             )
+        except SecretNotFoundError:
+            raise ValueError(
+                f"signing keys secret '{secret_id}' cannot be found."
+            ) from None
+        except ModelError:
+            raise ValueError(
+                f"signing keys secret '{secret_id}' cannot be accessed."
+            ) from None
+
+        missing = [
+            key
+            for key in SIGNING_KEYS_SECRET_KEYS
+            if not content.get(key, "").strip()
+        ]
+        if missing:
+            raise ValueError(
+                f"signing keys secret '{secret_id}' has improper schema. "
+                f"Missing: {', '.join(missing)}"
+            )
+
+        return content
+
+    def admin_password(self):
+        """Return the admin password, generating it on the leader if needed.
+
+        The secret is charm-owned, so it is created once by the leader and
+        found by every unit through the ID published on the peer databag: a
+        label lookup is not reliable from a hook other than the one that
+        created the secret.
+
+        Returns:
+            The admin password, or None when the leader has not created the
+            secret yet.
+        """
+        peer = self._peer_relation
+        if peer is None:
+            return None
+
+        secret_id = peer.data[self.app].get(ADMIN_SECRET_ID_FIELD)
+        if secret_id:
+            try:
+                return self.model.get_secret(id=secret_id).get_content(
+                    refresh=True
+                )[ADMIN_SECRET_KEY]
+            except (SecretNotFoundError, ModelError, KeyError):
+                logger.warning(
+                    "admin password secret %s is unreadable", secret_id
+                )
+                return None
+
+        if not self.unit.is_leader():
+            return None
+
+        content = {ADMIN_SECRET_KEY: secrets.token_urlsafe(24)}
+        secret = self.app.add_secret(content, label=ADMIN_SECRET_LABEL)
+        peer.data[self.app][ADMIN_SECRET_ID_FIELD] = secret.id
+        return content[ADMIN_SECRET_KEY]
+
+    def _workload_status(self):
+        """Return the status the workload presents, once it has settled.
+
+        Pebble reports the service as started as soon as the process runs,
+        which is up to a minute before Superset can answer a request, so the
+        reconcile asks the workload rather than taking the plan's word for it.
+
+        Returns:
+            ActiveStatus once Superset answers, MaintenanceStatus if it has
+            not answered by the deadline.
+        """
+        if self.config["charm-function"] not in UI_FUNCTIONS:
+            return ActiveStatus()
+
+        deadline = time.monotonic() + WORKLOAD_READY_TIMEOUT
+        while not self._workload_is_serving():
+            if time.monotonic() >= deadline:
+                return MaintenanceStatus("Status check: DOWN")
+            time.sleep(WORKLOAD_READY_POLL)
+
+        return ActiveStatus()
+
+    def _workload_is_serving(self):
+        """Ask the workload whether it is serving.
+
+        Returns:
+            True if Superset answered its health endpoint.
+        """
+        try:
+            return requests.get(HEALTH_URL, timeout=5).status_code == 200
+        except requests.exceptions.RequestException:
             return False
 
-        return True
+    def _database_has_data(self):
+        """Return whether the PostgreSQL relation carries usable data."""
+        return self.database.get_db_uri() is not None
 
-    @log_event_handler(logger)
+    def _redis_has_data(self):
+        """Return whether the Redis relation carries usable data."""
+        return all(self.redis_handler.get_redis_relation_data())
+
+    def _relation_status(self):
+        """Report on the relations the workload cannot start without.
+
+        A missing relation is the operator's to fix, so it blocks, and every
+        one that is missing is named. A relation that exists but carries no
+        data yet is the remote application still settling, which resolves
+        on its own, so it waits.
+
+        Returns:
+            The status to report, or None when every required relation is
+            usable.
+        """
+        required = (
+            ("PostgreSQL", DB_RELATION_NAME, self._database_has_data),
+            ("Redis", REDIS_RELATION_NAME, self._redis_has_data),
+        )
+
+        missing = [
+            name
+            for name, endpoint, _ in required
+            if self.model.get_relation(endpoint) is None
+        ]
+        if missing:
+            return BlockedStatus(
+                f"Required relations missing: {', '.join(missing)}"
+            )
+
+        unready = [name for name, _, has_data in required if not has_data()]
+        if unready:
+            return WaitingStatus(
+                f"Waiting for relation data: {', '.join(unready)}"
+            )
+
+        return None
+
+    def _not_ready_status(self):
+        """Report on whatever keeps the application from being started.
+
+        Returns:
+            The status to report, or None when the application can start.
+        """
+        config_status = self._config_status()
+        if config_status is not None:
+            return config_status
+
+        try:
+            self._signing_keys()
+        except ValueError as e:
+            return BlockedStatus(str(e))
+
+        relation_status = self._relation_status()
+        if relation_status is not None:
+            return relation_status
+
+        if self.admin_password() is None:
+            # Only reachable on a follower before the leader has created the
+            # secret, or before the peer relation exists.
+            return WaitingStatus("waiting for the admin password secret")
+
+        if self.oauth.is_related() and self.https_ingress_url is None:
+            return BlockedStatus("OAuth requires an HTTPS ingress URL")
+
+        return None
+
+    def _on_get_admin_password(self, event):
+        """Return the generated admin password, action handler.
+
+        Args:
+            event: The event triggered by the get-admin-password action.
+        """
+        password = self.admin_password()
+        if password is None:
+            event.fail("the admin password has not been generated yet")
+            return
+
+        event.set_results({"password": password})
+
     def _on_restart(self, event):
         """Restart application, action handler.
 
@@ -481,10 +641,12 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         if redis_hostname is None or redis_port is None:
             raise ValueError("redis relation data is not available")
 
+        signing_keys = self._signing_keys()
+
         env = {
             "ALLOW_IMAGE_DOMAINS": self.config["allow-image-domains"],
-            "SUPERSET_SECRET_KEY": self.config["superset-secret-key"],
-            "ADMIN_PASSWORD": self.config["admin-password"],
+            "SUPERSET_SECRET_KEY": signing_keys["secret-key"],
+            "ADMIN_PASSWORD": self.admin_password(),
             "CHARM_FUNCTION": self.config["charm-function"].value,
             "SQL_ALCHEMY_URI": sqlalchemy_uri,
             "REDIS_HOST": redis_hostname,
@@ -500,9 +662,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "HTML_SANITIZATION_SCHEMA_EXTENSIONS": self.config[
                 "html-sanitization-schema-extensions"
             ],
-            "GLOBAL_ASYNC_QUERIES_JWT": self.config[
-                "global-async-queries-jwt"
-            ],
+            "GLOBAL_ASYNC_QUERIES_JWT": signing_keys["async-queries-jwt"],
             "GLOBAL_ASYNC_QUERIES_POLLING_DELAY": self.config[
                 "global-async-queries-polling-delay"
             ],
@@ -562,8 +722,12 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         return env
 
     def _get_oauth_config(self):
-        """Return OAuth provider information as workload environment values."""
-        provider = self.oauth.provider_info
+        """Return OAuth provider information as workload environment values.
+
+        Returns:
+            The OAuth environment values, empty when OAuth is not configured.
+        """
+        provider = self.oauth.provider_info()
         if provider is None:
             return {}
 
@@ -578,40 +742,41 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "OAUTH_CLIENT_SECRET": provider.client_secret,
         }
 
-    def _update(self, event):
-        """Update the application server configuration and replan its execution.
+    def _open_workload_ports(self):
+        """Open the ports a UI application serves on."""
+        if self.config["charm-function"] not in UI_FUNCTIONS:
+            return
+
+        # Open port for cache warm-up.
+        self.model.unit.open_port(port=APPLICATION_PORT, protocol="tcp")
+
+        # Open ports for accepting and exposing metrics
+        self.model.unit.open_port(port=PROMETHEUS_METRICS_PORT, protocol="tcp")
+        self.model.unit.open_port(port=STATSD_PORT, protocol="udp")
+
+    def _sync_trino_catalogs(self, force_update_credentials):
+        """Synchronise Trino catalogs into Superset database connections.
 
         Args:
-            event: The event triggered when the relation changed.
+            force_update_credentials: Whether to update every existing
+                connection unconditionally.
         """
-        try:
-            self.oauth.publish_client_config()
-        except ClientConfigError as exc:
-            logger.error("Invalid OAuth client configuration: %s", exc)
-            self.unit.status = BlockedStatus(
-                "invalid OAuth client configuration"
-            )
+        if not self.model.get_relation(TRINO_CATALOG_RELATION_NAME):
             return
 
-        container = self.unit.get_container(self.name)
-        if not container.can_connect():
-            return
+        self.trino_catalog_handler.sync_databases(
+            force_update_credentials=force_update_credentials
+        )
 
-        if not self.ready_to_start():
-            return
+    def _pebble_layer(self, env):
+        """Build the pebble layer for the configured charm function.
 
-        logger.info("configuring %s", APP_NAME)
-        try:
-            env = self._create_env()
-        except ValueError as e:
-            self.unit.status = BlockedStatus(str(e))
-            return
+        Args:
+            env: the workload environment.
 
-        if not self.reconcile_certificates():
-            return
-
-        load_superset_files(container)
-
+        Returns:
+            The pebble layer as a dictionary.
+        """
         (
             redis_hostname,
             redis_port,
@@ -623,7 +788,6 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             else "/usr/bin/statsd_exporter"
         )
 
-        logger.info("planning %s execution", APP_NAME)
         pebble_layer = {
             "summary": f"{APP_NAME} layer",
             "description": f"pebble config layer for {APP_NAME}",
@@ -653,24 +817,78 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
                         "up": {
                             "override": "replace",
                             "period": "10s",
-                            "http": {"url": "http://localhost:8088/health"},
+                            "http": {"url": HEALTH_URL},
                         }
                     }
                 },
             )
 
-            # Open port for cache warm-up.
-            self.model.unit.open_port(port=APPLICATION_PORT, protocol="tcp")
+        return pebble_layer
 
-            # Open ports for accepting and exposing metrics
-            self.model.unit.open_port(
-                port=PROMETHEUS_METRICS_PORT, protocol="tcp"
+    def reconcile(self, force_trino_credentials: bool = False):
+        """Reconcile the charm to its desired state.
+
+        Single entry point for every observer: it reads the current config and
+        relation state, decides whether the charm is ready, and ensures the
+        workload plan matches.
+
+        Args:
+            force_trino_credentials: Whether to update every Trino database
+                connection unconditionally, used when the credentials secret
+                has rotated.
+        """
+        try:
+            self.oauth.publish_client_config()
+        except ClientConfigError as exc:
+            logger.error("Invalid OAuth client configuration: %s", exc)
+            self.unit.status = BlockedStatus(
+                "invalid OAuth client configuration"
             )
-            self.model.unit.open_port(port=STATSD_PORT, protocol="udp")
+            return
 
-        container.add_layer(self.name, pebble_layer, combine=True)
-        container.replan()
-        self.unit.status = MaintenanceStatus("replanning application")
+        not_ready_status = self._not_ready_status()
+        if not_ready_status is not None:
+            self.unit.status = not_ready_status
+            return
+
+        container = self.unit.get_container(self.name)
+        if not container.can_connect():
+            self.unit.status = WaitingStatus(
+                f"waiting for {APP_NAME} container"
+            )
+            return
+
+        logger.info("configuring %s", APP_NAME)
+        try:
+            env = self._create_env()
+        except ValueError as e:
+            self.unit.status = BlockedStatus(str(e))
+            return
+
+        if not self.reconcile_certificates():
+            return
+
+        load_superset_files(container)
+
+        self._open_workload_ports()
+
+        logger.info("planning %s execution", APP_NAME)
+        try:
+            container.add_layer(
+                self.name, self._pebble_layer(env), combine=True
+            )
+            container.replan()
+        except (pebble.ChangeError, pebble.ConnectionError) as e:
+            # A pod being torn down fails the replan rather than the charm:
+            # `can_connect` goes stale, and pebble goes away with the pod.
+            logger.warning("Pebble replan failed: %s", e)
+            self.unit.status = MaintenanceStatus("replan failed")
+            return
+
+        self._sync_trino_catalogs(force_trino_credentials)
+
+        self.unit.set_workload_version(f"v{SUPERSET_VERSION}")
+        self.unit.status = self._workload_status()
 
 
 if __name__ == "__main__":
