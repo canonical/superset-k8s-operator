@@ -493,8 +493,12 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             return None
 
         uri = self.database.get_db_uri()
-        if uri and query_metadata_database(uri, SQL_AB_ROLE):
+        roles = query_metadata_database(uri, SQL_AB_ROLE) if uri else None
+        if roles:
             return None
+
+        if roles is None:
+            return WaitingStatus("waiting for the metadata database to answer")
 
         return WaitingStatus("waiting for the UI to initialise the database")
 
@@ -576,7 +580,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         Args:
             event: The event triggered by the get-admin-password action.
         """
-        if self.config["charm-function"] != UI_FUNCTION:
+        if self.model.config.get("charm-function") != UI_FUNCTION:
             event.fail(
                 "the admin password belongs to the UI application, "
                 "run this action there"

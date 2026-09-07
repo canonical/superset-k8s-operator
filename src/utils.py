@@ -10,7 +10,7 @@ import re
 from pathlib import Path
 
 from sqlalchemy import create_engine
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import InterfaceError, OperationalError, SQLAlchemyError
 
 from literals import CONFIG_FILES, CONFIG_PATH
 
@@ -64,22 +64,27 @@ def load_superset_files(container):
 def query_metadata_database(uri, sql):
     """Query metadata database.
 
-    A query the database cannot answer returns nothing rather than raising:
-    on a fresh deployment Superset has not created its tables yet, so callers
-    have to treat an empty result as "not readable" instead of as an answer.
+    A database that cannot be reached is reported apart from one that
+    answered but could not run the query, which is what a database Superset
+    has not migrated yet does: `SELECT name FROM ab_role` on it raises
+    `UndefinedTable` rather than returning no rows.
 
     Args:
         uri: database uri string.
         sql: SQL query to execute.
 
     Return:
-        List of returned values, empty when the database cannot answer.
+        List of returned values, empty when the database answered but the
+        query did not run, None when the database could not be reached.
     """
     try:
         engine = create_engine(uri)
         with engine.connect() as connection:
             result = connection.execute(sql)
             return [row[0] for row in result.fetchall()]
+    except (OperationalError, InterfaceError) as e:
+        logger.warning("Metadata database is unreachable: %s", e)
+        return None
     except SQLAlchemyError as e:
         logger.warning("Metadata database query failed: %s", e)
         return []

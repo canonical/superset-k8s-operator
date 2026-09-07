@@ -10,8 +10,11 @@ import pytest
 import requests
 from ops import ActiveStatus, BlockedStatus, MaintenanceStatus, WaitingStatus
 from ops.testing import CheckInfo
+from sqlalchemy.exc import OperationalError, ProgrammingError
 
+from literals import SQL_AB_ROLE
 from tests.unit.helpers import build_state, superset_container
+from utils import query_metadata_database
 
 WAITING_ON_THE_UI = WaitingStatus(
     "waiting for the UI to initialise the database"
@@ -27,6 +30,15 @@ def uninitialised_database_fixture():
     has run its migrations.
     """
     with mock.patch("charm.query_metadata_database", return_value=[]) as query:
+        yield query
+
+
+@pytest.fixture(name="unreachable_database")
+def unreachable_database_fixture():
+    """Patch the metadata database as not reachable at all."""
+    with mock.patch(
+        "charm.query_metadata_database", return_value=None
+    ) as query:
         yield query
 
 
@@ -140,7 +152,7 @@ def test_the_health_check_trips_on_a_single_failure(ctx, probe):
 
 
 def test_a_worker_is_active_without_being_asked(ctx, probe):
-    """Only the UI functions serve HTTP, so only they are probed."""
+    """Only the UI function serves HTTP, so only it is probed."""
     state_in = build_state(config={"charm-function": "worker"})
 
     state_out = ctx.run(ctx.on.config_changed(), state_in)
@@ -260,3 +272,44 @@ def test_the_periodic_hook_releases_a_waiting_worker(
     state_out = ctx.run(ctx.on.update_status(), state_mid)
 
     assert state_out.unit_status == ActiveStatus("Status check: UP")
+
+
+def test_an_unreachable_database_is_not_reported_as_an_unmigrated_one(
+    ctx, probe, unreachable_database
+):
+    """A PostgreSQL outage is a different fault to an unmigrated database.
+
+    Both leave the role query with nothing to return, and pointing an
+    operator at the UI during an outage sends them to the wrong application.
+    """
+    state_in = build_state(config={"charm-function": "worker"})
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    assert state_out.unit_status == WaitingStatus(
+        "waiting for the metadata database to answer"
+    )
+
+
+@pytest.mark.parametrize(
+    "error,expected",
+    [
+        (OperationalError("stmt", {}, Exception("refused")), None),
+        (ProgrammingError("stmt", {}, Exception("does not exist")), []),
+    ],
+)
+def test_the_helper_tells_the_two_faults_apart(error, expected):
+    """The two waits above come from the same query, so it has to separate them.
+
+    A database Superset has not migrated does not answer with no rows, it
+    raises `UndefinedTable`, so the row count alone cannot tell an unmigrated
+    database from an unreachable one.
+
+    Args:
+        error: the SQLAlchemy error the connection raises.
+        expected: what the helper reports for it.
+    """
+    with mock.patch("utils.create_engine", side_effect=error):
+        roles = query_metadata_database("postgresql://db", SQL_AB_ROLE)
+
+    assert roles == expected

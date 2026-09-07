@@ -49,7 +49,7 @@ options:
        scheduler add `reports.scheduler` to its schedule, and makes the worker
        load the SMTP and screenshot settings it needs to deliver them. It is
        what turns on every worker option in the report group below:
-       `smtp-secret-id`, `screenshot-timeout`, `report-dry-run`, `server-alias`. 
+       `smtp-secret-id`, `screenshot-timeout`, `report-dry-run`, `server-alias`.
        `GLOBAL_ASYNC_QUERIES` splits query execution between the UI and the worker,
        which both have to agree that it is enabled.
 
