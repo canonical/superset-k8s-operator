@@ -1,9 +1,64 @@
 # Copyright 2023 Canonical Ltd.
 # See LICENSE file for licensing details.
-# This file configures Charmcraft.
+#
+# This file configures Charmcraft and populates the Charmhub page.
 # See https://juju.is/docs/sdk/charmcraft-config for guidance.
 
+name: superset-k8s
 type: charm
+title: Superset
+summary: A modern data exploration and visualization platform.
+description: |
+  Apache Superset is a data exploration and visualization platform. It queries any
+  database that speaks SQL, and turns the results into charts and dashboards that
+  users can explore from a browser without writing SQL themselves.
+
+  This charm automates the deployment, configuration, and lifecycle management of
+  Superset on Kubernetes. One charm is deployed as three applications: the web UI,
+  a Celery worker that runs asynchronous queries, alerts and reports, and a beat
+  scheduler that dispatches them. It stores its metadata in PostgreSQL, uses Redis
+  as cache and broker, creates database connections automatically from Trino
+  catalogs, authenticates users through an identity provider over the oauth
+  interface, and sends metrics to the Canonical Observability Stack.
+
+  It is intended for data platform teams who want governed self-service analytics
+  without deploying and maintaining Superset manually. It is a core component of 
+  the Canonical Data Mesh solution.
+
+links:
+  documentation: https://canonical-data-mesh-documentation.readthedocs-hosted.com/en/latest/
+  source:
+    - https://github.com/canonical/superset-k8s-operator
+  issues:
+    - https://github.com/canonical/superset-k8s-operator/issues
+  contact: Business Data <business-data@groups.canonical.com>
+
+base: ubuntu@22.04
+platforms:
+  amd64:
+
+charm-libs:
+  - lib: data_platform_libs.data_interfaces
+    version: "0"
+  - lib: data_platform_libs.data_models
+    version: "0"
+  - lib: grafana_k8s.grafana_dashboard
+    version: "0"
+  - lib: loki_k8s.loki_push_api
+    version: "1"
+  - lib: prometheus_k8s.prometheus_scrape
+    version: "0"
+  - lib: redis_k8s.redis
+    version: "0"
+  - lib: tls_certificates_interface.tls_certificates
+    version: "4"
+  - lib: traefik_k8s.ingress
+    version: "2"
+  - lib: trino_k8s.trino_catalog
+    version: "0"
+  - lib: hydra.oauth
+    version: "0"
+
 parts:
   charm:
     plugin: uv
@@ -25,32 +80,424 @@ parts:
     source: .
     stage:
       - templates/
-bases:
-  - build-on:
-    - name: ubuntu
-      channel: "22.04"
-    run-on:
-    - name: ubuntu
-      channel: "22.04"
 
-charm-libs:
-  - lib: "data_platform_libs.data_interfaces"
-    version: "0"
-  - lib: "data_platform_libs.data_models"
-    version: "0"
-  - lib: "grafana_k8s.grafana_dashboard"
-    version: "0"
-  - lib: "loki_k8s.loki_push_api"
-    version: "1"
-  - lib: "prometheus_k8s.prometheus_scrape"
-    version: "0"
-  - lib: "redis_k8s.redis"
-    version: "0"
-  - lib: "tls_certificates_interface.tls_certificates"
-    version: "4"
-  - lib: "traefik_k8s.ingress"
-    version: "2"
-  - lib: "trino_k8s.trino_catalog"
-    version: "0"
-  - lib: "hydra.oauth"
-    version: "0"
+peers:
+  peer:
+    interface: superset
+
+provides:
+  grafana-dashboard:
+    interface: grafana_dashboard
+    optional: true
+  metrics-endpoint:
+    interface: prometheus_scrape
+    optional: true
+
+requires:
+  ingress:
+    interface: ingress
+    optional: true
+    limit: 1
+  postgresql_db:
+    interface: postgresql_client
+    optional: false
+    limit: 1
+  redis:
+    interface: redis
+    optional: false
+    limit: 1
+  logging:
+    interface: loki_push_api
+    optional: true
+    limit: 1
+  trino-catalog:
+    interface: trino_catalog
+    optional: true
+    limit: 1
+  oauth:
+    interface: oauth
+    optional: true
+    limit: 1
+  certificates:
+    interface: tls-certificates
+    optional: true
+    limit: 1
+
+config:
+  options:
+
+    # Charm features
+
+    charm-function:
+      description: |
+          The Superset function this application fulfills. A complete deployment
+          runs one application of each: 'app-gunicorn' serves the web UI and is
+          the only one that migrates the metadata database, 'worker' executes
+          Celery tasks, and 'beat' schedules them.
+
+          Allowed options are: 'app-gunicorn', 'worker', 'beat'
+
+          Applies to: every application. It is what makes them differ.
+      default: app-gunicorn
+      type: string
+
+    signing-keys-secret-id:
+      description: |
+          ID of the Juju secret holding the signing keys for this deployment. The
+          secret must contain `secret-key`, used to sign the session cookie and to
+          encrypt the database connection passwords stored in the metadata
+          database, and `async-queries-jwt`, used to sign the asynchronous query
+          channel cookie. It must be granted with `juju grant-secret` to the UI,
+          worker and beat applications of one deployment, which must all name the
+          same secret. Keep `secret-key` stable for the lifetime of a deployment:
+          changing it makes every stored connection password unreadable.
+
+          Applies to: every application, which must all be given the same secret.
+      type: string
+
+    # Superset features
+
+    feature-flags:
+      description: |
+         A comma-separated list of feature defined in https://github.com/apache/superset/blob/HEAD/RESOURCES/FEATURE_FLAGS.md.
+         To disable features enabled by default, precede them with a ! symbol. E.g: ENABLED_FEATURE,!DISABLED_FEATURE.
+
+         Two flags span the applications and only work when set on all three.
+         `ALERT_REPORTS` makes the UI offer alerts and reports, makes the beat
+         scheduler add `reports.scheduler` to its schedule, and makes the worker
+         load the SMTP and screenshot settings it needs to deliver them. It is
+         what turns on every worker option in the report group below:
+         `smtp-secret-id`, `screenshot-timeout`, `report-dry-run`, `server-alias`.
+         `GLOBAL_ASYNC_QUERIES` splits query execution between the UI and the worker,
+         which both have to agree that it is enabled.
+
+         Applies to: every application, and the two flags above must be set on
+         all three to take effect.
+      type: string
+
+    # Database configs
+
+    sqlalchemy-pool-size:
+      description: |
+          Specifies the maximum number of database connections
+          that can be kept in the connection pool.
+
+          Applies to: every application. The UI and the worker query the metadata
+          database throughout their run; a beat scheduler only does so while
+          starting up.
+      default: 5
+      type: int
+
+    sqlalchemy-pool-timeout:
+      description: |
+          Defines the maximum time (in seconds) a thread is allowed
+          to wait for a connection from the pool.
+
+          Applies to: every application, as for `sqlalchemy-pool-size`.
+      default: 300
+      type: int
+
+    sqlalchemy-max-overflow:
+      description: |
+          Sets the maximum number of connections that can be created
+          beyond the pool size when the pool is exhausted.
+
+          Applies to: every application, as for `sqlalchemy-pool-size`.
+      default: 5
+      type: int
+
+    # Caching configs
+
+    redis-timeout:
+      description: |
+        The time in seconds cached data will remain valid in Redis. It is the
+        default timeout for every cache backend, including the results and the
+        asynchronous query caches.
+
+        Applies to: the UI and the worker, which are the applications that read
+        and write the caches.
+      default: 300
+      type: int
+
+    # Sentry configs
+
+    sentry-dsn:
+      description: |
+        The unique key for the Sentry project in which to log exceptions.
+        Exception reporting is only turned on when `sentry-dsn`,
+        `sentry-environment` and `sentry-release` are all set.
+
+        Applies to: every application. Set it on all three to see worker and
+        scheduler exceptions as well as UI ones.
+      type: string
+
+    sentry-environment:
+      description: |
+        The environment to log errors to in Sentry.
+
+        Applies to: every application.
+      type: string
+
+    sentry-release:
+      description: |
+        The version of code deployed to an environment.
+
+        Applies to: every application.
+      type: string
+
+    sentry-sample-rate:
+      description: |
+        A number between 0 and 1 representing what % of errors should be sent to Sentry.
+        ie for 0.25, 25% of errors will be sent to Sentry.
+
+        Applies to: every application.
+      default: "1"
+      type: string
+
+    sentry-redact-params:
+      description: |
+        Indicates whether or not event parameters sent to Sentry should be redacted.
+
+        Applies to: every application.
+      default: false
+      type: boolean
+
+    # UI configs
+
+    load-examples:
+      description: |
+        Loads example data source with corresponding data sets and charts for testing.
+        The examples are loaded by the one-time initialisation the UI runs, which
+        can add several minutes to a first deployment.
+
+        Applies to: the UI application, which is the only one that initialises
+        the metadata database.
+      type: boolean
+      default: false
+
+    server-worker-amount:
+      description: |
+        Number of Gunicorn worker processes per UI pod. Valid range: 1-32.
+
+        Applies to: the UI application.
+      default: 1
+      type: int
+
+    gunicorn-timeout:
+      description: |
+        Gunicorn worker timeout in seconds. Valid range: 30-600.
+
+        Applies to: the UI application.
+      default: 60
+      type: int
+
+    webserver-timeout:
+      description: |
+        The time in seconds the server can maintain a database connection.
+
+        Applies to: the UI application.
+      default: 180
+      type: int
+
+    max-content-length:
+      description: |
+        Werkzeug limit for the number of bytes to allow in a request body as measured by the 'Content-Length' header.
+
+        Applies to: the UI application, which is what receives requests.
+      type: int
+
+    max-form-memory-size:
+      description: |
+        Werkzeug limit for the number of bytes to allow in a single part of a multipart form.
+
+        Applies to: the UI application, as for `max-content-length`.
+      type: int
+
+    max-form-parts:
+      description: |
+        Werkzeug limit for the number of parts to allow in a multipart form.
+
+        Applies to: the UI application, as for `max-content-length`.
+      type: int
+
+    dashboard-size-limit:
+      description: |
+        Integer representing how many characters to allow in a dashboard definition.
+
+        Applies to: the UI application.
+      default: 65535
+      type: int
+
+    oauth-admin-email:
+      description: |
+        Email(s) to be given an Admin role on initialization.
+        Either a single email or a comma separated list.
+        eg. "example.email@company.com, example.email2@company.com"
+
+        Applies to: the UI application, which is where users authenticate.
+      type: string
+      default: admin@superset.com
+
+    self-registration-role:
+      description: |
+        The default role to be provided to users that self-register via OAuth.
+        This role must exist already in Superset and is case sensitive.
+
+        Applies to: the UI application, which is where users authenticate. Note
+        that every application validates the value against the roles in the
+        metadata database, so a role that does not exist blocks all three.
+      type: string
+      default: Public
+
+    enable-raise-for-access-patch:
+      description: |
+        Enables the Superset 6.1.0 SQL Lab-to-chart access workaround. This changes
+        Superset's upstream access authorization behavior and is disabled by default.
+
+        Applies to: the UI application, which authorizes the request.
+      default: false
+      type: boolean
+
+    html-sanitization:
+      description: |
+        Sanitizes the HTML content used in markdowns to allow its rendering in a safe manner.
+        Disabling this option is not recommended for security reasons
+
+        Applies to: the UI application, which renders the markdown.
+      type: boolean
+      default: true
+
+    html-sanitization-schema-extensions:
+      description: |
+        Use this configuration to extend the HTML sanitization schema.
+
+        Applies to: the UI application, as for `html-sanitization`.
+      type: string
+
+    allow-image-domains:
+      description: |
+          Comma separated list of domains from which to allow images according to the CSP.
+
+          Applies to: the UI application, which is what serves the policy.
+      type: string
+
+    data-access-request-url:
+      description: |
+        URL users are directed to when they hit a Trino/Ranger permission-denied error
+        while viewing a dashboard, so they can request access to the restricted data.
+        When unset, the message tells users to contact their administrator instead.
+
+        Applies to: the UI application, which rewrites the error for the browser.
+      type: string
+
+    global-async-queries-polling-delay:
+      description: |
+        The timedelay in milliseconds for polling during asynchronous query execution.
+        It only takes effect when the `GLOBAL_ASYNC_QUERIES` feature flag is set on
+        every application.
+
+        Applies to: the UI application, which serves the delay to the browser.
+      type: int
+      default: 500
+
+    # Worker configs
+
+    celery-worker-concurrency:
+      description: |
+        Number of concurrent Celery worker processes per worker pod. Valid range: 0-128.
+        Zero leaves the Celery default, which is one process per CPU.
+
+        Applies to: the worker application.
+      default: 0
+      type: int
+
+    server-alias:
+      description: |
+        The alias the server charm has been deployed with if it differs from the default.
+        It is the hostname the worker loads dashboards from when rendering a report
+        screenshot, so it has to resolve to the UI application.
+
+        Applies to: the worker application, and only with `ALERT_REPORTS` set.
+      default: superset-k8s
+      type: string
+
+    screenshot-timeout:
+      description: |
+        Maximum time in seconds to wait for report and alert screenshots to render.
+        The screenshots are taken by the worker, with Playwright.
+
+        Applies to: the worker application, and only with `ALERT_REPORTS` set.
+      default: 600
+      type: int
+
+    smtp-secret-id:
+      description: |
+        ID of the Juju secret for the SMTP credentials used to send emails. It is
+        only read when the `ALERT_REPORTS` feature flag is set, and the worker is
+        what delivers the mail.
+
+        Applies to: the worker application, and only with `ALERT_REPORTS` set.
+      type: string
+
+    report-dry-run:
+      description: |
+        When true, render alert and report screenshots but do not deliver email or Slack
+        notifications. Intended for testing the rendering pipeline; leave false in production.
+
+        Applies to: the worker application, and only with `ALERT_REPORTS` set.
+      default: false
+      type: boolean
+
+    # Beat configs
+
+    log-retention-enabled:
+      description: |
+        Whether to automatically prune old rows from the `logs` table (user action
+        audit log) via the daily `prune_logs` Celery beat task. Disable if you don't
+        want the `logs` table pruned at all.
+
+        Applies to: the beat application, which holds the schedule.
+      default: true
+      type: boolean
+
+    log-retention-days:
+      description: |
+        Number of days to retain rows in the `logs` table (user action audit log)
+        before they are pruned by the daily `prune_logs` Celery beat task.
+        Only takes effect if `log-retention-enabled` is true. The beat scheduler
+        puts the value in the task message, so changing it takes effect on the
+        next scheduled run.
+
+        Applies to: the beat application, which holds the schedule.
+      default: 730
+      type: int
+
+    cache-warmup:
+      description: |
+        Boolean representing if the cache warm-up functionality should be enabled.
+        It adds a daily `cache-warmup` entry to the beat schedule; the warm-up
+        itself is run by the worker.
+
+        Applies to: the beat application, which holds the schedule.
+      default: false
+      type: boolean
+
+actions:
+  restart:
+    description: Restart the application server.
+    additionalProperties: false
+  get-admin-password:
+    description: |
+      Return the password the charm generated for this application's `admin`
+      user. Only the UI application creates that account, so the action fails
+      on a worker or a beat scheduler.
+    additionalProperties: false
+
+containers:
+  superset:
+    resource: superset-image
+
+resources:
+  superset-image:
+    type: oci-image
+    description: OCI image for superset
