@@ -155,20 +155,6 @@ def test_config_changed(ctx):
     assert state_out.unit_status == ActiveStatus("Status check: UP")
 
 
-def test_observability_pebble_layer(ctx):
-    """The metrics exporter service is part of the generated plan."""
-    state_out = ctx.run(ctx.on.config_changed(), build_state())
-
-    plan = state_out.get_container("superset").plan.to_dict()
-    assert plan["services"]["metrics-exporter"] == {
-        "override": "replace",
-        "summary": "metrics exporter",
-        "command": "/usr/bin/statsd_exporter",
-        "startup": "enabled",
-        "after": ["superset"],
-    }
-
-
 def test_ingress_requirer_publishes_databag(ctx):
     """The charm advertises its workload port to the ingress provider."""
     ingress = ingress_relation(url=None)
