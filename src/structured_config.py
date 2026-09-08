@@ -32,7 +32,6 @@ class FunctionType(str, Enum):
     """Enum for the `charm-function` field."""
 
     app_gunicorn = "app-gunicorn"
-    app = "app"
     worker = "worker"
     beat = "beat"
 

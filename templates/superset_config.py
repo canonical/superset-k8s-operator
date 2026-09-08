@@ -1,6 +1,7 @@
 import os
 from cachelib.redis import RedisCache
 from celery.schedules import crontab
+from celery.signals import import_modules
 from flask_appbuilder.security.manager import AUTH_OAUTH
 from custom_security_manager import CustomSecurityManager
 from permission_error_messages import attach_error_rewriter
@@ -184,16 +185,32 @@ if os.getenv("ALERT_REPORTS", "").lower() == "true":
     WEBDRIVER_BASEURL_USER_FRIENDLY = os.getenv("SMTP_SUPERSET_EXTERNAL_URL")
 
 
+@import_modules.connect
+def register_async_query_tasks(**kwargs):
+    """Register the async query tasks, which `CeleryConfig.imports` cannot.
+
+    `superset.tasks.async_queries` reads `current_app.config` at import time,
+    and Celery imports `CeleryConfig.imports` outside an application context,
+    so naming it there raises `RuntimeError: Working outside of application
+    context`. This signal fires once `celery_app.py` has built the app.
+    Without this a worker or beat process would fail to start correctly
+    when `GLOBAL_ASYNC_QUERIES` is disabled.
+
+    Args:
+        kwargs: unused signal arguments.
+    """
+    from superset.tasks.celery_app import flask_app
+
+    with flask_app.app_context():
+        import superset.tasks.async_queries  # noqa: F401
+
+
 # Celery cache warm-up
 class CeleryConfig(object):
     broker_url = (
         f"redis://{os.getenv('REDIS_HOST')}:{os.getenv('REDIS_PORT')}/4"
     )
-    imports = (
-        "superset.sql_lab",
-        "superset.tasks",
-        "superset.tasks.async_queries",
-    )
+    imports = ("superset.sql_lab",)
     result_backend = (
         f"redis://{os.getenv('REDIS_HOST')}:{os.getenv('REDIS_PORT')}/5"
     )

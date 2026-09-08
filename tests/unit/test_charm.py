@@ -20,6 +20,7 @@ from ops.pebble import Layer
 from ops.testing import Relation, Secret, State
 
 from literals import CA_CERT_LOCAL_PATH, CA_CERT_PATH
+from relations.tls import Certificates
 from tests.unit.helpers import (
     ASYNC_QUERIES_JWT,
     CA_PEM,
@@ -123,7 +124,7 @@ def test_ready(ctx):
         state_out.get_container("superset").services["superset"].is_running()
     )
 
-    assert state_out.unit_status == ActiveStatus()
+    assert state_out.unit_status == ActiveStatus("Status check: UP")
 
 
 def test_config_changed(ctx):
@@ -151,21 +152,7 @@ def test_config_changed(ctx):
     assert environment["ADMIN_PASSWORD"]
     want_environment["ADMIN_PASSWORD"] = environment["ADMIN_PASSWORD"]
     assert environment == want_environment
-    assert state_out.unit_status == ActiveStatus()
-
-
-def test_observability_pebble_layer(ctx):
-    """The metrics exporter service is part of the generated plan."""
-    state_out = ctx.run(ctx.on.config_changed(), build_state())
-
-    plan = state_out.get_container("superset").plan.to_dict()
-    assert plan["services"]["metrics-exporter"] == {
-        "override": "replace",
-        "summary": "metrics exporter",
-        "command": "/usr/bin/statsd_exporter",
-        "startup": "enabled",
-        "after": ["superset"],
-    }
+    assert state_out.unit_status == ActiveStatus("Status check: UP")
 
 
 def test_ingress_requirer_publishes_databag(ctx):
@@ -395,7 +382,7 @@ def test_incomplete_pebble_plan(ctx):
 
     state_out = ctx.run(ctx.on.update_status(), state_in)
 
-    assert state_out.unit_status == ActiveStatus()
+    assert state_out.unit_status == ActiveStatus("Status check: UP")
     assert (
         state_out.get_container("superset").plan.to_dict()
         != INCOMPLETE_PEBBLE_PLAN
@@ -403,16 +390,25 @@ def test_incomplete_pebble_plan(ctx):
 
 
 def test_missing_pebble_plan(ctx):
-    """The charm re-applies the pebble plan if missing."""
+    """The charm re-applies the pebble plan if missing.
+
+    A rescheduled pod comes back with an empty plan, and `update-status` is
+    what notices when no other event has.
+    """
     state_mid = ctx.run(ctx.on.config_changed(), build_state())
+    wiped = dataclasses.replace(
+        state_mid.get_container("superset"),
+        layers={},
+        service_statuses={},
+        check_infos=frozenset(),
+    )
+    state_in = dataclasses.replace(state_mid, containers={wiped})
 
-    with mock.patch(
-        "charm.SupersetK8SCharm._validate_pebble_plan", return_value=False
-    ):
-        state_out = ctx.run(ctx.on.update_status(), state_mid)
+    state_out = ctx.run(ctx.on.update_status(), state_in)
 
-    assert state_out.unit_status == ActiveStatus()
-    assert state_out.get_container("superset").plan.to_dict() is not None
+    plan = state_out.get_container("superset").plan.to_dict()
+    assert plan["services"]["superset"]["command"]
+    assert state_out.unit_status == ActiveStatus("Status check: UP")
 
 
 def test_signing_keys_reach_the_workload(ctx):
@@ -471,11 +467,7 @@ def test_admin_password_is_generated_once(ctx):
     """The leader generates the password and publishes the secret ID."""
     state_out = ctx.run(ctx.on.config_changed(), build_state())
 
-    peer = [
-        relation
-        for relation in state_out.relations
-        if relation.endpoint == "peer"
-    ][0]
+    peer = state_out.get_relations("peer")[0]
     secret_id = peer.local_app_data["admin-password-secret-id"]
     assert secret_id
 
@@ -523,7 +515,7 @@ def test_beat_deployment(ctx):
     state_out = ctx.run(ctx.on.config_changed(), state_in)
 
     assert superset_environment(state_out)["CHARM_FUNCTION"] == "beat"
-    assert state_out.unit_status == ActiveStatus()
+    assert state_out.unit_status == ActiveStatus("Status check: UP")
 
 
 def test_worker_deployment(ctx):
@@ -533,7 +525,7 @@ def test_worker_deployment(ctx):
     state_out = ctx.run(ctx.on.config_changed(), state_in)
 
     assert superset_environment(state_out)["CHARM_FUNCTION"] == "worker"
-    assert state_out.unit_status == ActiveStatus()
+    assert state_out.unit_status == ActiveStatus("Status check: UP")
 
 
 def test_invalid_default_role(ctx):
@@ -665,19 +657,19 @@ def test_certificates_reconcile_reinstalls_wiped_ca(ctx):
 
 
 def test_certificates_trust_store_failure_blocks_unit(ctx):
-    """A failing trust store update blocks the unit instead of passing."""
+    """A failing trust store update blocks the unit instead of passing.
+
+    The failure is the outcome of work rather than something the model
+    records, so it only reaches the operator if the reconcile hands it to
+    the status collector.
+    """
     container = superset_container(exec_return_code=1)
     state_in = build_state(container=container)
 
-    with ctx(ctx.on.config_changed(), state_in) as manager:
-        with mock.patch.object(
-            manager.charm.certificates_handler,
-            "_assigned_ca",
-            return_value=CA_PEM,
-        ):
-            assert not manager.charm.reconcile_certificates()
+    with mock.patch.object(Certificates, "_assigned_ca", return_value=CA_PEM):
+        state_out = ctx.run(ctx.on.config_changed(), state_in)
 
-        assert isinstance(manager.charm.unit.status, BlockedStatus)
+    assert isinstance(state_out.unit_status, BlockedStatus)
 
 
 def test_certificates_relation_broken_removes_ca(ctx):
@@ -706,14 +698,18 @@ def test_container_not_ready_waits(ctx):
 
 
 def test_update_status_reports_unreachable_container(ctx):
-    """An unreachable container is reported rather than replanned."""
+    """An unreachable container is reported rather than replanned.
+
+    A pod whose workload container has not come up yet resolves on its own,
+    and reads the same on the periodic hook as on any other event.
+    """
     container = dataclasses.replace(superset_container(), can_connect=False)
     state_in = build_state(container=container)
 
     state_out = ctx.run(ctx.on.update_status(), state_in)
 
-    assert state_out.unit_status == MaintenanceStatus(
-        "Status check: NOT READY"
+    assert state_out.unit_status == WaitingStatus(
+        "waiting for superset container"
     )
 
 
@@ -795,7 +791,7 @@ def test_oauth_relation_broken_does_not_defer(ctx):
         ctx.on.relation_broken(state_mid.get_relation(oauth.id)), state_mid
     )
 
-    assert state_out.unit_status == ActiveStatus()
+    assert state_out.unit_status == ActiveStatus("Status check: UP")
     assert state_out.deferred == []
 
 
@@ -943,7 +939,7 @@ def test_role_is_not_validated_when_roles_are_unreadable(ctx):
     with mock.patch("charm.query_metadata_database", return_value=[]):
         state_out = ctx.run(ctx.on.config_changed(), state_in)
 
-    assert state_out.unit_status == ActiveStatus()
+    assert state_out.unit_status == ActiveStatus("Status check: UP")
     assert superset_environment(state_out)["SELF_REGISTRATION_ROLE"] == (
         "Analyst"
     )

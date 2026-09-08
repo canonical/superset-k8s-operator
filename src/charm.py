@@ -13,7 +13,6 @@ https://discourse.charmhub.io/t/4208
 import logging
 import os
 import secrets
-import time
 from typing import Optional
 
 import ops
@@ -29,6 +28,7 @@ from ops import (
     BlockedStatus,
     MaintenanceStatus,
     ModelError,
+    Port,
     SecretNotFoundError,
     WaitingStatus,
     pebble,
@@ -43,20 +43,19 @@ from literals import (
     APPLICATION_PORT,
     CONFIG_PATH,
     DB_RELATION_NAME,
+    HEALTH_PROBE_TIMEOUT,
     HEALTH_URL,
     INGRESS_RELATION_NAME,
     LOG_FILE,
-    PROMETHEUS_METRICS_PORT,
     REDIS_RELATION_NAME,
     SIGNING_KEYS_SECRET_KEYS,
     SQL_AB_ROLE,
     STATSD_PORT,
     SUPERSET_VERSION,
     TRINO_CATALOG_RELATION_NAME,
-    UI_FUNCTIONS,
-    WORKLOAD_READY_POLL,
-    WORKLOAD_READY_TIMEOUT,
+    UI_FUNCTION,
 )
+from observability import metrics_ports, metrics_services, metrics_targets
 from relations.oauth import ClientConfigError, OAuthRelation
 from relations.postgresql import Database
 from relations.redis import Redis
@@ -117,8 +116,14 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         # Handle tls-certificates relation
         self.certificates_handler = Certificates(self)
 
+        # The unit status is decided in one place, at the end of every
+        # dispatch, from what the model and the workload actually say.
+        self._reconcile_failure = None
+        self.framework.observe(
+            self.on.collect_unit_status, self._on_collect_unit_status
+        )
+
         # Handle basic charm lifecycle
-        self.framework.observe(self.on.install, self._on_install)
         self.framework.observe(self.on.restart_action, self._on_restart)
         self.framework.observe(
             self.on.get_admin_password_action, self._on_get_admin_password
@@ -157,18 +162,14 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         )
 
         # Prometheus
-        self._prometheus_scraping = MetricsEndpointProvider(
-            self,
-            relation_name="metrics-endpoint",
-            jobs=[
-                {
-                    "static_configs": [
-                        {"targets": [f"*:{PROMETHEUS_METRICS_PORT}"]}
-                    ]
-                }
-            ],
-            refresh_event=self.on.config_changed,
-        )
+        targets = metrics_targets(self.model.config.get("charm-function"))
+        if targets:
+            self._prometheus_scraping = MetricsEndpointProvider(
+                self,
+                relation_name="metrics-endpoint",
+                jobs=[{"static_configs": [{"targets": targets}]}],
+                refresh_event=self.on.config_changed,
+            )
 
     def _on_reconcile(self, event):
         """Re-apply the desired state.
@@ -177,14 +178,6 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             event: The event that triggered the reconciliation.
         """
         self.reconcile()
-
-    def _on_install(self, event):
-        """Install application.
-
-        Args:
-            event: The event triggered when the relation changed.
-        """
-        self.unit.status = MaintenanceStatus(f"installing {APP_NAME}")
 
     def _on_secret_changed(self, event):
         """Handle secret changes.
@@ -203,25 +196,14 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
     def _on_update_status(self, event):
         """Handle `update-status` events.
 
+        The periodic hook is a plain reconcile: it re-applies the desired
+        state, and the status that follows is collected from the workload
+        like it is on any other event.
+
         Args:
             event: The `update-status` event triggered at intervals
         """
         self._refresh_ingress_address()
-
-        config_status = self._config_status()
-        if config_status is not None:
-            self.unit.status = config_status
-            return
-
-        container = self.unit.get_container(self.name)
-        if not container.can_connect():
-            self.unit.status = MaintenanceStatus("Status check: NOT READY")
-            return
-
-        if not self._validate_pebble_plan(container):
-            self.reconcile()
-            return
-
         self.reconcile()
 
     def _refresh_ingress_address(self):
@@ -260,31 +242,13 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             )
         except CertificateInstallError as e:
             logger.error("CA trust store update failed: %s", e)
-            self.unit.status = BlockedStatus(str(e))
+            self.report_failure(BlockedStatus(str(e)))
             return False
 
         if changed and self.name in container.get_services():
             self._restart_application(container)
 
         return True
-
-    def _validate_pebble_plan(self, container):
-        """Validate Superset pebble plan.
-
-        Args:
-            container: application container
-
-        Returns:
-            bool of pebble plan validity
-        """
-        try:
-            plan = container.get_plan().to_dict()
-            return bool(
-                plan
-                and plan["services"].get(self.name, {}).get("on-check-failure")
-            )
-        except pebble.ConnectionError:
-            return False
 
     def _validate_self_registration_role(self, sqlalchemy_uri: str):
         """Check the configured self-registration role exists in Superset.
@@ -319,7 +283,6 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         Args:
             container: application container
         """
-        self.unit.status = MaintenanceStatus(f"restarting {APP_NAME}")
         container.restart(self.name)
 
     def _config_status(self):
@@ -389,7 +352,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         return content
 
     def admin_password(self):
-        """Return the admin password, generating it on the leader if needed.
+        """Return the admin password.
 
         The secret is charm-owned, so it is created once by the leader and
         found by every unit through the ID published on the peer databag: a
@@ -405,46 +368,54 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             return None
 
         secret_id = peer.data[self.app].get(ADMIN_SECRET_ID_FIELD)
-        if secret_id:
-            try:
-                return self.model.get_secret(id=secret_id).get_content(
-                    refresh=True
-                )[ADMIN_SECRET_KEY]
-            except (SecretNotFoundError, ModelError, KeyError):
-                logger.warning(
-                    "admin password secret %s is unreadable", secret_id
-                )
-                return None
-
-        if not self.unit.is_leader():
+        if not secret_id:
             return None
+
+        try:
+            return self.model.get_secret(id=secret_id).get_content(
+                refresh=True
+            )[ADMIN_SECRET_KEY]
+        except (SecretNotFoundError, ModelError, KeyError):
+            logger.warning("admin password secret %s is unreadable", secret_id)
+            return None
+
+    def _ensure_admin_password(self):
+        """Create the admin password secret on the leader if it is missing.
+
+        A follower has nothing to do here: it waits for the ID to appear on
+        the peer databag.
+        """
+        peer = self._peer_relation
+        if peer is None or not self.unit.is_leader():
+            return
+
+        if peer.data[self.app].get(ADMIN_SECRET_ID_FIELD):
+            return
 
         content = {ADMIN_SECRET_KEY: secrets.token_urlsafe(24)}
         secret = self.app.add_secret(content, label=ADMIN_SECRET_LABEL)
         peer.data[self.app][ADMIN_SECRET_ID_FIELD] = secret.id
-        return content[ADMIN_SECRET_KEY]
 
     def _workload_status(self):
-        """Return the status the workload presents, once it has settled.
+        """Return the status the workload presents right now.
 
-        Pebble reports the service as started as soon as the process runs,
-        which is up to a minute before Superset can answer a request, so the
-        reconcile asks the workload rather than taking the plan's word for it.
+        Pebble reports a service as started as soon as its process runs,
+        which for the UI is up to a minute before Superset answers a request,
+        and a check that keeps running across a restart carries the previous
+        run's verdict into the new one. Neither answers "is this workload
+        serving", so the workload is asked directly.
 
         Returns:
-            ActiveStatus once Superset answers, MaintenanceStatus if it has
-            not answered by the deadline.
+            ActiveStatus when Superset answers, MaintenanceStatus when it
+            does not.
         """
-        if self.config["charm-function"] not in UI_FUNCTIONS:
-            return ActiveStatus()
+        if self.config["charm-function"] != UI_FUNCTION:
+            return ActiveStatus("Status check: UP")
 
-        deadline = time.monotonic() + WORKLOAD_READY_TIMEOUT
-        while not self._workload_is_serving():
-            if time.monotonic() >= deadline:
-                return MaintenanceStatus("Status check: DOWN")
-            time.sleep(WORKLOAD_READY_POLL)
+        if self._workload_is_serving():
+            return ActiveStatus("Status check: UP")
 
-        return ActiveStatus()
+        return MaintenanceStatus("Status check: DOWN")
 
     def _workload_is_serving(self):
         """Ask the workload whether it is serving.
@@ -453,7 +424,12 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             True if Superset answered its health endpoint.
         """
         try:
-            return requests.get(HEALTH_URL, timeout=5).status_code == 200
+            return (
+                requests.get(
+                    HEALTH_URL, timeout=HEALTH_PROBE_TIMEOUT
+                ).status_code
+                == 200
+            )
         except requests.exceptions.RequestException:
             return False
 
@@ -500,6 +476,33 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         return None
 
+    def _metadata_database_status(self):
+        """Report on a metadata database no UI application has migrated yet.
+
+        Only the UI migrates the database; a worker and a beat scheduler
+        start Celery straight away. Each application holds its own PostgreSQL
+        relation, so its own database user, and a table belongs to whichever
+        user created it: a worker that reaches an empty database first has
+        Flask-AppBuilder create the `ab_*` tables under the worker's user, and
+        the UI's migration then fails on `must be owner of table ab_view_menu`.
+
+        Returns:
+            The status to report, or None for a UI application and for any
+            other function once the roles can be read.
+        """
+        if self.config["charm-function"] == UI_FUNCTION:
+            return None
+
+        uri = self.database.get_db_uri()
+        roles = query_metadata_database(uri, SQL_AB_ROLE) if uri else None
+        if roles:
+            return None
+
+        if roles is None:
+            return WaitingStatus("waiting for the metadata database to answer")
+
+        return WaitingStatus("waiting for the UI to initialise the database")
+
     def _not_ready_status(self):
         """Report on whatever keeps the application from being started.
 
@@ -515,9 +518,11 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         except ValueError as e:
             return BlockedStatus(str(e))
 
-        relation_status = self._relation_status()
-        if relation_status is not None:
-            return relation_status
+        dependency_status = (
+            self._relation_status() or self._metadata_database_status()
+        )
+        if dependency_status is not None:
+            return dependency_status
 
         if self.admin_password() is None:
             # Only reachable on a follower before the leader has created the
@@ -529,12 +534,60 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         return None
 
+    def report_failure(self, status):
+        """Record a failure for the status collector to report.
+
+        The reconcile and the relation handlers do work whose outcome the
+        model does not record afterwards, so the collector has no way
+        to derive it. Those verdicts are handed over here instead.
+
+        Args:
+            status: The status to report for this dispatch.
+        """
+        self._reconcile_failure = status
+
+    def _on_collect_unit_status(self, event: ops.CollectStatusEvent):
+        """Report the unit status, the only place that decides it.
+
+        Everything here is derived from what the model and the workload say,
+        so the verdict does not depend on which event brought the charm to
+        this point or on which handler ran last. The exception is
+        `_reconcile_failure`: the outcome of work the reconcile attempted in
+        this dispatch, which nothing in the model records afterwards.
+
+        Args:
+            event: The collect-unit-status event.
+        """
+        if self._reconcile_failure is not None:
+            event.add_status(self._reconcile_failure)
+
+        not_ready_status = self._not_ready_status()
+        if not_ready_status is not None:
+            event.add_status(not_ready_status)
+            return
+
+        container = self.unit.get_container(self.name)
+        if not container.can_connect():
+            event.add_status(
+                WaitingStatus(f"waiting for {APP_NAME} container")
+            )
+            return
+
+        event.add_status(self._workload_status())
+
     def _on_get_admin_password(self, event):
         """Return the generated admin password, action handler.
 
         Args:
             event: The event triggered by the get-admin-password action.
         """
+        if self.model.config.get("charm-function") != UI_FUNCTION:
+            event.fail(
+                "the admin password belongs to the UI application, "
+                "run this action there"
+            )
+            return
+
         password = self.admin_password()
         if password is None:
             event.fail("the admin password has not been generated yet")
@@ -743,16 +796,15 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         }
 
     def _open_workload_ports(self):
-        """Open the ports a UI application serves on."""
-        if self.config["charm-function"] not in UI_FUNCTIONS:
-            return
+        """Open exactly the ports the configured charm function serves on."""
+        function = self.config["charm-function"]
+        ports = metrics_ports(function)
 
-        # Open port for cache warm-up.
-        self.model.unit.open_port(port=APPLICATION_PORT, protocol="tcp")
+        if function == UI_FUNCTION:
+            # Port for cache warm-up.
+            ports.append(Port("tcp", APPLICATION_PORT))
 
-        # Open ports for accepting and exposing metrics
-        self.model.unit.open_port(port=PROMETHEUS_METRICS_PORT, protocol="tcp")
-        self.model.unit.open_port(port=STATSD_PORT, protocol="udp")
+        self.model.unit.set_ports(*ports)
 
     def _sync_trino_catalogs(self, force_update_credentials):
         """Synchronise Trino catalogs into Superset database connections.
@@ -777,17 +829,6 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         Returns:
             The pebble layer as a dictionary.
         """
-        (
-            redis_hostname,
-            redis_port,
-        ) = self.redis_handler.get_redis_relation_data()
-
-        metrics_exporter_command = (
-            f"/usr/bin/celery-exporter --broker-url redis://{redis_hostname}:{redis_port}/4 --port {PROMETHEUS_METRICS_PORT}"
-            if self.config["charm-function"] == "worker"
-            else "/usr/bin/statsd_exporter"
-        )
-
         pebble_layer = {
             "summary": f"{APP_NAME} layer",
             "description": f"pebble config layer for {APP_NAME}",
@@ -800,23 +841,22 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
                     "environment": env,
                     "on-check-failure": {"up": "ignore"},
                 },
-                "metrics-exporter": {
-                    "override": "replace",
-                    "summary": "metrics exporter",
-                    "command": metrics_exporter_command,
-                    "startup": "enabled",
-                    "after": [self.name],
-                },
+                **metrics_services(
+                    self.config["charm-function"],
+                    self.name,
+                    *self.redis_handler.get_redis_relation_data(),
+                ),
             },
         }
 
-        if self.config["charm-function"] in UI_FUNCTIONS:
+        if self.config["charm-function"] == UI_FUNCTION:
             pebble_layer.update(
                 {
                     "checks": {
                         "up": {
                             "override": "replace",
                             "period": "10s",
+                            "threshold": 1,
                             "http": {"url": HEALTH_URL},
                         }
                     }
@@ -841,28 +881,25 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             self.oauth.publish_client_config()
         except ClientConfigError as exc:
             logger.error("Invalid OAuth client configuration: %s", exc)
-            self.unit.status = BlockedStatus(
-                "invalid OAuth client configuration"
+            self.report_failure(
+                BlockedStatus("invalid OAuth client configuration")
             )
             return
 
-        not_ready_status = self._not_ready_status()
-        if not_ready_status is not None:
-            self.unit.status = not_ready_status
+        self._ensure_admin_password()
+
+        if self._not_ready_status() is not None:
             return
 
         container = self.unit.get_container(self.name)
         if not container.can_connect():
-            self.unit.status = WaitingStatus(
-                f"waiting for {APP_NAME} container"
-            )
             return
 
         logger.info("configuring %s", APP_NAME)
         try:
             env = self._create_env()
         except ValueError as e:
-            self.unit.status = BlockedStatus(str(e))
+            self.report_failure(BlockedStatus(str(e)))
             return
 
         if not self.reconcile_certificates():
@@ -882,13 +919,12 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             # A pod being torn down fails the replan rather than the charm:
             # `can_connect` goes stale, and pebble goes away with the pod.
             logger.warning("Pebble replan failed: %s", e)
-            self.unit.status = MaintenanceStatus("replan failed")
+            self.report_failure(MaintenanceStatus("replan failed"))
             return
 
         self._sync_trino_catalogs(force_trino_credentials)
 
         self.unit.set_workload_version(f"v{SUPERSET_VERSION}")
-        self.unit.status = self._workload_status()
 
 
 if __name__ == "__main__":
