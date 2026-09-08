@@ -198,11 +198,8 @@ def test_collecting_the_status_creates_no_secret(ctx, probe):
 
     state_out = ctx.run(ctx.on.start(), state_in)
 
-    peer = [
-        relation
-        for relation in state_out.relations
-        if relation.endpoint == "peer"
-    ][0]
+    peer = state_out.get_relations("peer")[0]
+
     assert "admin-password-secret-id" not in peer.local_app_data
 
 
@@ -229,8 +226,8 @@ def test_a_waiting_function_plans_no_workload(
 ):
     """Waiting is not enough: the workload must not be started either.
 
-    A status is a report; what keeps the schema the UI's to create is that
-    the worker has no service in its pebble plan to touch the database with.
+    A worker should have no service in its pebble plan so there is nothing
+    running to reach the database before the UI does.
     """
     state_in = build_state(config={"charm-function": "worker"})
 

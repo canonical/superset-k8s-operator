@@ -467,11 +467,7 @@ def test_admin_password_is_generated_once(ctx):
     """The leader generates the password and publishes the secret ID."""
     state_out = ctx.run(ctx.on.config_changed(), build_state())
 
-    peer = [
-        relation
-        for relation in state_out.relations
-        if relation.endpoint == "peer"
-    ][0]
+    peer = state_out.get_relations("peer")[0]
     secret_id = peer.local_app_data["admin-password-secret-id"]
     assert secret_id
 

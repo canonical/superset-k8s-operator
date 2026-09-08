@@ -183,46 +183,58 @@ class TestRewriteString(unittest.TestCase):
         out = pem._rewrite_permission_denied_string(msg, REQ)
         self.assertIn("catalog 'sales'", out)
 
-    def test_impersonation_failure_is_left_raw(self):
-        """`denySetUser` reports a misconfiguration, not a missing privilege."""
-        msg = (
-            "trino error: TrinoUserError(type=USER_ERROR, "
-            'name=PERMISSION_DENIED, message="Access Denied: Principal admin '
-            'cannot become user admin", query_id=20260907_171705_00000_umrxr)'
-        )
-        self.assertEqual(pem._rewrite_permission_denied_string(msg, REQ), msg)
+    def test_messages_that_are_left_raw(self):
+        """Everything that is not a Trino denial of a read reaches the user.
 
-    def test_user_impersonation_failure_is_left_raw(self):
-        """`denyImpersonateUser`, the other non-`Cannot` denial."""
-        msg = "Access Denied: User bob cannot impersonate user alice"
-        self.assertEqual(pem._rewrite_permission_denied_string(msg, REQ), msg)
+        Each case pairs the message with the reason it is not a data-access
+        denial, which is what a failure here reports.
+        """
+        cases = [
+            (
+                "trino error: TrinoUserError(type=USER_ERROR, "
+                'name=PERMISSION_DENIED, message="Access Denied: Principal '
+                'admin cannot become user admin", '
+                "query_id=20260907_171705_00000_umrxr)",
+                "a `denySetUser` failure, which reports a misconfigured "
+                "deployment rather than a missing privilege",
+            ),
+            (
+                "Access Denied: User bob cannot impersonate user alice",
+                "a `denyImpersonateUser` failure, the other denial Trino "
+                "does not word as `Cannot`",
+            ),
+            (
+                "Access Denied: Invalid credentials",
+                "a connection fault, which Superset matches with its own "
+                "`CONNECTION_ACCESS_DENIED_REGEX`",
+            ),
+            (
+                "The user is not authorized to access the datasource",
+                "Superset's own wording, from `not_authorized_object.py`",
+            ),
+            (
+                "PERMISSION_DENIED",
+                "a bare error name, which says neither object nor operation",
+            ),
+            (
+                "Access Denied: Cannot insert into table "
+                "analytics.default.users",
+                "a denied write, which calls for a different request than a "
+                "data-access one",
+            ),
+            (
+                "Query timed out after 30 seconds",
+                "not a permission error at all",
+            ),
+        ]
 
-    def test_invalid_credentials_is_left_raw(self):
-        """A connection fault, matched by Superset's own Presto spec."""
-        msg = "Access Denied: Invalid credentials"
-        self.assertEqual(pem._rewrite_permission_denied_string(msg, REQ), msg)
-
-    def test_superset_own_authorization_error_is_left_raw(self):
-        """Superset's own wording, from `not_authorized_object.py`."""
-        msg = "The user is not authorized to access the datasource"
-        self.assertEqual(pem._rewrite_permission_denied_string(msg, REQ), msg)
-
-    def test_bare_permission_denied_is_left_raw(self):
-        """`PERMISSION_DENIED` alone does not say what was denied."""
-        self.assertEqual(
-            pem._rewrite_permission_denied_string("PERMISSION_DENIED", REQ),
-            "PERMISSION_DENIED",
-        )
-
-    def test_denied_write_is_left_raw(self):
-        """Only reads are rewritten."""
-        msg = "Access Denied: Cannot insert into table analytics.default.users"
-        self.assertEqual(pem._rewrite_permission_denied_string(msg, REQ), msg)
-
-    def test_non_denied_unchanged(self):
-        """A non-permission error is returned unchanged."""
-        msg = "Query timed out after 30 seconds"
-        self.assertEqual(pem._rewrite_permission_denied_string(msg, REQ), msg)
+        for msg, reason in cases:
+            with self.subTest(reason=reason):
+                self.assertEqual(
+                    pem._rewrite_permission_denied_string(msg, REQ),
+                    msg,
+                    f"rewritten although it is {reason}",
+                )
 
     def test_rewrite_any_nested(self):
         """Denied strings nested in dicts/lists are rewritten in place."""
