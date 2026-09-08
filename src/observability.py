@@ -4,6 +4,8 @@
 
 """Metrics wiring for each of the charm functions."""
 
+from ops import Port
+
 from literals import (
     CELERY_METRICS_PORT,
     METRICS_FUNCTIONS,
@@ -83,21 +85,25 @@ def metrics_services(function, after, redis_hostname, redis_port):
     return services
 
 
-def open_metrics_ports(unit, function):
-    """Open the ports a charm function exposes its metrics on.
+def metrics_ports(function):
+    """Return the ports a charm function exposes its metrics on.
 
     Args:
-        unit: the unit to open the ports on.
         function: the `charm-function` value.
+
+    Returns:
+        The ports to open, empty for a function that exports nothing.
     """
     if function not in METRICS_FUNCTIONS:
-        return
+        return []
 
-    unit.open_port(port=PROMETHEUS_METRICS_PORT, protocol="tcp")
+    ports = [Port("tcp", PROMETHEUS_METRICS_PORT)]
 
     if function == WORKER_FUNCTION:
-        unit.open_port(port=CELERY_METRICS_PORT, protocol="tcp")
+        ports.append(Port("tcp", CELERY_METRICS_PORT))
 
     if function == UI_FUNCTION:
         # The port statsd_exporter accepts the workload's metrics on.
-        unit.open_port(port=STATSD_PORT, protocol="udp")
+        ports.append(Port("udp", STATSD_PORT))
+
+    return ports

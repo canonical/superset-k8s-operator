@@ -3,6 +3,8 @@
 
 """Unit tests for the metrics each charm function exports."""
 
+import dataclasses
+
 from ops.testing import Relation, TCPPort, UDPPort
 
 from tests.unit.helpers import build_state
@@ -88,3 +90,23 @@ def test_each_function_opens_the_ports_it_serves_on(ctx):
     }
     assert worker.opened_ports == {TCPPort(9102), TCPPort(9103)}
     assert beat.opened_ports == set()
+
+
+def test_a_reconfigured_function_stops_advertising_its_old_ports(ctx):
+    """The port set is replaced, not added to.
+
+    A unit reconfigured from one function to another would otherwise keep
+    advertising the ports of the function it replaced, since nothing closes
+    a port once it has been opened.
+    """
+    ui = ctx.run(ctx.on.config_changed(), build_state())
+    assert TCPPort(8088) in ui.opened_ports
+
+    worker = ctx.run(
+        ctx.on.config_changed(),
+        dataclasses.replace(
+            ui, config={**ui.config, "charm-function": "worker"}
+        ),
+    )
+
+    assert worker.opened_ports == {TCPPort(9102), TCPPort(9103)}

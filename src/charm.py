@@ -28,6 +28,7 @@ from ops import (
     BlockedStatus,
     MaintenanceStatus,
     ModelError,
+    Port,
     SecretNotFoundError,
     WaitingStatus,
     pebble,
@@ -54,7 +55,7 @@ from literals import (
     TRINO_CATALOG_RELATION_NAME,
     UI_FUNCTION,
 )
-from observability import metrics_services, metrics_targets, open_metrics_ports
+from observability import metrics_ports, metrics_services, metrics_targets
 from relations.oauth import ClientConfigError, OAuthRelation
 from relations.postgresql import Database
 from relations.redis import Redis
@@ -795,13 +796,15 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         }
 
     def _open_workload_ports(self):
-        """Open the ports the configured charm function serves on."""
+        """Open exactly the ports the configured charm function serves on."""
         function = self.config["charm-function"]
-        open_metrics_ports(self.model.unit, function)
+        ports = metrics_ports(function)
 
         if function == UI_FUNCTION:
-            # Open port for cache warm-up.
-            self.model.unit.open_port(port=APPLICATION_PORT, protocol="tcp")
+            # Port for cache warm-up.
+            ports.append(Port("tcp", APPLICATION_PORT))
+
+        self.model.unit.set_ports(*ports)
 
     def _sync_trino_catalogs(self, force_update_credentials):
         """Synchronise Trino catalogs into Superset database connections.
