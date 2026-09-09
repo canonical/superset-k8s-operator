@@ -39,6 +39,7 @@ from literals import (
     ADMIN_SECRET_ID_FIELD,
     ADMIN_SECRET_KEY,
     ADMIN_SECRET_LABEL,
+    ALERT_REPORTS_FLAG,
     APP_NAME,
     APPLICATION_PORT,
     CONFIG_PATH,
@@ -59,6 +60,7 @@ from observability import metrics_ports, metrics_services, metrics_targets
 from relations.oauth import ClientConfigError, OAuthRelation
 from relations.postgresql import Database
 from relations.redis import Redis
+from relations.smtp import SmtpRelation
 from relations.tls import CertificateInstallError, Certificates
 from relations.trino_catalog import TrinoCatalogRelationHandler
 from structured_config import CharmConfig
@@ -113,6 +115,10 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         # Handle OAuth relation
         self.oauth = OAuthRelation(self)
+
+        # Handle SMTP relation
+        self.smtp = SmtpRelation(self)
+
         # Handle tls-certificates relation
         self.certificates_handler = Certificates(self)
 
@@ -503,6 +509,36 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         return WaitingStatus("waiting for the UI to initialise the database")
 
+    def _smtp_status(self):
+        """Report on reports that would be rendered and never delivered.
+
+        `ALERT_REPORTS` makes Superset mail the reports it renders, so without
+        the `smtp` relation they fail at send time. `report-dry-run` renders
+        and deliberately delivers nothing, so it needs no relay.
+
+        Returns:
+            The status to report, or None when reports can be delivered.
+        """
+        if not self.smtp.is_related():
+            alert_reports = (self.config["feature-flags"] or {}).get(
+                ALERT_REPORTS_FLAG, False
+            )
+            if alert_reports and not self.config["report-dry-run"]:
+                return BlockedStatus(
+                    f"{ALERT_REPORTS_FLAG} requires an smtp relation"
+                )
+            return None
+
+        try:
+            data = self.smtp.relation_data()
+        except ValueError as e:
+            return BlockedStatus(str(e))
+
+        if data is None:
+            return WaitingStatus("Waiting for relation data: SMTP")
+
+        return None
+
     def _not_ready_status(self):
         """Report on whatever keeps the application from being started.
 
@@ -519,7 +555,9 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             return BlockedStatus(str(e))
 
         dependency_status = (
-            self._relation_status() or self._metadata_database_status()
+            self._relation_status()
+            or self._metadata_database_status()
+            or self._smtp_status()
         )
         if dependency_status is not None:
             return dependency_status
@@ -611,70 +649,6 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         event.set_results({"result": f"{APP_NAME} successfully restarted"})
 
-    def _get_smtp_config(self):
-        """Return SMTP variables."""
-        ret = {}
-
-        if not self.config["smtp-secret-id"]:
-            return ret
-
-        secret_id = self.config["smtp-secret-id"]
-
-        try:
-            secret = self.model.get_secret(id=secret_id)
-            content = secret.get_content(refresh=True)
-        except SecretNotFoundError as e:
-            # Distinguish between a missing secret and an existing secret
-            # that the charm has not been granted access to. The testing
-            # backend raises SecretNotFoundError with a message containing
-            # "not granted access" when the secret exists but is not
-            # accessible to this charm.
-            msg = str(e)
-            if "not granted access" in msg:
-                raise ValueError(
-                    f"SMTP secret with ID '{secret_id}' cannot be accessed."
-                ) from None
-            raise ValueError(
-                f"SMTP secret with ID '{secret_id}' cannot be found."
-            ) from None
-        except ModelError:
-            raise ValueError(
-                f"SMTP secret with ID '{secret_id}' cannot be accessed."
-            ) from None
-
-        required_keys = {
-            "host",
-            "port",
-            "username",
-            "password",
-            "email",
-            "ssl",
-            "starttls",
-            "ssl-server-auth",
-            "superset-external-url",
-        }
-
-        missing_keys = []
-        for key in required_keys:
-            if key not in content:
-                missing_keys.append(key)
-
-        if missing_keys:
-            raise ValueError(
-                f"SMTP secret with ID '{secret_id}' has improper schema. Missing: {', '.join(missing_keys)}"
-            )
-
-        for key in required_keys:
-            formatted_key = f"smtp_{key.replace('-', '_')}".upper()
-            ret[formatted_key] = content[key]
-
-        # Optional configurations
-        ret["SMTP_EMAIL_SUBJECT_PREFIX"] = content.get(
-            "email-subject-prefix", "[Superset] "
-        )
-
-        return ret
-
     def _create_env(self):
         """Create state values from config to be used as environment variables.
 
@@ -725,6 +699,8 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "SENTRY_REDACT_PARAMS": self.config["sentry-redact-params"],
             "SENTRY_SAMPLE_RATE": self.config["sentry-sample-rate"],
             "SERVER_ALIAS": self.config["server-alias"],
+            "SMTP_SUPERSET_EXTERNAL_URL": self.config["external-url"],
+            "SMTP_EMAIL_SUBJECT_PREFIX": self.config["email-subject-prefix"],
             "APPLICATION_PORT": APPLICATION_PORT,
             # Explicitly set SUPERSET_PORT so the charm-supplied value always
             # overrides the service-discovery variable Kubernetes injects for a
@@ -757,7 +733,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         if self.config["feature-flags"]:
             env.update(self.config["feature-flags"])
         env.update(self._get_oauth_config())
-        env.update(self._get_smtp_config())
+        env.update(self.smtp.environment())
 
         http_proxy = os.environ.get("JUJU_CHARM_HTTP_PROXY")
         https_proxy = os.environ.get("JUJU_CHARM_HTTPS_PROXY")

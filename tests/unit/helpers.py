@@ -52,17 +52,17 @@ TRINO_CREDENTIALS_NEW = {
     "password": "rotated-trino-password",  # nosec B105
 }
 
-SMTP_SECRET_CONTENTS = {
-    "host": "localhost",
+SMTP_PROVIDER_DATA = {
+    "host": "smtp.example",
     "port": "1025",
-    "username": "admin",  # nosec B105
-    "password": "testpassword",  # nosec B105
-    "email": "admin@example.com",
-    "ssl": "false",
-    "starttls": "false",
-    "ssl-server-auth": "false",
-    "superset-external-url": "superset.com",
-    "email-subject-prefix": "[Test] ",
+    "auth_type": "plain",
+    "transport_security": "starttls",
+    "skip_ssl_verify": "False",
+    "user": "superset",
+    "password": "smtp-password",  # nosec B105
+    "domain": "example.com",
+    "smtp_sender": "reports@example.com",
+    "recipients": '["ops@example.com"]',
 }
 
 
@@ -216,6 +216,47 @@ def oauth_relation(secret_id=None):
         remote_app_name="hydra",
         remote_app_data=remote_data,
     )
+
+
+def smtp_relation(password_id=None, **overrides):
+    """Build an SMTP relation carrying the relay an integrator publishes.
+
+    Args:
+        password_id: id of the Juju secret holding the relay password, which
+            replaces the plain `password` field when it is given.
+        overrides: relation fields to override or, with a None value, drop.
+
+    Returns:
+        A Scenario `Relation`.
+    """
+    remote_data = dict(SMTP_PROVIDER_DATA)
+    if password_id is not None:
+        del remote_data["password"]
+        remote_data["password_id"] = password_id
+
+    for key, value in overrides.items():
+        if value is None:
+            remote_data.pop(key, None)
+        else:
+            remote_data[key] = value
+
+    return Relation(
+        "smtp",
+        remote_app_name="smtp-integrator",
+        remote_app_data=remote_data,
+    )
+
+
+def smtp_password_secret(password="smtp-password"):  # nosec B107
+    """Build the relay password secret an SMTP provider grants.
+
+    Args:
+        password: the SMTP AUTH password the secret carries.
+
+    Returns:
+        A Scenario `Secret` owned by the SMTP provider.
+    """
+    return Secret(tracked_content={"password": password}, owner=None)
 
 
 def ingress_relation(url="https://superset.example"):

@@ -383,7 +383,11 @@ async def wait_for_report(
 @pytest.mark.abort_on_fail
 @pytest.mark.usefixtures("deploy")
 class TestReports:
-    """Exercise report rendering without requiring an SMTP deployment."""
+    """Exercise report rendering without requiring an SMTP deployment.
+
+    `report-dry-run` is what makes that possible: it delivers nothing, so the
+    `smtp` relation is not needed here.
+    """
 
     @pytest.mark.parametrize(
         "global_async_queries", [False, True], ids=["sync", "async"]

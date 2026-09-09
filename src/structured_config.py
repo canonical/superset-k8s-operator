@@ -71,7 +71,8 @@ class CharmConfig(BaseConfigModel):
     redis_timeout: int
     log_retention_enabled: bool
     log_retention_days: int
-    smtp_secret_id: Optional[str]
+    external_url: Optional[str]
+    email_subject_prefix: str
     dashboard_size_limit: int
     max_content_length: Optional[int]
     max_form_memory_size: Optional[int]

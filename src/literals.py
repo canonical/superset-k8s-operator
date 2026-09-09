@@ -15,6 +15,8 @@ OAUTH_CALLBACK_PATH = "/oauth-authorized/oidc"
 OAUTH_SCOPE = "openid email profile"
 OAUTH_GRANT_TYPES = ["authorization_code"]
 CERTIFICATES_RELATION_NAME = "certificates"
+SMTP_RELATION_NAME = "smtp"
+ALERT_REPORTS_FLAG = "ALERT_REPORTS"
 
 # TLS certificate delivery paths inside the workload container.
 # The CA received over the `certificates` relation is installed into the

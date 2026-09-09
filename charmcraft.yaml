@@ -58,6 +58,8 @@ charm-libs:
     version: "0"
   - lib: hydra.oauth
     version: "0"
+  - lib: smtp_integrator.smtp
+    version: "0"
 
 parts:
   charm:
@@ -122,6 +124,10 @@ requires:
     interface: tls-certificates
     optional: true
     limit: 1
+  smtp:
+    interface: smtp
+    optional: true
+    limit: 1
 
 config:
   options:
@@ -167,7 +173,10 @@ config:
          scheduler add `reports.scheduler` to its schedule, and makes the worker
          load the SMTP and screenshot settings it needs to deliver them. It is
          what turns on every worker option in the report group below:
-         `smtp-secret-id`, `screenshot-timeout`, `report-dry-run`, `server-alias`.
+         `screenshot-timeout`, `report-dry-run`, `server-alias`, `external-url`
+         and `email-subject-prefix`. It also requires the `smtp` relation to
+         deliver with, so the charm blocks when it is set without one, unless
+         `report-dry-run` says nothing is to be delivered.
          `GLOBAL_ASYNC_QUERIES` splits query execution between the UI and the worker,
          which both have to agree that it is enabled.
 
@@ -417,7 +426,7 @@ config:
         It is the hostname the worker loads dashboards from when rendering a report
         screenshot, so it has to resolve to the UI application.
 
-        Applies to: the worker application, and only with `ALERT_REPORTS` set.
+        Applies to: the worker application, and only when `ALERT_REPORTS` is set.
       default: superset-k8s
       type: string
 
@@ -426,17 +435,30 @@ config:
         Maximum time in seconds to wait for report and alert screenshots to render.
         The screenshots are taken by the worker, with Playwright.
 
-        Applies to: the worker application, and only with `ALERT_REPORTS` set.
+        Applies to: the worker application, and only when `ALERT_REPORTS` is set.
       default: 600
       type: int
 
-    smtp-secret-id:
+    external-url:
       description: |
-        ID of the Juju secret for the SMTP credentials used to send emails. It is
-        only read when the `ALERT_REPORTS` feature flag is set, and the worker is
-        what delivers the mail.
+        The URL report recipients open from an alert or report email. The
+        worker holds no ingress relation and cannot learn it, so it is not
+        derived from anything and has to be set.
 
-        Applies to: the worker application, and only with `ALERT_REPORTS` set.
+        Applies to: the worker application, which writes the link into the
+        email. The UI application also reads it, as one of the hosts its
+        `/redirect` page treats as internal, but every link a report email
+        sends there is external by construction. Only takes effect when
+        `ALERT_REPORTS` is set.
+      type: string
+
+    email-subject-prefix:
+      description: |
+        The prefix put in front of the subject line of every alert and report
+        email. The `smtp` interface carries no field for it, so it is set here.
+
+        Applies to: the worker application, and only when `ALERT_REPORTS` is set.
+      default: "[Superset] "
       type: string
 
     report-dry-run:
@@ -444,7 +466,7 @@ config:
         When true, render alert and report screenshots but do not deliver email or Slack
         notifications. Intended for testing the rendering pipeline; leave false in production.
 
-        Applies to: the worker application, and only with `ALERT_REPORTS` set.
+        Applies to: the worker application, and only when `ALERT_REPORTS` is set.
       default: false
       type: boolean
 
