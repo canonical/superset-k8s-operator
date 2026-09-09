@@ -39,6 +39,7 @@ from literals import (
     ADMIN_SECRET_ID_FIELD,
     ADMIN_SECRET_KEY,
     ADMIN_SECRET_LABEL,
+    ALERT_REPORTS_FLAG,
     APP_NAME,
     APPLICATION_PORT,
     CONFIG_PATH,
@@ -59,6 +60,7 @@ from observability import metrics_ports, metrics_services, metrics_targets
 from relations.oauth import ClientConfigError, OAuthRelation
 from relations.postgresql import Database
 from relations.redis import Redis
+from relations.smtp import SmtpRelation
 from relations.tls import CertificateInstallError, Certificates
 from relations.trino_catalog import TrinoCatalogRelationHandler
 from structured_config import CharmConfig
@@ -93,6 +95,19 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             return None
         return url.rstrip("/")
 
+    @property
+    def _external_url(self):
+        """Return the URL an alert or report email links back to.
+
+        Only the UI application holds the ingress relation, so on a worker or
+        a beat scheduler the option is the only source.
+
+        Returns:
+            The configured URL, the ingress one when it is unset, or None
+            when neither is available.
+        """
+        return self.config["external-url"] or self.https_ingress_url
+
     def __init__(self, framework: ops.Framework):
         """Construct.
 
@@ -113,6 +128,10 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         # Handle OAuth relation
         self.oauth = OAuthRelation(self)
+
+        # Handle SMTP relation
+        self.smtp = SmtpRelation(self)
+        
         # Handle tls-certificates relation
         self.certificates_handler = Certificates(self)
 
@@ -503,6 +522,44 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         return WaitingStatus("waiting for the UI to initialise the database")
 
+    def _smtp_status(self):
+        """Validate alerts and reports configuration.
+
+        The `ALERT_REPORTS` feature flag and the `smtp` relation are only
+        useful together: the flag alone renders reports that cannot be
+        delivered, and the relation alone publishes a relay `superset_config.py`
+        never reads, because it gates the whole SMTP block on the flag.
+
+        Returns:
+            The status to show, or None when both halves agree.
+        """
+        alert_reports = (self.config["feature-flags"] or {}).get(
+            ALERT_REPORTS_FLAG, False
+        )
+        related = self.smtp.is_related()
+
+        if alert_reports and not related:
+            return BlockedStatus(
+                f"{ALERT_REPORTS_FLAG} requires an smtp relation"
+            )
+        if related and not alert_reports:
+            return BlockedStatus(
+                f"the smtp relation requires the {ALERT_REPORTS_FLAG} "
+                "feature flag"
+            )
+        if not related:
+            return None
+
+        try:
+            data = self.smtp.relation_data()
+        except ValueError as e:
+            return BlockedStatus(str(e))
+
+        if data is None:
+            return WaitingStatus("Waiting for relation data: SMTP")
+
+        return None
+
     def _not_ready_status(self):
         """Report on whatever keeps the application from being started.
 
@@ -532,7 +589,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         if self.oauth.is_related() and self.https_ingress_url is None:
             return BlockedStatus("OAuth requires an HTTPS ingress URL")
 
-        return None
+        return self._smtp_status()
 
     def report_failure(self, status):
         """Record a failure for the status collector to report.
@@ -611,70 +668,6 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         event.set_results({"result": f"{APP_NAME} successfully restarted"})
 
-    def _get_smtp_config(self):
-        """Return SMTP variables."""
-        ret = {}
-
-        if not self.config["smtp-secret-id"]:
-            return ret
-
-        secret_id = self.config["smtp-secret-id"]
-
-        try:
-            secret = self.model.get_secret(id=secret_id)
-            content = secret.get_content(refresh=True)
-        except SecretNotFoundError as e:
-            # Distinguish between a missing secret and an existing secret
-            # that the charm has not been granted access to. The testing
-            # backend raises SecretNotFoundError with a message containing
-            # "not granted access" when the secret exists but is not
-            # accessible to this charm.
-            msg = str(e)
-            if "not granted access" in msg:
-                raise ValueError(
-                    f"SMTP secret with ID '{secret_id}' cannot be accessed."
-                ) from None
-            raise ValueError(
-                f"SMTP secret with ID '{secret_id}' cannot be found."
-            ) from None
-        except ModelError:
-            raise ValueError(
-                f"SMTP secret with ID '{secret_id}' cannot be accessed."
-            ) from None
-
-        required_keys = {
-            "host",
-            "port",
-            "username",
-            "password",
-            "email",
-            "ssl",
-            "starttls",
-            "ssl-server-auth",
-            "superset-external-url",
-        }
-
-        missing_keys = []
-        for key in required_keys:
-            if key not in content:
-                missing_keys.append(key)
-
-        if missing_keys:
-            raise ValueError(
-                f"SMTP secret with ID '{secret_id}' has improper schema. Missing: {', '.join(missing_keys)}"
-            )
-
-        for key in required_keys:
-            formatted_key = f"smtp_{key.replace('-', '_')}".upper()
-            ret[formatted_key] = content[key]
-
-        # Optional configurations
-        ret["SMTP_EMAIL_SUBJECT_PREFIX"] = content.get(
-            "email-subject-prefix", "[Superset] "
-        )
-
-        return ret
-
     def _create_env(self):
         """Create state values from config to be used as environment variables.
 
@@ -725,6 +718,8 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "SENTRY_REDACT_PARAMS": self.config["sentry-redact-params"],
             "SENTRY_SAMPLE_RATE": self.config["sentry-sample-rate"],
             "SERVER_ALIAS": self.config["server-alias"],
+            "SMTP_SUPERSET_EXTERNAL_URL": self._external_url,
+            "SMTP_EMAIL_SUBJECT_PREFIX": self.config["email-subject-prefix"],
             "APPLICATION_PORT": APPLICATION_PORT,
             # Explicitly set SUPERSET_PORT so the charm-supplied value always
             # overrides the service-discovery variable Kubernetes injects for a
@@ -757,7 +752,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         if self.config["feature-flags"]:
             env.update(self.config["feature-flags"])
         env.update(self._get_oauth_config())
-        env.update(self._get_smtp_config())
+        env.update(self.smtp.environment())
 
         http_proxy = os.environ.get("JUJU_CHARM_HTTP_PROXY")
         https_proxy = os.environ.get("JUJU_CHARM_HTTPS_PROXY")
