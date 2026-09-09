@@ -95,19 +95,6 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             return None
         return url.rstrip("/")
 
-    @property
-    def _external_url(self):
-        """Return the URL an alert or report email links back to.
-
-        Only the UI application holds the ingress relation, so on a worker or
-        a beat scheduler the option is the only source.
-
-        Returns:
-            The configured URL, the ingress one when it is unset, or None
-            when neither is available.
-        """
-        return self.config["external-url"] or self.https_ingress_url
-
     def __init__(self, framework: ops.Framework):
         """Construct.
 
@@ -523,31 +510,23 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         return WaitingStatus("waiting for the UI to initialise the database")
 
     def _smtp_status(self):
-        """Validate alerts and reports configuration.
+        """Report on reports that would be rendered and never delivered.
 
-        The `ALERT_REPORTS` feature flag and the `smtp` relation are only
-        useful together: the flag alone renders reports that cannot be
-        delivered, and the relation alone publishes a relay `superset_config.py`
-        never reads, because it gates the whole SMTP block on the flag.
+        `ALERT_REPORTS` makes Superset mail the reports it renders, so without
+        the `smtp` relation they fail at send time. `report-dry-run` renders
+        and deliberately delivers nothing, so it needs no relay.
 
         Returns:
-            The status to show, or None when both halves agree.
+            The status to report, or None when reports can be delivered.
         """
-        alert_reports = (self.config["feature-flags"] or {}).get(
-            ALERT_REPORTS_FLAG, False
-        )
-        related = self.smtp.is_related()
-
-        if alert_reports and not related:
-            return BlockedStatus(
-                f"{ALERT_REPORTS_FLAG} requires an smtp relation"
+        if not self.smtp.is_related():
+            alert_reports = (self.config["feature-flags"] or {}).get(
+                ALERT_REPORTS_FLAG, False
             )
-        if related and not alert_reports:
-            return BlockedStatus(
-                f"the smtp relation requires the {ALERT_REPORTS_FLAG} "
-                "feature flag"
-            )
-        if not related:
+            if alert_reports and not self.config["report-dry-run"]:
+                return BlockedStatus(
+                    f"{ALERT_REPORTS_FLAG} requires an smtp relation"
+                )
             return None
 
         try:
@@ -576,7 +555,9 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             return BlockedStatus(str(e))
 
         dependency_status = (
-            self._relation_status() or self._metadata_database_status()
+            self._relation_status()
+            or self._metadata_database_status()
+            or self._smtp_status()
         )
         if dependency_status is not None:
             return dependency_status
@@ -589,7 +570,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         if self.oauth.is_related() and self.https_ingress_url is None:
             return BlockedStatus("OAuth requires an HTTPS ingress URL")
 
-        return self._smtp_status()
+        return None
 
     def report_failure(self, status):
         """Record a failure for the status collector to report.
@@ -718,7 +699,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "SENTRY_REDACT_PARAMS": self.config["sentry-redact-params"],
             "SENTRY_SAMPLE_RATE": self.config["sentry-sample-rate"],
             "SERVER_ALIAS": self.config["server-alias"],
-            "SMTP_SUPERSET_EXTERNAL_URL": self._external_url,
+            "SMTP_SUPERSET_EXTERNAL_URL": self.config["external-url"],
             "SMTP_EMAIL_SUBJECT_PREFIX": self.config["email-subject-prefix"],
             "APPLICATION_PORT": APPLICATION_PORT,
             # Explicitly set SUPERSET_PORT so the charm-supplied value always

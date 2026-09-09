@@ -9,7 +9,6 @@ from ops.testing import Relation
 from tests.unit.helpers import (
     SMTP_PROVIDER_DATA,
     build_state,
-    ingress_relation,
     smtp_password_secret,
     smtp_relation,
     superset_environment,
@@ -122,15 +121,15 @@ def test_alert_reports_without_an_smtp_relation_blocks(ctx):
     )
 
 
-def test_smtp_relation_without_alert_reports_blocks(ctx):
-    """The relation alone publishes a relay the workload never reads."""
-    state_in = build_state(extra_relations=(smtp_relation(),))
+def test_alert_reports_with_a_dry_run_needs_no_relation(ctx):
+    """A dry run delivers nothing, so it needs no relay to deliver with."""
+    state_in = build_state(
+        config={"feature-flags": "ALERT_REPORTS", "report-dry-run": True}
+    )
 
     state_out = ctx.run(ctx.on.config_changed(), state_in)
 
-    assert state_out.unit_status == BlockedStatus(
-        "the smtp relation requires the ALERT_REPORTS feature flag"
-    )
+    assert state_out.unit_status == ActiveStatus("Status check: UP")
 
 
 def test_smtp_relation_without_a_sender_blocks(ctx):
@@ -175,31 +174,4 @@ def test_smtp_relation_without_provider_data_waits(ctx):
 
     assert state_out.unit_status == WaitingStatus(
         "Waiting for relation data: SMTP"
-    )
-
-
-def test_external_url_falls_back_to_the_ingress_url(ctx):
-    """The UI links report emails at the URL the ingress provider publishes."""
-    state_in = build_state(extra_relations=(ingress_relation(),))
-
-    state_out = ctx.run(ctx.on.config_changed(), state_in)
-
-    environment = superset_environment(state_out)
-    assert environment["SMTP_SUPERSET_EXTERNAL_URL"] == (
-        "https://superset.example"
-    )
-
-
-def test_external_url_config_overrides_the_ingress_url(ctx):
-    """A worker holds no ingress relation, so the option is the only source."""
-    state_in = build_state(
-        config={"external-url": "https://reports.example"},
-        extra_relations=(ingress_relation(),),
-    )
-
-    state_out = ctx.run(ctx.on.config_changed(), state_in)
-
-    environment = superset_environment(state_out)
-    assert environment["SMTP_SUPERSET_EXTERNAL_URL"] == (
-        "https://reports.example"
     )

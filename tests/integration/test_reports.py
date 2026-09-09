@@ -19,10 +19,8 @@ import yaml
 from integration.conftest import deploy  # noqa: F401, pylint: disable=W0611
 from integration.helpers import (
     CHARM_FUNCTIONS,
-    SMTP_INTEGRATOR_NAME,
     UI_NAME,
     api_authentication,
-    deploy_smtp_integrator,
     get_unit_url,
 )
 from pytest_operator.plugin import OpsTest
@@ -382,47 +380,13 @@ async def wait_for_report(
     )
 
 
-@pytest_asyncio.fixture(name="deploy-report-smtp", scope="module")
-async def deploy_report_smtp(  # pylint: disable=redefined-outer-name
-    ops_test: OpsTest, deploy  # noqa: F811
-) -> None:
-    """Relate an SMTP provider, which `ALERT_REPORTS` cannot be set without.
-
-    Args:
-        ops_test: Juju test model.
-        deploy: Shared deployment fixture from the integration conftest.
-    """
-    del deploy
-    await deploy_smtp_integrator(ops_test)
-    for app_name in REPORT_APPS:
-        await ops_test.model.integrate(
-            f"{app_name}:smtp", f"{SMTP_INTEGRATOR_NAME}:smtp"
-        )
-
-    # The relation and the feature flag are validated against each other, so
-    # the deployment only settles once both are in place. Each test resets
-    # `feature-flags` to the combination it needs.
-    for app_name in REPORT_APPS:
-        await ops_test.model.applications[app_name].set_config(
-            {"feature-flags": "ALERT_REPORTS"}
-        )
-
-    async with ops_test.fast_forward():
-        await ops_test.model.wait_for_idle(
-            apps=REPORT_APPS + [SMTP_INTEGRATOR_NAME],
-            status="active",
-            raise_on_blocked=False,
-            timeout=1200,
-        )
-
-
 @pytest.mark.abort_on_fail
-@pytest.mark.usefixtures("deploy-report-smtp")
+@pytest.mark.usefixtures("deploy")
 class TestReports:
-    """Exercise report rendering with notification delivery suppressed.
+    """Exercise report rendering without requiring an SMTP deployment.
 
-    The `smtp` relation is required to set `ALERT_REPORTS`, but no mail
-    server stands behind it and `report-dry-run` stops the worker delivering.
+    `report-dry-run` is what makes that possible: it delivers nothing, so the
+    `smtp` relation is not needed here.
     """
 
     @pytest.mark.parametrize(

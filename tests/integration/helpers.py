@@ -175,7 +175,7 @@ async def deploy_smtp_integrator(ops_test: OpsTest):
     """
     await ops_test.model.deploy(
         SMTP_INTEGRATOR_NAME,
-        channel="latest/edge",
+        channel="latest/stable",
         config=SMTP_CONFIG,
     )
     await ops_test.model.wait_for_idle(

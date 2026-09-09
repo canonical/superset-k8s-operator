@@ -114,23 +114,3 @@ class TestSmtp:
         assert environment["SMTP_SSL_SERVER_AUTH"] == "true"
         assert environment["SMTP_SUPERSET_EXTERNAL_URL"] == EXTERNAL_URL
         assert environment["SMTP_EMAIL_SUBJECT_PREFIX"] == "[Superset] "
-
-    async def test_relation_without_the_feature_flag_blocks(
-        self, ops_test: OpsTest
-    ) -> None:
-        """The relation alone publishes a relay the workload never reads."""
-        await ops_test.model.applications[WORKER_NAME].set_config(
-            {"feature-flags": "GLOBAL_ASYNC_QUERIES"}
-        )
-
-        async with ops_test.fast_forward():
-            await ops_test.model.wait_for_idle(
-                apps=[WORKER_NAME],
-                status="blocked",
-                timeout=1200,
-            )
-
-        unit = ops_test.model.applications[WORKER_NAME].units[0]
-        assert unit.workload_status_message == (
-            "the smtp relation requires the ALERT_REPORTS feature flag"
-        )

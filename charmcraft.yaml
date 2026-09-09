@@ -174,8 +174,9 @@ config:
          load the SMTP and screenshot settings it needs to deliver them. It is
          what turns on every worker option in the report group below:
          `screenshot-timeout`, `report-dry-run`, `server-alias`, `external-url`
-         and `email-subject-prefix`. It also requires the `smtp` relation, and
-         the charm blocks when one is set without the other.
+         and `email-subject-prefix`. It also requires the `smtp` relation to
+         deliver with, so the charm blocks when it is set without one, unless
+         `report-dry-run` says nothing is to be delivered.
          `GLOBAL_ASYNC_QUERIES` splits query execution between the UI and the worker,
          which both have to agree that it is enabled.
 
@@ -440,12 +441,15 @@ config:
 
     external-url:
       description: |
-        The URL report recipients open from an alert or report email. It falls
-        back to the external URL the ingress provider publishes, which only the
-        UI application holds a relation to, so on the worker it has to be set.
+        The URL report recipients open from an alert or report email. The
+        worker holds no ingress relation and cannot learn it, so it is not
+        derived from anything and has to be set.
 
-        Applies to: the worker application, which renders the link into the
-        email, and only when `ALERT_REPORTS` is set.
+        Applies to: the worker application, which writes the link into the
+        email. The UI application also reads it, as one of the hosts its
+        `/redirect` page treats as internal, but every link a report email
+        sends there is external by construction. Only takes effect when
+        `ALERT_REPORTS` is set.
       type: string
 
     email-subject-prefix:
