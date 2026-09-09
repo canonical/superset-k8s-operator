@@ -131,7 +131,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         # Handle SMTP relation
         self.smtp = SmtpRelation(self)
-        
+
         # Handle tls-certificates relation
         self.certificates_handler = Certificates(self)
 
