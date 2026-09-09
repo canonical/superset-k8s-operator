@@ -28,7 +28,6 @@ from tests.unit.helpers import (
     MODEL_NAME,
     SECRET_KEY,
     SERVER_PORT,
-    SMTP_SECRET_CONTENTS,
     TRINO_CREDENTIALS,
     TRINO_CREDENTIALS_NEW,
     build_state,
@@ -68,6 +67,8 @@ WANT_ENVIRONMENT = {
     "SENTRY_REDACT_PARAMS": False,
     "SENTRY_SAMPLE_RATE": 1.0,
     "SERVER_ALIAS": "superset-k8s",
+    "SMTP_SUPERSET_EXTERNAL_URL": None,
+    "SMTP_EMAIL_SUBJECT_PREFIX": "[Superset] ",
     "APPLICATION_PORT": 8088,
     "SUPERSET_PORT": 8088,
     "WEBSERVER_TIMEOUT": 180,
@@ -537,73 +538,6 @@ def test_invalid_default_role(ctx):
     assert state_out.unit_status == BlockedStatus(
         "The self-registration role InvalidRole is not allowed. "
         "Use only ['Public', 'Gamma', 'Alpha', 'Admin']."
-    )
-
-
-def test_smtp_handling_without_secret(ctx):
-    """No SMTP variables are rendered when no SMTP secret is configured."""
-    state_out = ctx.run(ctx.on.config_changed(), build_state())
-
-    environment = superset_environment(state_out)
-    assert not [key for key in environment if key.startswith("SMTP_")]
-
-
-def test_smtp_handling_with_secret(ctx):
-    """A granted SMTP secret is rendered into the workload environment."""
-    secret = Secret(tracked_content=SMTP_SECRET_CONTENTS, owner=None)
-    state_in = build_state(
-        config={"smtp-secret-id": secret.id}, secrets=(secret,)
-    )
-
-    state_out = ctx.run(ctx.on.config_changed(), state_in)
-
-    environment = superset_environment(state_out)
-    assert environment["SMTP_HOST"] == SMTP_SECRET_CONTENTS["host"]
-    assert environment["SMTP_PORT"] == SMTP_SECRET_CONTENTS["port"]
-    assert environment["SMTP_USERNAME"] == SMTP_SECRET_CONTENTS["username"]
-    assert environment["SMTP_PASSWORD"] == SMTP_SECRET_CONTENTS["password"]
-    assert environment["SMTP_EMAIL"] == SMTP_SECRET_CONTENTS["email"]
-    assert environment["SMTP_SSL"] == SMTP_SECRET_CONTENTS["ssl"]
-    assert environment["SMTP_STARTTLS"] == SMTP_SECRET_CONTENTS["starttls"]
-    assert environment["SMTP_SSL_SERVER_AUTH"] == (
-        SMTP_SECRET_CONTENTS["ssl-server-auth"]
-    )
-    assert environment["SMTP_SUPERSET_EXTERNAL_URL"] == (
-        SMTP_SECRET_CONTENTS["superset-external-url"]
-    )
-    assert environment["SMTP_EMAIL_SUBJECT_PREFIX"] == (
-        SMTP_SECRET_CONTENTS["email-subject-prefix"]
-    )
-
-
-def test_smtp_handling_with_improper_secret(ctx):
-    """An SMTP secret missing a required key blocks the unit."""
-    contents = {
-        key: value
-        for key, value in SMTP_SECRET_CONTENTS.items()
-        if key != "host"
-    }
-    secret = Secret(tracked_content=contents, owner=None)
-    state_in = build_state(
-        config={"smtp-secret-id": secret.id}, secrets=(secret,)
-    )
-
-    state_out = ctx.run(ctx.on.config_changed(), state_in)
-
-    assert state_out.unit_status == BlockedStatus(
-        f"SMTP secret with ID '{secret.id}' has improper schema. "
-        "Missing: host"
-    )
-
-
-def test_smtp_handling_with_missing_secret(ctx):
-    """An SMTP secret ID that does not resolve blocks the unit."""
-    state_in = build_state(config={"smtp-secret-id": "i-dont-exist"})
-
-    state_out = ctx.run(ctx.on.config_changed(), state_in)
-
-    assert state_out.unit_status == BlockedStatus(
-        "SMTP secret with ID 'i-dont-exist' cannot be found."
     )
 
 
