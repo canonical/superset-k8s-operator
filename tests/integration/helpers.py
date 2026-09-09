@@ -32,6 +32,20 @@ TRAEFIK_CONFIG = {
     "external_hostname": "superset.test",
 }
 UI_NAME = "superset-k8s-ui"
+SMTP_INTEGRATOR_NAME = "smtp-integrator"
+SMTP_SENDER = "reports@superset.example.com"
+SMTP_RECIPIENT = "ops@superset.example.com"
+SMTP_CONFIG = {
+    "host": "smtp.test",
+    "port": 1025,
+    "user": "superset",
+    "password": "smtp-password",  # nosec B105
+    "auth_type": "plain",
+    "transport_security": "starttls",
+    "domain": "superset.example.com",
+    "smtp_sender": SMTP_SENDER,
+    "recipients": SMTP_RECIPIENT,
+}
 # Mirrors CA_CERT_PATH in src/literals.py; hard-coded because it is part of
 # the charm's user-facing contract.
 CA_CERT_PATH = "/etc/ssl/certs/charm-ca.pem"
@@ -147,6 +161,28 @@ async def deploy_and_relate_superset_charm(
     assert (
         ops_test.model.applications[app_name].units[0].workload_status
         == "active"
+    )
+
+
+async def deploy_smtp_integrator(ops_test: OpsTest):
+    """Deploy the SMTP provider the `ALERT_REPORTS` feature flag requires.
+
+    No mail server backs it: the charm only publishes the relay details, which
+    is all the `smtp` relation carries.
+
+    Args:
+        ops_test: PyTest object.
+    """
+    await ops_test.model.deploy(
+        SMTP_INTEGRATOR_NAME,
+        channel="latest/edge",
+        config=SMTP_CONFIG,
+    )
+    await ops_test.model.wait_for_idle(
+        apps=[SMTP_INTEGRATOR_NAME],
+        status="active",
+        raise_on_blocked=False,
+        timeout=1200,
     )
 
 

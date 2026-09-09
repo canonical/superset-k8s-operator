@@ -6,25 +6,19 @@
 import pytest
 import pytest_asyncio
 import yaml
-from integration.helpers import CHARM_FUNCTIONS, UI_NAME
+from integration.helpers import (
+    CHARM_FUNCTIONS,
+    SMTP_CONFIG,
+    SMTP_INTEGRATOR_NAME,
+    UI_NAME,
+    deploy_smtp_integrator,
+)
 from pytest_operator.plugin import OpsTest
 
-SMTP_INTEGRATOR_NAME = "smtp-integrator"
 WORKER_NAME = f"superset-k8s-{CHARM_FUNCTIONS['worker']}"
 BEAT_NAME = f"superset-k8s-{CHARM_FUNCTIONS['beat']}"
 SMTP_APPS = [UI_NAME, WORKER_NAME, BEAT_NAME]
 EXTERNAL_URL = "https://superset.test"
-SMTP_CONFIG = {
-    "host": "smtp.test",
-    "port": 1025,
-    "user": "superset",
-    "password": "smtp-password",  # nosec B105
-    "auth_type": "plain",
-    "transport_security": "starttls",
-    "domain": "test",
-    "smtp_sender": "reports@superset.test",
-    "recipients": "ops@superset.test",
-}
 REPORT_FEATURE_FLAGS = "ALERT_REPORTS,GLOBAL_ASYNC_QUERIES"
 
 
@@ -59,17 +53,7 @@ async def deploy_smtp(ops_test: OpsTest, deploy) -> None:
         deploy: Shared deployment fixture from the integration conftest.
     """
     del deploy
-    await ops_test.model.deploy(
-        SMTP_INTEGRATOR_NAME,
-        channel="latest/edge",
-        config=SMTP_CONFIG,
-    )
-    await ops_test.model.wait_for_idle(
-        apps=[SMTP_INTEGRATOR_NAME],
-        status="active",
-        raise_on_blocked=False,
-        timeout=1200,
-    )
+    await deploy_smtp_integrator(ops_test)
 
 
 @pytest.mark.abort_on_fail
