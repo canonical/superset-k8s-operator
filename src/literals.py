@@ -42,6 +42,7 @@ CONFIG_FILES = [
     "custom_security_manager.py",
     "sentry_interceptor.py",
     "permission_error_messages.py",
+    "hive_tls.py",
 ]
 CONFIG_PATH = "/app/pythonpath"
 UI_FUNCTION = "app-gunicorn"
