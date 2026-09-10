@@ -85,8 +85,10 @@ hand:
 juju run traefik-k8s/0 show-external-endpoints
 ```
 
-Leaving `external_hostname` empty keeps path routing. Nothing blocks and the deployment reaches
-active, but the UI is not usable in a browser, and SSO needs an HTTPS URL at a real hostname.
+Leaving `external_hostname` empty keeps path routing, and Traefik then has no address until the
+cluster gives its LoadBalancer service an IP. Until then it blocks and publishes no ingress URL, so
+SSO cannot be enabled. Once it has an IP the deployment reaches active, but the UI is not usable in
+a browser, and SSO needs an HTTPS URL at a real hostname.
 
 ## SSO via the `oauth` relation
 
@@ -127,6 +129,9 @@ explicit StorageClass:
 TF_VAR_k8s_cloud_name=microk8s TF_VAR_k8s_credential_name=microk8s \
   TF_VAR_k8s_workload_storage=microk8s-hostpath terraform test
 ```
+
+The tests set `external_hostname = "superset.test"`. The CI cluster hands out no LoadBalancer IPs,
+and the hostname is what gives Traefik an address to publish the UI's HTTPS URL at.
 
 ## Module structure
 

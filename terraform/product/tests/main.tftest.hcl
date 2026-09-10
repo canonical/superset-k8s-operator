@@ -22,7 +22,8 @@ run "setup_tests" {
 
 run "full_deploy" {
   variables {
-    model_uuid = run.setup_tests.model_uuid
+    model_uuid        = run.setup_tests.model_uuid
+    external_hostname = "superset.test"
   }
 
   assert {
@@ -61,7 +62,7 @@ run "wait_for_postgresql_active" {
 
   assert {
     condition     = data.external.app_status.result.status == "active"
-    error_message = "postgresql-k8s did not reach active state"
+    error_message = "postgresql-k8s did not reach active state: ${data.external.app_status.result.message}"
   }
 }
 
@@ -78,7 +79,7 @@ run "wait_for_ui_active" {
 
   assert {
     condition     = data.external.app_status.result.status == "active"
-    error_message = "superset-k8s-ui did not reach active state"
+    error_message = "superset-k8s-ui did not reach active state: ${data.external.app_status.result.message}"
   }
 }
 
@@ -97,7 +98,7 @@ run "wait_for_worker_active" {
 
   assert {
     condition     = data.external.app_status.result.status == "active"
-    error_message = "superset-k8s-worker did not reach active state"
+    error_message = "superset-k8s-worker did not reach active state: ${data.external.app_status.result.message}"
   }
 }
 
@@ -114,7 +115,24 @@ run "wait_for_beat_active" {
 
   assert {
     condition     = data.external.app_status.result.status == "active"
-    error_message = "superset-k8s-beat did not reach active state"
+    error_message = "superset-k8s-beat did not reach active state: ${data.external.app_status.result.message}"
+  }
+}
+
+run "wait_for_traefik_active" {
+  module {
+    source = "./tests/wait_for_active"
+  }
+
+  variables {
+    model_uuid = run.setup_tests.model_uuid
+    app_name   = "traefik-k8s"
+    timeout    = 600
+  }
+
+  assert {
+    condition     = data.external.app_status.result.status == "active"
+    error_message = "traefik-k8s did not reach active state: ${data.external.app_status.result.message}"
   }
 }
 
@@ -122,7 +140,8 @@ run "wait_for_beat_active" {
 # deploy, which is how an operator turns them on.
 run "enable_sso_and_smtp" {
   variables {
-    model_uuid = run.setup_tests.model_uuid
+    model_uuid        = run.setup_tests.model_uuid
+    external_hostname = "superset.test"
 
     oauth_external_idp_integrator_config = {
       client_id     = "stub-client-id"
@@ -157,12 +176,13 @@ run "wait_for_smtp_integrator_active" {
 
   assert {
     condition     = data.external.app_status.result.status == "active"
-    error_message = "smtp-integrator did not reach active state"
+    error_message = "smtp-integrator did not reach active state: ${data.external.app_status.result.message}"
   }
 }
 
 # The UI must stay active with the oauth relation wired. Without an HTTPS ingress URL it blocks
-# with `OAuth requires an HTTPS ingress URL`, which is what the certificates relation is for.
+# with `OAuth requires an HTTPS ingress URL`, which is what the certificates relation and the
+# external hostname are for.
 run "wait_for_ui_active_with_sso" {
   module {
     source = "./tests/wait_for_active"
@@ -176,6 +196,6 @@ run "wait_for_ui_active_with_sso" {
 
   assert {
     condition     = data.external.app_status.result.status == "active"
-    error_message = "superset-k8s-ui did not stay active after enabling SSO"
+    error_message = "superset-k8s-ui did not stay active after enabling SSO: ${data.external.app_status.result.message}"
   }
 }
