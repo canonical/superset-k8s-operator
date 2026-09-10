@@ -1261,14 +1261,11 @@ def assert_ui_serves(
 
 
 def proxied_url(juju: jubilant.Juju, requirer: str = UI_NAME) -> str:
-    """Return the ingress URL published to one of Traefik's requirers.
+    """Return the ingress URL Traefik published to one of its requirers.
 
-    This is read from the `ingress` relation databag, not from Traefik's
-    `show-proxied-endpoints` action. In subdomain routing mode the action
-    reports the bare `external_hostname` for every requirer, while the databag
-    carries the per-application subdomain that Traefik actually routes on and
-    that the charm derives its OAuth callback from.
-    TODO: replace with show-external-endpoints action.
+    In `subdomain` routing mode this is the per-application hostname Traefik
+    routes on, and it is what the charm derives its external URL and its OAuth
+    callback from.
 
     Args:
         juju: Jubilant object.

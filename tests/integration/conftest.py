@@ -28,6 +28,10 @@ logger = logging.getLogger(__name__)
 def charm(request: FixtureRequest) -> Path:
     """Return the path to the charm package to deploy.
 
+    Under `--no-deploy` the package is optional, because the world it would
+    have built is already in the model. `test_upgrades.py` is the exception:
+    its When is the refresh onto the package, so it has to be supplied there.
+
     Args:
         request: Pytest request object.
 
@@ -38,10 +42,6 @@ def charm(request: FixtureRequest) -> Path:
         FileNotFoundError: If no charm package can be found.
         ValueError: If the working directory holds more than one.
     """
-    if request.config.getoption("--no-deploy"):
-        # Nothing is deployed, so no package has to exist.
-        return Path()
-
     charm_file = request.config.getoption("--charm-file")
     if charm_file:
         charm_path = Path(charm_file[0]).expanduser().resolve()
@@ -58,6 +58,9 @@ def charm(request: FixtureRequest) -> Path:
 
     charm_paths = list(Path(".").glob("*.charm"))
     if not charm_paths:
+        if request.config.getoption("--no-deploy"):
+            # The world already exists, so most scenarios never open this.
+            return Path()
         raise FileNotFoundError("No .charm file in the current directory")
     if len(charm_paths) > 1:
         found = ", ".join(str(path) for path in charm_paths)
@@ -122,12 +125,11 @@ def charm_image(request: FixtureRequest) -> str:
     Raises:
         ValueError: If the option was not supplied.
     """
-    if request.config.getoption("--no-deploy"):
-        # Nothing is deployed, so no image has to be supplied.
-        return ""
-
     image = request.config.getoption("--superset-image")
     if not image:
+        if request.config.getoption("--no-deploy"):
+            # The world already exists, so most scenarios never deploy it.
+            return ""
         raise ValueError(
             "--superset-image is required and must name the OCI image"
         )
