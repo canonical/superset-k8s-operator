@@ -1,89 +1,102 @@
+#!/usr/bin/env python3
 # Copyright 2023 Canonical Ltd.
 # See LICENSE file for licensing details.
 
-"""Superset charm scaling integration tests."""
+"""Feature: scaling a Superset deployment.
 
-import asyncio
+The UI and the worker are the two applications a deployment scales. The UI
+serves requests from every unit, and every worker unit is a Celery daemon that
+has to join the broker to be doing anything at all.
+"""
+
 import logging
 
-import pytest
-import pytest_asyncio
-from integration.helpers import (
-    POSTGRES_NAME,
-    REDIS_NAME,
-    SCALABLE_SERVICES,
-    UI_NAME,
-    create_signing_keys_secret,
-    deploy_and_relate_superset_charm,
-    get_active_workers,
-    scale,
-)
-from pytest_operator.plugin import OpsTest
-
-SCALABLE_APPS = ["superset-k8s-ui", "superset-k8s-worker"]
+import jubilant
+import steps
+from bdd import and_, given, then, when
 
 logger = logging.getLogger(__name__)
 
 
-@pytest_asyncio.fixture(name="deploy-scale", scope="module")
-async def deploy(ops_test: OpsTest, charm: str, charm_image: str):
-    """Deploy the app."""
-    await asyncio.gather(
-        ops_test.model.deploy(POSTGRES_NAME, channel="14", trust=True),
-        ops_test.model.deploy(REDIS_NAME, channel="edge", trust=True),
-    )
+def test_the_ui_scales_out_and_every_unit_serves(
+    superset_deployment: jubilant.Juju,
+):
+    """Scenario: the UI is scaled out to carry more traffic.
 
-    async with ops_test.fast_forward():
-        await ops_test.model.wait_for_idle(
-            apps=[POSTGRES_NAME, REDIS_NAME],
-            status="active",
-            raise_on_blocked=False,
-            timeout=2000,
-        )
+    Given a Superset deployment with one UI unit
+    When the UI is scaled out to two units
+    Then both units serve Superset
+    And both report the same generated admin password
+    """
+    juju = superset_deployment
 
-        resources = {
-            "superset-image": charm_image,
-        }
-        signing_keys_secret_id = await create_signing_keys_secret(ops_test)
-        # Iterate through UI and worker charms
-        for function, alias in SCALABLE_SERVICES.items():
-            app_name = f"superset-k8s-{alias}"
-            superset_config = {
-                "charm-function": function,
-                "signing-keys-secret-id": signing_keys_secret_id,
-                "server-alias": UI_NAME,
-                "feature-flags": "GLOBAL_ASYNC_QUERIES",
-            }
+    with given("a Superset deployment with one UI unit"):
+        assert len(juju.status().apps[steps.UI_NAME].units) == 1
+        password = steps.get_admin_password(juju, steps.UI_NAME, unit=0)
 
-            await deploy_and_relate_superset_charm(
-                ops_test, app_name, superset_config, charm, resources
-            )
+    with when("the UI is scaled out to two units"):
+        steps.scale(juju, steps.UI_NAME, 2)
 
-        assert (
-            ops_test.model.applications[app_name].units[0].workload_status
-            == "active"
-        )
+    with then("both units serve Superset"):
+        for unit in range(2):
+            steps.assert_ui_serves(juju, steps.UI_NAME, unit)
+
+    with and_("both report the same generated admin password"):
+        for unit in range(2):
+            assert (
+                steps.get_admin_password(juju, steps.UI_NAME, unit) == password
+            ), f"unit {unit} reports a different admin password"
 
 
-@pytest.mark.abort_on_fail
-@pytest.mark.usefixtures("deploy-scale")
-class TestScaling:
-    """Integration tests for Superset charm."""
+def test_the_worker_scales_out_and_every_daemon_joins_the_broker(
+    superset_deployment: jubilant.Juju,
+):
+    """Scenario: the worker is scaled out to run more Celery tasks.
 
-    async def test_scaling_up(self, ops_test: OpsTest):
-        """Scale Superset charms up to 2 units."""
-        for service in SCALABLE_APPS:
-            await scale(ops_test, app=service, units=2)
-            assert len(ops_test.model.applications[service].units) == 2
+    Given a Superset deployment with one worker answering on the broker
+    When the worker is scaled out to two units
+    Then two Celery daemons answer on the broker
+    """
+    juju = superset_deployment
 
-        active_workers = await get_active_workers(ops_test)
-        assert len(active_workers) == 2
+    with given(
+        "a Superset deployment with one worker answering on the broker"
+    ):
+        steps.wait_for_celery_workers(juju, 1)
 
-    async def test_scaling_down(self, ops_test: OpsTest):
-        """Scale Superset charm down to 1 unit."""
-        for service in SCALABLE_APPS:
-            await scale(ops_test, app=service, units=1)
-            assert len(ops_test.model.applications[service].units) == 1
+    with when("the worker is scaled out to two units"):
+        steps.scale(juju, steps.WORKER_NAME, 2)
 
-        active_workers = await get_active_workers(ops_test)
-        assert len(active_workers) == 1
+    with then("two Celery daemons answer on the broker"):
+        workers = steps.wait_for_celery_workers(juju, 2)
+        logger.info("Celery workers on the broker: %s", list(workers))
+
+
+def test_scaling_back_in_leaves_a_working_deployment(
+    superset_deployment: jubilant.Juju,
+):
+    """Scenario: the deployment is scaled back down after the load passes.
+
+    Given a Superset deployment scaled out to two UI and two worker units
+    When both applications are scaled back in to one unit
+    Then the surviving UI unit serves Superset
+    And one Celery daemon answers on the broker
+    """
+    juju = superset_deployment
+
+    with given(
+        "a Superset deployment scaled out to two UI and two worker units"
+    ):
+        status = juju.status()
+        for app in steps.SCALABLE_APPS:
+            assert len(status.apps[app].units) == 2, f"{app} is not scaled out"
+
+    with when("both applications are scaled back in to one unit"):
+        for app in steps.SCALABLE_APPS:
+            steps.scale(juju, app, 1)
+
+    with then("the surviving UI unit serves Superset"):
+        steps.assert_ui_serves(juju)
+
+    with and_("one Celery daemon answers on the broker"):
+        steps.wait_for_celery_workers(juju, 1)

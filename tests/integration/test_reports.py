@@ -2,85 +2,51 @@
 # Copyright 2023 Canonical Ltd.
 # See LICENSE file for licensing details.
 
-"""Mail-free integration tests for alert and report screenshot rendering."""
+"""Feature: rendering alerts and reports.
 
-import asyncio
-import json
+`report-dry-run` renders a report's screenshot and delivers nothing, so these
+scenarios need no mail server and no `smtp` relation. What they exercise is
+the rendering pipeline itself: the worker's Playwright screenshot, the
+timeout it is bounded by, and the beat scheduler that dispatches it.
+"""
+
 import logging
 import shlex
 import time
 import uuid
-from typing import Any, Mapping
+from typing import Any, Mapping, Optional
 
+import jubilant
 import pytest
-import pytest_asyncio
 import requests
-import yaml
-from integration.conftest import deploy  # noqa: F401, pylint: disable=W0611
-from integration.helpers import (
-    CHARM_FUNCTIONS,
-    UI_NAME,
-    api_authentication,
-    get_unit_url,
-)
-from pytest_operator.plugin import OpsTest
+import steps
+from bdd import and_, given, then, when
 
 logger = logging.getLogger(__name__)
-WORKER_NAME = f"superset-k8s-{CHARM_FUNCTIONS['worker']}"
-BEAT_NAME = f"superset-k8s-{CHARM_FUNCTIONS['beat']}"
-REPORT_APPS = [UI_NAME, BEAT_NAME, WORKER_NAME]
-SHARED_DATABASE_NAME = "superset-metadata"
-SHARED_SCHEMA = "public"
-SHARED_TABLE = "ab_user"
+
+REPORT_APPS = steps.SUPERSET_APPS
 POLL_INTERVAL = 5
-REPORT_TIMEOUT = 180
+REPORT_TIMEOUT = 300
+LOG_FILE = "/var/log/superset.log"
 
 
-async def configure_reports(
-    ops_test: OpsTest, screenshot_timeout: int, global_async_queries: bool
-) -> None:
-    """Configure every report component and wait for it to settle.
-
-    Args:
-        ops_test: Juju test model.
-        screenshot_timeout: Screenshot renderer timeout in seconds.
-        global_async_queries: Whether to enable the GLOBAL_ASYNC_QUERIES flag.
-    """
-    feature_flags = ["ALERT_REPORTS"]
-    if global_async_queries:
-        feature_flags.append("GLOBAL_ASYNC_QUERIES")
-
-    config = {
-        "feature-flags": ",".join(feature_flags),
-        "report-dry-run": "true",
-        "screenshot-timeout": str(screenshot_timeout),
-    }
-    for app_name in REPORT_APPS:
-        await ops_test.model.applications[app_name].set_config(config)
-
-    async with ops_test.fast_forward():
-        await ops_test.model.wait_for_idle(
-            apps=REPORT_APPS,
-            status="active",
-            raise_on_blocked=False,
-            timeout=600,
-        )
-
-
-async def worker_exec(
-    ops_test: OpsTest,
+def worker_ssh(
+    juju: jubilant.Juju,
     command: str,
-    environment: Mapping[str, str] | None = None,
+    environment: Optional[Mapping[str, str]] = None,
 ) -> str:
     """Run a command in the worker workload container.
 
+    The command's own failure is not an error here: a report that times out
+    exits non-zero and its output is exactly what the scenario asserts on.
+
     Args:
-        ops_test: Juju test model.
+        juju: Jubilant object.
         command: Shell command to execute.
         environment: Environment variables to provide to the command.
 
     Returns:
-        Standard output from the command.
+        The command's combined standard output and standard error.
     """
     if environment:
         assignments = " ".join(
@@ -88,205 +54,97 @@ async def worker_exec(
         )
         command = f"env {assignments} {command}"
 
-    return_code, stdout, stderr = await ops_test.juju(
-        "ssh",
-        "--container",
-        "superset",
-        f"{WORKER_NAME}/0",
-        command,
-    )
-    assert return_code == 0, stderr
-    return stdout.strip()
+    try:
+        return juju.ssh(
+            f"{steps.WORKER_NAME}/0",
+            command,
+            container=steps.WORKLOAD_CONTAINER,
+        )
+    except jubilant.CLIError as exc:
+        return f"{exc.stdout or ''}\n{exc.stderr or ''}"
 
 
-# The charm's Pebble layer defines its managed service under APP_NAME
-# ("superset"). The rock's base layer also ships a disabled "superset-ui"
-# service whose environment carries a different secret key, so the service
-# must be selected by name rather than scanning the whole rendered plan.
-WORKER_SERVICE = "superset"
-
-
-async def worker_environment(ops_test: OpsTest) -> dict[str, str]:
-    """Read the worker service environment from the running Pebble plan.
-
-    Charm-set variables live in the Pebble service environment, which an exec
-    shell does not inherit. They are read from the rendered plan and scoped to
-    the charm-managed ``superset`` service: the plan also lists a disabled
-    ``superset-ui`` service whose secret key differs, so selecting by service
-    name is required to sign report screenshots with the key the UI accepts.
-
-    Args:
-        ops_test: Juju test model.
-
-    Returns:
-        Mapping of environment variable names to their configured values.
-    """
-    plan_text = await worker_exec(
-        ops_test, "/charm/bin/pebble plan 2>/dev/null || pebble plan"
-    )
-    plan = yaml.safe_load(plan_text)
-    environment = plan["services"][WORKER_SERVICE]["environment"]
-    return {
-        key: "" if value is None else str(value)
-        for key, value in environment.items()
-    }
-
-
-async def assert_worker_config(
-    ops_test: OpsTest, screenshot_timeout: int
+def configure_reports(
+    juju: jubilant.Juju,
+    *,
+    screenshot_timeout: int,
+    global_async_queries: bool,
 ) -> None:
-    """Assert charm environment values and Superset's loaded configuration.
+    """Configure every report component and wait for it to settle.
 
     Args:
-        ops_test: Juju test model.
+        juju: Jubilant object.
+        screenshot_timeout: Screenshot renderer timeout in seconds.
+        global_async_queries: Whether to enable `GLOBAL_ASYNC_QUERIES`.
+    """
+    flags = ["ALERT_REPORTS"]
+    if global_async_queries:
+        flags.append("GLOBAL_ASYNC_QUERIES")
+
+    steps.set_config(
+        juju,
+        REPORT_APPS,
+        {
+            "feature-flags": ",".join(flags),
+            "report-dry-run": "true",
+            "screenshot-timeout": str(screenshot_timeout),
+        },
+    )
+
+
+def assert_worker_configuration(
+    juju: jubilant.Juju, screenshot_timeout: int
+) -> None:
+    """Assert the charm's values reached both the plan and Superset's config.
+
+    Args:
+        juju: Jubilant object.
         screenshot_timeout: Expected screenshot timeout in seconds.
     """
-    environment = await worker_environment(ops_test)
+    environment = steps.workload_environment(juju, f"{steps.WORKER_NAME}/0")
     assert environment.get("SCREENSHOT_TIMEOUT") == str(screenshot_timeout)
     assert environment.get("ALERT_REPORTS_DRY_RUN") == "true"
 
-    config = await worker_exec(
-        ops_test,
+    loaded = worker_ssh(
+        juju,
         'python3 -c "from superset.app import create_app; '
         "app = create_app(); "
         "print(app.config['SCREENSHOT_PLAYWRIGHT_DEFAULT_TIMEOUT']); "
         "print(app.config['ALERT_REPORTS_NOTIFICATION_DRY_RUN'])\"",
         environment,
     )
-    assert config.splitlines()[-2:] == [str(screenshot_timeout * 1000), "True"]
-
-
-def api_post(
-    session: requests.Session, url: str, path: str, data: dict
-) -> int:
-    """Create a Superset resource and return its ID.
-
-    Args:
-        session: Authenticated Superset API session.
-        url: Superset base URL.
-        path: API resource path.
-        data: Resource payload.
-
-    Returns:
-        The created resource ID.
-    """
-    response = session.post(f"{url}{path}", json=data, timeout=30)
-    assert (
-        response.ok
-    ), f"POST {path} failed ({response.status_code}): {response.text}"
-    return response.json()["id"]
-
-
-def api_delete(
-    session: requests.Session, url: str, path: str, resource_id: int
-) -> None:
-    """Delete a Superset resource, allowing prior cleanup attempts.
-
-    Args:
-        session: Authenticated Superset API session.
-        url: Superset base URL.
-        path: API resource path.
-        resource_id: Resource ID to remove.
-    """
-    response = session.delete(f"{url}{path}/{resource_id}", timeout=30)
-    assert response.status_code in (200, 404), response.text
-
-
-@pytest_asyncio.fixture(name="report_chart", scope="module")
-async def report_chart_fixture(  # pylint: disable=redefined-outer-name
-    ops_test: OpsTest, deploy  # noqa: F811
-):
-    """Create a chart whose data source every unit can reach.
-
-    Superset's bundled examples live in a SQLite file written during UI
-    bootstrap, so they exist only on the UI unit's filesystem. Under
-    GLOBAL_ASYNC_QUERIES the chart query is executed by the worker, which has no
-    such file, so no example chart can ever render for a report. The Superset
-    metadata database is reachable from every unit, so it backs the chart here.
-
-    Args:
-        ops_test: Juju test model.
-        deploy: Deployment fixture.
-
-    Yields:
-        The created chart ID.
-    """
-    url = await get_unit_url(ops_test, UI_NAME, 0, 8088)
-    session = await api_authentication(ops_test, url)
-    environment = await worker_environment(ops_test)
-
-    database_id = api_post(
-        session,
-        url,
-        "/api/v1/database/",
-        {
-            "database_name": SHARED_DATABASE_NAME,
-            "sqlalchemy_uri": environment["SQL_ALCHEMY_URI"],
-            "expose_in_sqllab": True,
-        },
-    )
-    dataset_id = api_post(
-        session,
-        url,
-        "/api/v1/dataset/",
-        {
-            "database": database_id,
-            "schema": SHARED_SCHEMA,
-            "table_name": SHARED_TABLE,
-        },
-    )
-    chart_id = api_post(
-        session,
-        url,
-        "/api/v1/chart/",
-        {
-            "slice_name": f"report-source-{uuid.uuid4()}",
-            "viz_type": "big_number_total",
-            "datasource_id": dataset_id,
-            "datasource_type": "table",
-            "params": json.dumps(
-                {
-                    "datasource": f"{dataset_id}__table",
-                    "viz_type": "big_number_total",
-                    "metric": "count",
-                    "adhoc_filters": [],
-                    "time_range": "No filter",
-                }
-            ),
-        },
-    )
-
-    yield chart_id
-
-    api_delete(session, url, "/api/v1/chart", chart_id)
-    api_delete(session, url, "/api/v1/dataset", dataset_id)
-    api_delete(session, url, "/api/v1/database", database_id)
+    assert loaded.splitlines()[-2:] == [
+        str(screenshot_timeout * 1000),
+        "True",
+    ], loaded
 
 
 def create_chart_report(
-    session: requests.Session, url: str, chart_id: int, name: str
+    session: requests.Session,
+    url: str,
+    chart_id: int,
+    name: str,
+    *,
+    active: bool,
 ) -> int:
-    """Create an inactive PNG report schedule for a chart.
-
-    The schedule is created inactive so Celery beat never runs it; the test
-    drives execution synchronously via ``execute_report`` instead, avoiding a
-    race where beat leaves the report wedged in the ``Working`` state.
+    """Create a PNG report schedule for a chart.
 
     Args:
         session: Authenticated Superset API session.
         url: Superset base URL.
         chart_id: Chart to render.
         name: Unique report schedule name.
+        active: Whether Celery beat should dispatch the schedule itself.
 
     Returns:
-        The created report schedule ID.
+        The created report schedule identifier.
     """
-    return api_post(
+    return steps.api_post(
         session,
         url,
         "/api/v1/report/",
         {
-            "active": False,
+            "active": active,
             "chart": chart_id,
             "crontab": "* * * * *",
             "name": name,
@@ -304,28 +162,22 @@ def create_chart_report(
     )
 
 
-async def execute_report(ops_test: OpsTest, report_id: int) -> str:
-    """Run the report command synchronously instead of relying on Celery beat.
+def execute_report(juju: jubilant.Juju, report_id: int) -> str:
+    """Run one report synchronously, without waiting for Celery beat.
 
-    The command runs in a one-shot exec process, so its logs go to that process
-    rather than the worker service's juju log; they are returned to the caller.
-    A concrete ``scheduled_dttm`` is supplied because that execution log column
-    is non-nullable and eager Celery execution would otherwise leave it null.
+    A concrete `scheduled_dttm` is supplied because that execution log column
+    is not nullable.
 
     Args:
-        ops_test: Juju test model.
-        report_id: Report schedule ID to execute.
+        juju: Jubilant object.
+        report_id: Report schedule identifier to execute.
 
     Returns:
-        Combined stdout and stderr emitted while executing the report.
+        The output emitted while executing the report.
     """
-    environment = await worker_environment(ops_test)
-    assignments = " ".join(
-        f"{key}={shlex.quote(value)}" for key, value in environment.items()
-    )
+    environment = steps.workload_environment(juju, f"{steps.WORKER_NAME}/0")
     command = (
-        f"env {assignments} python3 -c "
-        '"from datetime import datetime; '
+        'python3 -c "from datetime import datetime; '
         "from uuid import uuid4; "
         "from superset.app import create_app; "
         "app = create_app(); "
@@ -335,35 +187,52 @@ async def execute_report(ops_test: OpsTest, report_id: int) -> str:
         "AsyncExecuteReportScheduleCommand("
         f'str(uuid4()), {report_id}, datetime.utcnow()).run()"'
     )
-    _, stdout, stderr = await ops_test.juju(
-        "ssh", "--container", "superset", f"{WORKER_NAME}/0", command
-    )
-    output = f"{stdout}\n{stderr}"
+    output = worker_ssh(juju, command, environment)
     logger.info("execute_report(%s) output:\n%s", report_id, output)
     return output
 
 
-async def wait_for_report(
+def worker_log(juju: jubilant.Juju, lines: int = 200) -> str:
+    """Return the tail of the worker's Superset log.
+
+    `superset_config.py` sets `FILENAME` from the charm's `LOG_FILE` and turns
+    on time-rotated logging, so Superset writes through a file handler and its
+    messages never reach the stdout of a one-shot exec process.
+
+    Args:
+        juju: Jubilant object.
+        lines: How many trailing lines to return.
+
+    Returns:
+        The tail of the log, empty if it cannot be read.
+    """
+    return worker_ssh(juju, f"tail -n {lines} {LOG_FILE}")
+
+
+def wait_for_report(
     session: requests.Session,
     url: str,
     report_id: int,
     expected_state: str,
+    *,
+    timeout: float = REPORT_TIMEOUT,
 ) -> dict[str, Any]:
-    """Poll a report execution log until it reaches its expected final state.
+    """Poll a report's execution log until it reaches a state.
 
     Args:
         session: Authenticated Superset API session.
         url: Superset base URL.
-        report_id: Report schedule ID.
-        expected_state: Expected terminal state.
+        report_id: Report schedule identifier.
+        expected_state: The terminal state to wait for.
+        timeout: Maximum seconds to wait.
 
     Returns:
-        The execution log that reached the requested state.
+        The execution log entry that reached the requested state.
 
     Raises:
-        TimeoutError: If the report does not reach the expected state in time.
+        AssertionError: If the report does not reach the state in time.
     """
-    deadline = time.monotonic() + REPORT_TIMEOUT
+    deadline = time.monotonic() + timeout
     last_logs: list[dict[str, Any]] = []
     while time.monotonic() < deadline:
         response = session.get(
@@ -371,82 +240,168 @@ async def wait_for_report(
         )
         response.raise_for_status()
         last_logs = response.json().get("result", [])
-        for log in last_logs:
-            if log.get("state") == expected_state:
-                return log
-        await asyncio.sleep(POLL_INTERVAL)
-    raise TimeoutError(
-        f"Report {report_id} did not reach {expected_state}: {last_logs}"
+        for entry in last_logs:
+            if entry.get("state") == expected_state:
+                return entry
+        time.sleep(POLL_INTERVAL)
+    raise AssertionError(
+        f"report {report_id} never reached {expected_state}: {last_logs}"
     )
 
 
-@pytest.mark.abort_on_fail
-@pytest.mark.usefixtures("deploy")
-class TestReports:
-    """Exercise report rendering without requiring an SMTP deployment.
+@pytest.fixture(scope="module")
+def a_report_source_chart(superset_deployment: jubilant.Juju):
+    """Create a chart on a data source every unit of the deployment reaches.
 
-    `report-dry-run` is what makes that possible: it delivers nothing, so the
-    `smtp` relation is not needed here.
+    Superset's bundled examples live in a SQLite file written during UI
+    bootstrap, so they exist only on the UI unit's filesystem. Under
+    `GLOBAL_ASYNC_QUERIES` the chart query is run by the worker, which has no
+    such file, so no example chart could ever render for a report.
+
+    Args:
+        superset_deployment: The active deployment.
+
+    Yields:
+        The identifier of the chart created.
     """
+    juju = superset_deployment
+    session, url = steps.api_session(juju)
+    environment = steps.workload_environment(juju, f"{steps.UI_NAME}/0")
 
-    @pytest.mark.parametrize(
-        "global_async_queries", [False, True], ids=["sync", "async"]
+    database_id, dataset_id, chart_id = steps.create_metadata_backed_chart(
+        session, url, environment, f"report-source-{uuid.uuid4().hex[:8]}"
     )
-    async def test_dry_run_report_succeeds(
-        self,
-        ops_test: OpsTest,
-        report_chart: int,
-        global_async_queries: bool,
-    ):
-        """Render a chart and suppress its notification delivery."""
-        await configure_reports(
-            ops_test,
+
+    yield chart_id
+
+    session, url = steps.api_session(juju)
+    steps.api_delete(session, url, "/api/v1/chart", chart_id)
+    steps.api_delete(session, url, "/api/v1/dataset", dataset_id)
+    steps.api_delete(session, url, "/api/v1/database", database_id)
+
+
+@pytest.mark.parametrize(
+    "global_async_queries", [False, True], ids=["sync", "async"]
+)
+def test_a_dry_run_report_renders_and_delivers_nothing(
+    superset_deployment: jubilant.Juju,
+    a_report_source_chart: int,
+    global_async_queries: bool,
+):
+    """Scenario: a report is rendered with delivery suppressed.
+
+    Given a Superset deployment rendering reports in dry-run mode
+    When a report on a chart is executed
+    Then the report succeeds
+    And it says its notification was suppressed rather than sent
+    """
+    juju = superset_deployment
+
+    with given("a Superset deployment rendering reports in dry-run mode"):
+        configure_reports(
+            juju,
             screenshot_timeout=600,
             global_async_queries=global_async_queries,
         )
-        await assert_worker_config(ops_test, screenshot_timeout=600)
-        url = await get_unit_url(ops_test, UI_NAME, 0, 8088)
-        session = await api_authentication(ops_test, url)
+        assert_worker_configuration(juju, screenshot_timeout=600)
 
-        report_id = create_chart_report(
-            session, url, report_chart, f"dry-run-{uuid.uuid4()}"
-        )
-        try:
-            output = await execute_report(ops_test, report_id)
-            log = await wait_for_report(session, url, report_id, "Success")
-            assert log["state"] == "Success"
-            assert "ALERT_REPORTS_NOTIFICATION_DRY_RUN is enabled" in output
-        finally:
-            api_delete(session, url, "/api/v1/report", report_id)
-
-    @pytest.mark.parametrize(
-        "global_async_queries", [False, True], ids=["sync", "async"]
+    session, url = steps.api_session(juju)
+    report_id = create_chart_report(
+        session,
+        url,
+        a_report_source_chart,
+        f"dry-run-{uuid.uuid4().hex[:8]}",
+        active=False,
     )
-    async def test_screenshot_timeout_is_applied(
-        self,
-        ops_test: OpsTest,
-        report_chart: int,
-        global_async_queries: bool,
-    ):
-        """Fail a chart screenshot at the configured one-second limit."""
-        await configure_reports(
-            ops_test,
-            screenshot_timeout=1,
-            global_async_queries=global_async_queries,
+    try:
+        with when("a report on a chart is executed"):
+            output = execute_report(juju, report_id)
+
+        with then("the report succeeds"):
+            entry = wait_for_report(session, url, report_id, "Success")
+            assert entry["state"] == "Success"
+
+        with and_("it says its notification was suppressed rather than sent"):
+            log = worker_log(juju)
+            assert (
+                "ALERT_REPORTS_NOTIFICATION_DRY_RUN is enabled" in log
+            ), f"dry-run notice absent from {LOG_FILE}; exec output was {output!r}"
+    finally:
+        steps.api_delete(session, url, "/api/v1/report", report_id)
+
+
+@pytest.mark.parametrize(
+    "screenshot_timeout", [600, 1], ids=["default", "short"]
+)
+def test_the_configured_screenshot_timeout_reaches_superset(
+    superset_deployment: jubilant.Juju, screenshot_timeout: int
+):
+    """Scenario: the operator bounds how long a report screenshot may take.
+
+    Given a Superset deployment rendering reports
+    When the screenshot timeout is configured
+    Then Superset's loaded configuration carries it, in milliseconds
+    """
+    juju = superset_deployment
+
+    with given("a Superset deployment rendering reports"):
+        pass
+
+    with when("the screenshot timeout is configured"):
+        configure_reports(
+            juju,
+            screenshot_timeout=screenshot_timeout,
+            global_async_queries=False,
         )
-        await assert_worker_config(ops_test, screenshot_timeout=1)
-        url = await get_unit_url(ops_test, UI_NAME, 0, 8088)
-        session = await api_authentication(ops_test, url)
-        report_id = create_chart_report(
-            session,
-            url,
-            report_chart,
-            f"report_timeout_{uuid.uuid4().hex}",
+
+    with then("Superset's loaded configuration carries it, in milliseconds"):
+        assert_worker_configuration(
+            juju, screenshot_timeout=screenshot_timeout
         )
-        try:
-            await execute_report(ops_test, report_id)
-            log = await wait_for_report(session, url, report_id, "Error")
-            error = log.get("error_message", "")
-            assert "Timeout 1000ms exceeded" in error, error
-        finally:
-            api_delete(session, url, "/api/v1/report", report_id)
+
+
+def test_the_beat_scheduler_dispatches_a_report_the_worker_runs(
+    superset_deployment: jubilant.Juju, a_report_source_chart: int
+):
+    """Scenario: a report runs end to end.
+
+    Given a Superset deployment rendering reports in dry-run mode
+    And a Celery daemon answering on the broker
+    When an active report schedule is created
+    Then the report is executed
+    """
+    juju = superset_deployment
+
+    with given("a Superset deployment rendering reports in dry-run mode"):
+        configure_reports(
+            juju, screenshot_timeout=600, global_async_queries=False
+        )
+
+    with and_("a Celery daemon answering on the broker"):
+        steps.wait_for_celery_workers(juju, 1)
+        beat_plan = steps.workload_services(juju, f"{steps.BEAT_NAME}/0")
+        assert (
+            beat_plan.get(steps.WORKLOAD_SERVICE) == "active"
+        ), f"the beat scheduler is not running: {beat_plan}"
+
+    session, url = steps.api_session(juju)
+    report_id = create_chart_report(
+        session,
+        url,
+        a_report_source_chart,
+        f"scheduled-{uuid.uuid4().hex[:8]}",
+        active=True,
+    )
+    try:
+        with when("an active report schedule is created"):
+            logger.info(
+                "Waiting for Celery beat to dispatch report %s", report_id
+            )
+
+        with then("the report is executed without anyone running the command"):
+            entry = wait_for_report(
+                session, url, report_id, "Success", timeout=10 * 60
+            )
+            assert entry["state"] == "Success"
+    finally:
+        steps.api_delete(session, url, "/api/v1/report", report_id)
