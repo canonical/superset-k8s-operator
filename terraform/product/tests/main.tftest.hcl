@@ -137,7 +137,8 @@ run "wait_for_traefik_active" {
 }
 
 # Enable SSO and the SMTP relay on the now-active stack. Both are deployed on top of the base
-# deploy, which is how an operator turns them on.
+# deploy, which is how an operator turns them on. The relay authenticates, so its password travels
+# through the module's Juju secret and the Superset applications must be able to read it.
 run "enable_sso_and_smtp" {
   variables {
     model_uuid        = run.setup_tests.model_uuid
@@ -149,8 +150,13 @@ run "enable_sso_and_smtp" {
     }
 
     smtp_integrator_config = {
-      host        = "smtp.example.com"
-      smtp_sender = "reports@example.com"
+      host               = "smtp.example.com"
+      smtp_sender        = "reports@example.com"
+      port               = 587
+      auth_type          = "plain"
+      transport_security = "starttls"
+      user               = "superset"
+      password           = "stub-smtp-password"
     }
   }
 
@@ -160,6 +166,14 @@ run "enable_sso_and_smtp" {
       output.models.superset.components["smtp-integrator"] == "smtp-integrator",
     ])
     error_message = "the SSO integrator and the SMTP relay were not deployed when configured"
+  }
+
+  assert {
+    condition = alltrue([
+      startswith(module.smtp_integrator[0].application.config["password_secret"], "secret:"),
+      !contains(keys(module.smtp_integrator[0].application.config), "password"),
+    ])
+    error_message = "the SMTP password was not handed to the relay as a Juju secret"
   }
 }
 

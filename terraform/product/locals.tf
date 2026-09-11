@@ -82,7 +82,7 @@ locals {
     host               = var.smtp_integrator_config.host
     port               = tostring(var.smtp_integrator_config.port)
     user               = var.smtp_integrator_config.user
-    password           = sensitive(var.smtp_integrator_config.password)
+    password_secret    = juju_secret.smtp_password[0].secret_uri
     auth_type          = var.smtp_integrator_config.auth_type
     transport_security = var.smtp_integrator_config.transport_security
     domain             = var.smtp_integrator_config.domain

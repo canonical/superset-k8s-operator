@@ -173,6 +173,30 @@ module "smtp_integrator" {
   config      = local.smtp_charm_config
 }
 
+resource "juju_secret" "smtp_password" {
+  count      = local.enable_smtp ? 1 : 0
+  model_uuid = var.model_uuid
+  name       = "superset-smtp-password"
+  info       = "SMTP AUTH password for the relay Superset sends alerts and reports through."
+  value = {
+    password = var.smtp_integrator_config.password
+  }
+}
+
+# The relay publishes this secret's ID on the `smtp` relation but cannot grant a secret it does not
+# own, so the three Superset applications that read the password from it are granted it here too.
+resource "juju_access_secret" "smtp_password" {
+  count      = local.enable_smtp ? 1 : 0
+  model_uuid = var.model_uuid
+  applications = [
+    module.smtp_integrator[0].application.name,
+    module.superset_ui.application.name,
+    module.superset_worker.application.name,
+    module.superset_beat.application.name,
+  ]
+  secret_id = juju_secret.smtp_password[0].secret_id
+}
+
 ### INTEGRATIONS: every Superset application to PostgreSQL and to Redis
 #
 # No ordering is imposed between the three. Only the UI application migrates the metadata
@@ -265,7 +289,9 @@ resource "juju_integration" "superset_oauth" {
 
 # The `smtp` endpoint is declared on the charm as a whole and `ALERT_REPORTS` is checked per
 # application, so all three are related: the UI offers alerts and reports, the worker delivers
-# them and the beat scheduler dispatches them.
+# them and the beat scheduler dispatches them. The relay reads its password secret only on
+# config-changed and on relation-created, so relating after the grant is what lets it recover when
+# its first config-changed ran before the grant existed.
 resource "juju_integration" "superset_smtp" {
   for_each = local.enable_smtp ? local.superset_requires : {}
 
@@ -280,6 +306,8 @@ resource "juju_integration" "superset_smtp" {
     name     = module.smtp_integrator[0].provides.smtp.name
     endpoint = module.smtp_integrator[0].provides.smtp.endpoint
   }
+
+  depends_on = [juju_access_secret.smtp_password]
 }
 
 resource "juju_integration" "superset_trino_catalog" {
