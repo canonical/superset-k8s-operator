@@ -83,24 +83,15 @@ def a_published_deployment(request: pytest.FixtureRequest):
     Yields:
         A tuple of the Jubilant object and the channel it deployed from.
     """
-    channel = request.param
-
-    def _deploy(juju: jubilant.Juju) -> None:
-        """Build the baseline in the model."""
-        deploy_baseline(juju, channel)
-
-    # Each baseline is deployed from scratch, so `--no-deploy` can only serve
-    # one of them; it adopts whatever is in the model for both.
+    # A model kept from an earlier run already holds the refreshed charm.
     if request.config.getoption("--no-deploy"):
-        juju = jubilant.Juju(model=request.config.getoption("--model"))
-        juju.wait_timeout = steps.DEPLOY_TIMEOUT
-        yield steps.adopt_or_build(request, juju, _deploy), channel
-        return
+        pytest.skip("a kept model no longer holds a published release")
 
+    channel = request.param
     keep = request.config.getoption("--keep-models")
     with jubilant.temp_model(keep=keep) as juju:
         juju.wait_timeout = steps.DEPLOY_TIMEOUT
-        _deploy(juju)
+        deploy_baseline(juju, channel)
 
         yield juju, channel
 
@@ -128,6 +119,9 @@ def test_a_published_deployment_survives_the_refresh(
         steps.assert_ui_serves(juju, app)
 
     with when("it is refreshed onto the charm being built"):
+        # The UI loads the examples on every start, so leaving this on would
+        # put back any charts the refresh lost.
+        juju.config(app, {"load-examples": False})
         steps.refresh_to_local(juju, app, charm, charm_image)
         configure_signing_keys(juju, app)
 

@@ -87,9 +87,8 @@ def test_scaling_back_in_leaves_a_working_deployment(
     with given(
         "a Superset deployment scaled out to two UI and two worker units"
     ):
-        status = juju.status()
         for app in steps.SCALABLE_APPS:
-            assert len(status.apps[app].units) == 2, f"{app} is not scaled out"
+            steps.scale(juju, app, 2)
 
     with when("both applications are scaled back in to one unit"):
         for app in steps.SCALABLE_APPS:

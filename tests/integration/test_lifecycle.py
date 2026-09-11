@@ -45,6 +45,36 @@ def a_saved_chart(superset_deployment: jubilant.Juju) -> str:
     return name
 
 
+def _relate_tls(juju: jubilant.Juju) -> None:
+    """Deploy a TLS provider and relate it to the UI.
+
+    Args:
+        juju: Jubilant object.
+    """
+    steps.deploy_tls(juju)
+    juju.integrate(
+        f"{steps.UI_NAME}:certificates", f"{steps.TLS_NAME}:certificates"
+    )
+    steps.wait_for_active(juju, [steps.UI_NAME, steps.TLS_NAME])
+
+
+@pytest.fixture(scope="module")
+def superset_deployment_with_certificates(
+    request: pytest.FixtureRequest, superset_deployment: jubilant.Juju
+) -> jubilant.Juju:
+    """A Superset deployment whose UI is related to a TLS provider.
+
+    Args:
+        request: Pytest request object.
+        superset_deployment: The active deployment.
+
+    Returns:
+        The model, with the certificates relation in place.
+    """
+    logger.info("Relating a TLS provider to the UI")
+    return steps.adopt_or_build(request, superset_deployment, _relate_tls)
+
+
 def test_the_restart_action_restarts_the_server(
     superset_deployment: jubilant.Juju,
 ):
@@ -68,28 +98,21 @@ def test_the_restart_action_restarts_the_server(
 
 
 def test_a_certificate_authority_is_installed_in_the_workload(
-    superset_deployment: jubilant.Juju,
+    superset_deployment_with_certificates: jubilant.Juju,
 ):
     """Scenario: a TLS provider's CA reaches the workload container.
 
-    Given a Superset deployment with no certificates relation
+    Given a Superset deployment
     When a TLS provider is related to the UI
     Then its CA is written to the path the charm documents
     """
-    juju = superset_deployment
+    juju = superset_deployment_with_certificates
 
-    with given("a Superset deployment with no certificates relation"):
-        return_code, _ = steps.read_workload_file(
-            juju, f"{steps.UI_NAME}/0", steps.CA_CERT_PATH
-        )
-        assert return_code != 0, f"{steps.CA_CERT_PATH} already exists"
+    with given("a Superset deployment"):
+        pass
 
     with when("a TLS provider is related to the UI"):
-        steps.deploy_tls(juju)
-        juju.integrate(
-            f"{steps.UI_NAME}:certificates", f"{steps.TLS_NAME}:certificates"
-        )
-        steps.wait_for_active(juju, [steps.UI_NAME, steps.TLS_NAME])
+        pass
 
     with then("its CA is written to the path the charm documents"):
         return_code, contents = steps.read_workload_file(
@@ -100,7 +123,7 @@ def test_a_certificate_authority_is_installed_in_the_workload(
 
 
 def test_removing_the_certificates_relation_removes_the_authority(
-    superset_deployment: jubilant.Juju,
+    superset_deployment_with_certificates: jubilant.Juju,
 ):
     """Scenario: withdrawing a TLS provider withdraws its trust.
 
@@ -108,7 +131,7 @@ def test_removing_the_certificates_relation_removes_the_authority(
     When the certificates relation is removed
     Then the CA is gone from the workload container
     """
-    juju = superset_deployment
+    juju = superset_deployment_with_certificates
 
     with given("a Superset deployment whose UI trusts a TLS provider's CA"):
         return_code, _ = steps.read_workload_file(

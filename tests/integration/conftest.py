@@ -29,8 +29,9 @@ def charm(request: FixtureRequest) -> Path:
     """Return the path to the charm package to deploy.
 
     Under `--no-deploy` the package is optional, because the deployment it
-    would have built is already in the model. `test_upgrades.py` is the exception:
-    its When is the refresh onto the package, so it has to be supplied there.
+    would have built is already in the model. The scenario in
+    `test_lifecycle.py` that redeploys the UI is the exception: its When
+    deploys the package, so it has to be supplied there.
 
     Args:
         request: Pytest request object.

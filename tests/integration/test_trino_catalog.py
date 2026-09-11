@@ -97,6 +97,19 @@ def set_catalogs(
     )
 
 
+def serve_every_catalog(
+    juju: jubilant.Juju, secret_ids: dict[str, str]
+) -> None:
+    """Reconfigure Trino to serve all three catalogs.
+
+    Args:
+        juju: Jubilant object.
+        secret_ids: Catalog name to the identifier of its credentials secret.
+    """
+    secret_ids["redshift"] = add_catalog_secret(juju, "redshift")
+    set_catalogs(juju, secret_ids, list(CATALOG_SECRETS))
+
+
 def add_catalog_secret(juju: jubilant.Juju, catalog: str) -> str:
     """Add the credentials secret one Trino catalog is served with.
 
@@ -315,8 +328,7 @@ def test_adding_a_catalog_adds_a_connection(
         wait_for_connections(juju, 2)
 
     with when("a redshift catalog is added to Trino"):
-        secret_ids["redshift"] = add_catalog_secret(juju, "redshift")
-        set_catalogs(juju, secret_ids, ["pgsql", "mysql", "redshift"])
+        serve_every_catalog(juju, secret_ids)
 
     with then("Superset gains a connection for it"):
         names = wait_for_connections(juju, 3)
@@ -337,6 +349,7 @@ def test_removing_a_catalog_leaves_its_connection_alone(
     with given(
         "a Superset holding a connection for each of three Trino catalogs"
     ):
+        serve_every_catalog(juju, secret_ids)
         assert "Mysql (mysql)" in wait_for_connections(juju, 3)
 
     with when("the mysql catalog is removed from Trino"):
@@ -348,7 +361,7 @@ def test_removing_a_catalog_leaves_its_connection_alone(
 
 
 def test_breaking_the_relation_leaves_every_connection_alone(
-    superset_related_to_trino: jubilant.Juju,
+    superset_related_to_trino: jubilant.Juju, secret_ids: dict[str, str]
 ):
     """Scenario: the trino-catalog relation is removed entirely.
 
@@ -360,6 +373,7 @@ def test_breaking_the_relation_leaves_every_connection_alone(
     juju = superset_related_to_trino
 
     with given("a Superset holding three Trino-backed connections"):
+        serve_every_catalog(juju, secret_ids)
         wait_for_connections(juju, 3)
 
     with when("the trino-catalog relation is removed"):

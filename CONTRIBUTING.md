@@ -106,10 +106,11 @@ instead of building it, so `--charm-file` and `--superset-image` are usually not
 needed. It suits the scenarios that share a module's deployment; the few that
 start from an empty model of their own, such as the blocked-status scenarios in
 `test_deployment.py`, assert that the model is empty and so are worth selecting
-out with `-k` when reusing a model. `test_upgrades.py` still needs both options,
-because refreshing onto the packed charm is what its scenarios do rather than
-how their deployment is built, and it holds one baseline per model, so a reused model
-serves one of its scenarios rather than both. There is one `integration-<module>`
+out with `-k` when reusing a model. The scenario in `test_lifecycle.py` that
+redeploys the UI still needs both options, because deploying the packed charm
+is what it does rather than how its deployment is built. `test_upgrades.py` is
+skipped, because a kept model holds the refreshed charm rather than the
+published release its scenarios start from. There is one `integration-<module>`
 environment per scenario module, and the scenario steps are logged at INFO, so
 the run reads as the specification it came from.
 
