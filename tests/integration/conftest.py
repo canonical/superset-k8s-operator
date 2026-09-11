@@ -1,106 +1,272 @@
 # Copyright 2023 Canonical Ltd.
 # See LICENSE file for licensing details.
 
-"""Charm integration test config."""
+"""Superset charm integration test config.
 
-import asyncio
+The expensive Given of a charm scenario is the deployment it starts from, so
+the deployments live here as fixtures named after the state they leave the model
+in. A scenario that needs more than one of them composes them rather than
+depending on the order its tests run in.
+"""
+
+import hashlib
 import logging
+import os
+import sys
+import zipfile
 from pathlib import Path
 
+import jubilant
 import pytest
-import pytest_asyncio
-from integration.helpers import (
-    CHARM_FUNCTIONS,
-    POSTGRES_NAME,
-    REDIS_NAME,
-    TRAEFIK_CONFIG,
-    TRAEFIK_NAME,
-    UI_NAME,
-    create_signing_keys_secret,
-    deploy_and_relate_superset_charm,
-)
+import steps
 from pytest import FixtureRequest
-from pytest_operator.plugin import OpsTest
 
 logger = logging.getLogger(__name__)
 
 
-@pytest.fixture(scope="module", name="charm_image")
-def charm_image_fixture(request: FixtureRequest) -> str:
-    """The OCI image for charm."""
-    charm_image = request.config.getoption("--superset-image")
-    assert (
-        charm_image
-    ), "--superset-image argument is required which should contain the name of the OCI image."
-    return charm_image
+@pytest.fixture(scope="session")
+def charm(request: FixtureRequest) -> Path:
+    """Return the path to the charm package to deploy.
+
+    Under `--no-deploy` the package is optional, because the deployment it
+    would have built is already in the model. The scenario in
+    `test_lifecycle.py` that redeploys the UI is the exception: its When
+    deploys the package, so it has to be supplied there.
+
+    Args:
+        request: Pytest request object.
+
+    Returns:
+        Path to the packed charm.
+
+    Raises:
+        FileNotFoundError: If no charm package can be found.
+        ValueError: If the working directory holds more than one.
+    """
+    charm_file = request.config.getoption("--charm-file")
+    if charm_file:
+        charm_path = Path(charm_file[0]).expanduser().resolve()
+        if not charm_path.exists():
+            raise FileNotFoundError(f"Charm does not exist: {charm_path}")
+        return charm_path
+
+    charm_path_env = os.environ.get("CHARM_PATH")
+    if charm_path_env:
+        charm_path = Path(charm_path_env).expanduser().resolve()
+        if not charm_path.exists():
+            raise FileNotFoundError(f"Charm does not exist: {charm_path}")
+        return charm_path
+
+    charm_paths = list(Path(".").glob("*.charm"))
+    if not charm_paths:
+        if request.config.getoption("--no-deploy"):
+            # The deployment already exists, so most scenarios never open this.
+            return Path()
+        raise FileNotFoundError("No .charm file in the current directory")
+    if len(charm_paths) > 1:
+        found = ", ".join(str(path) for path in charm_paths)
+        raise ValueError(f"More than one .charm file: {found}")
+    charm_path = charm_paths[0].resolve()
+    _warn_if_stale(charm_path)
+    return charm_path
 
 
-@pytest_asyncio.fixture(scope="module", name="charm")
-async def charm_fixture(
-    request: FixtureRequest, ops_test: OpsTest
-) -> str | Path:
-    """Fetch the path to charm."""
-    charms = request.config.getoption("--charm-file")
-    if not charms:
-        charm = await ops_test.build_charm(".")
-        assert charm, "Charm not built"
-        return charm
-    return charms[0]
+def _warn_if_stale(charm_path: Path) -> None:
+    """Warn when a packed charm no longer matches the working tree.
+
+    A scenario run against a package built before the source it is meant to
+    exercise passes or fails on code nobody is looking at. CI packs the charm
+    on every run so this never fires there; picking up a stale local build is
+    easy, and the failure it produces looks exactly like a charm defect.
+
+    Args:
+        charm_path: Path to the packed charm.
+    """
+    try:
+        with zipfile.ZipFile(charm_path) as package:
+            names = [
+                name
+                for name in package.namelist()
+                if name.startswith(("src/", "templates/"))
+                and name.endswith(".py")
+            ]
+            stale = [
+                name
+                for name in sorted(names)
+                if not Path(name).exists()
+                or hashlib.sha256(package.read(name)).hexdigest()
+                != hashlib.sha256(Path(name).read_bytes()).hexdigest()
+            ]
+    except (OSError, zipfile.BadZipFile) as exc:
+        logger.warning(
+            "Could not check %s against the source: %s", charm_path, exc
+        )
+        return
+
+    if stale:
+        logger.warning(
+            "%s was built from different source than the working tree. "
+            "Repack it with `charmcraft pack` before trusting a result. "
+            "Differing: %s",
+            charm_path.name,
+            ", ".join(stale),
+        )
 
 
-@pytest_asyncio.fixture(name="deploy", scope="module")
-async def deploy(ops_test: OpsTest, charm: str, charm_image: str):
-    """Deploy the app."""
-    await asyncio.gather(
-        ops_test.model.deploy(POSTGRES_NAME, channel="14", trust=True),
-        ops_test.model.deploy(REDIS_NAME, channel="edge", trust=True),
-        ops_test.model.deploy(
-            TRAEFIK_NAME,
-            channel="latest/stable",
-            config=TRAEFIK_CONFIG,
-            trust=True,
-        ),
+@pytest.fixture(scope="session")
+def charm_image(request: FixtureRequest) -> str:
+    """Return the workload OCI image built by the CI workflow.
+
+    Args:
+        request: Pytest request object.
+
+    Returns:
+        The image reference.
+
+    Raises:
+        ValueError: If the option was not supplied.
+    """
+    image = request.config.getoption("--superset-image")
+    if not image:
+        if request.config.getoption("--no-deploy"):
+            # The deployment already exists, so most scenarios never deploy it.
+            return ""
+        raise ValueError(
+            "--superset-image is required and must name the OCI image"
+        )
+    return image
+
+
+def _collect_juju_logs_if_failed(
+    request: FixtureRequest, juju: jubilant.Juju
+) -> None:
+    """Print the model's Juju logs at teardown when a scenario failed.
+
+    Args:
+        request: Pytest request object.
+        juju: Jubilant object.
+    """
+    if not request.session.testsfailed:
+        return
+    logger.info("Collecting Juju logs from model '%s'", juju.model)
+    print(juju.debug_log(limit=20000), end="", file=sys.stderr)
+
+
+def _prepare(juju: jubilant.Juju) -> jubilant.Juju:
+    """Set the model options every deployment depends on.
+
+    Args:
+        juju: Jubilant object.
+
+    Returns:
+        The same object, configured.
+    """
+    juju.wait_timeout = steps.DEPLOY_TIMEOUT
+    try:
+        juju.model_config({"update-status-hook-interval": "60s"})
+    except jubilant.CLIError as exc:
+        logger.warning("Could not shorten the update-status interval: %s", exc)
+    return juju
+
+
+def _model_for(request: FixtureRequest):
+    """Yield the model a deployment is built in, dumping Juju logs on failure.
+
+    Under `--no-deploy` this is the existing model named by `--model`, or the
+    active one, and it is left alone afterwards. Otherwise it is a temporary
+    model, destroyed at teardown unless `--keep-models` is given.
+
+    Args:
+        request: Pytest request object.
+
+    Yields:
+        A Jubilant object bound to the model.
+    """
+    if request.config.getoption("--no-deploy"):
+        juju = jubilant.Juju(model=request.config.getoption("--model"))
+        logger.info("--no-deploy: using the existing model '%s'", juju.model)
+        yield _prepare(juju)
+        _collect_juju_logs_if_failed(request, juju)
+        return
+
+    keep = request.config.getoption("--keep-models")
+    with jubilant.temp_model(keep=keep) as juju:
+        yield _prepare(juju)
+        _collect_juju_logs_if_failed(request, juju)
+
+
+@pytest.fixture(scope="function")
+def bare_model(request: FixtureRequest) -> jubilant.Juju:
+    """Give one scenario an empty model of its own.
+
+    Yields:
+        A Jubilant object bound to an empty temporary model.
+    """
+    yield from _model_for(request)
+
+
+@pytest.fixture(scope="module")
+def model(request: FixtureRequest) -> jubilant.Juju:
+    """Give a scenario module one model to build its deployment in.
+
+    Yields:
+        A Jubilant object bound to an empty temporary model.
+    """
+    yield from _model_for(request)
+
+
+@pytest.fixture(scope="module")
+def superset_deployment(
+    request: FixtureRequest,
+    model: jubilant.Juju,
+    charm: Path,
+    charm_image: str,
+) -> jubilant.Juju:
+    """A complete Superset deployment on its dependencies, active.
+
+    The UI, worker and beat scheduler run the charm's own defaults.
+
+    Args:
+        request: Pytest request object.
+        model: The module's model.
+        charm: Path to the packed charm.
+        charm_image: The workload OCI image reference.
+
+    Returns:
+        The model, with the deployment active in it.
+    """
+    logger.info("Deploying a complete Superset deployment")
+    return steps.adopt_or_build(
+        request, model, steps.deploy_superset, charm, charm_image
     )
 
-    async with ops_test.fast_forward():
-        await ops_test.model.wait_for_idle(
-            apps=[POSTGRES_NAME, REDIS_NAME],
-            status="active",
-            raise_on_blocked=False,
-            timeout=2000,
-        )
-        resources = {"superset-image": charm_image}
-        signing_keys_secret_id = await create_signing_keys_secret(ops_test)
 
-        # Iterate through UI, worker and beat charms
-        for function, alias in CHARM_FUNCTIONS.items():
-            app_name = f"superset-k8s-{alias}"
-            superset_config = {
-                "charm-function": function,
-                "signing-keys-secret-id": signing_keys_secret_id,
-                "server-alias": UI_NAME,
-                "feature-flags": "GLOBAL_ASYNC_QUERIES",
-            }
+@pytest.fixture(scope="module")
+def superset_deployment_with_ingress(
+    request: FixtureRequest, superset_deployment: jubilant.Juju
+) -> jubilant.Juju:
+    """A Superset deployment whose UI is served through Traefik.
 
-            # Load examples for the UI charm
-            if app_name == UI_NAME:
-                superset_config.update({"load-examples": "True"})
+    Args:
+        request: Pytest request object.
+        superset_deployment: The active deployment.
 
-            await deploy_and_relate_superset_charm(
-                ops_test, app_name, superset_config, charm, resources
-            )
+    Returns:
+        The model, with the UI behind an ingress.
+    """
+    logger.info("Putting the UI behind Traefik")
+    return steps.adopt_or_build(
+        request, superset_deployment, steps.deploy_traefik
+    )
 
-        await ops_test.model.integrate(
-            f"{UI_NAME}:ingress", f"{TRAEFIK_NAME}:ingress"
-        )
-        await ops_test.model.wait_for_idle(
-            apps=[TRAEFIK_NAME, UI_NAME],
-            status="active",
-            raise_on_blocked=False,
-            timeout=300,
-        )
 
-        assert (
-            ops_test.model.applications[UI_NAME].units[0].workload_status
-            == "active"
-        )
+@pytest.fixture(autouse=True)
+def log_scenario(request: FixtureRequest):
+    """Log the title of the scenario about to run.
+
+    Args:
+        request: Pytest request object.
+    """
+    doc = (request.node.function.__doc__ or "").strip()
+    if doc:
+        logger.info("%s", doc.splitlines()[0])
