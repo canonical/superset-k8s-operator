@@ -30,7 +30,7 @@ def _step(keyword: str, text: str):
 
 
 def given(text: str):
-    """State the world a scenario starts from.
+    """State the deployment a scenario starts from.
 
     Args:
         text: The step text.

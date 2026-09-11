@@ -4,7 +4,7 @@
 """Superset charm integration test config.
 
 The expensive Given of a charm scenario is the deployment it starts from, so
-the worlds live here as fixtures named after the state they leave the model
+the deployments live here as fixtures named after the state they leave the model
 in. A scenario that needs more than one of them composes them rather than
 depending on the order its tests run in.
 """
@@ -28,8 +28,8 @@ logger = logging.getLogger(__name__)
 def charm(request: FixtureRequest) -> Path:
     """Return the path to the charm package to deploy.
 
-    Under `--no-deploy` the package is optional, because the world it would
-    have built is already in the model. `test_upgrades.py` is the exception:
+    Under `--no-deploy` the package is optional, because the deployment it
+    would have built is already in the model. `test_upgrades.py` is the exception:
     its When is the refresh onto the package, so it has to be supplied there.
 
     Args:
@@ -59,7 +59,7 @@ def charm(request: FixtureRequest) -> Path:
     charm_paths = list(Path(".").glob("*.charm"))
     if not charm_paths:
         if request.config.getoption("--no-deploy"):
-            # The world already exists, so most scenarios never open this.
+            # The deployment already exists, so most scenarios never open this.
             return Path()
         raise FileNotFoundError("No .charm file in the current directory")
     if len(charm_paths) > 1:
@@ -128,7 +128,7 @@ def charm_image(request: FixtureRequest) -> str:
     image = request.config.getoption("--superset-image")
     if not image:
         if request.config.getoption("--no-deploy"):
-            # The world already exists, so most scenarios never deploy it.
+            # The deployment already exists, so most scenarios never deploy it.
             return ""
         raise ValueError(
             "--superset-image is required and must name the OCI image"
@@ -152,7 +152,7 @@ def _collect_juju_logs_if_failed(
 
 
 def _prepare(juju: jubilant.Juju) -> jubilant.Juju:
-    """Set the model options every world depends on.
+    """Set the model options every deployment depends on.
 
     Args:
         juju: Jubilant object.
@@ -169,7 +169,7 @@ def _prepare(juju: jubilant.Juju) -> jubilant.Juju:
 
 
 def _model_for(request: FixtureRequest):
-    """Yield the model a world is built in, dumping Juju logs on failure.
+    """Yield the model a deployment is built in, dumping Juju logs on failure.
 
     Under `--no-deploy` this is the existing model named by `--model`, or the
     active one, and it is left alone afterwards. Otherwise it is a temporary
@@ -206,7 +206,7 @@ def bare_model(request: FixtureRequest) -> jubilant.Juju:
 
 @pytest.fixture(scope="module")
 def model(request: FixtureRequest) -> jubilant.Juju:
-    """Give a scenario module one model to build its world in.
+    """Give a scenario module one model to build its deployment in.
 
     Yields:
         A Jubilant object bound to an empty temporary model.

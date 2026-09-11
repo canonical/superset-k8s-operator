@@ -5,7 +5,7 @@
 """The step library the Superset integration scenarios are written from.
 
 Steps are grouped by the clause they belong to. The `deploy_*` steps build the
-world a scenario starts from, `set_config`, `scale`, `restart_application`,
+deployment a scenario starts from, `set_config`, `scale`, `restart_application`,
 `refresh_to_local` and `delete_unit_pod` are the actions a scenario performs,
 and the `assert_*` and `wait_for_*` steps state what should have come of one.
 The rest are readers the assertions are phrased in terms of.
@@ -284,27 +284,27 @@ def poll_until(
 
 
 # --------------------------------------------------------------------------
-# Given: building a world
+# Given: building a deployment
 # --------------------------------------------------------------------------
 
 
 def adopt_or_build(request, juju: jubilant.Juju, build, *args, **kwargs):
-    """Build a world, or adopt the one already in the model under `--no-deploy`.
+    """Build a deployment, or adopt the one in the model under `--no-deploy`.
 
-    Every world fixture goes through here, so the `--no-deploy` check has one
+    Every deployment fixture goes through here, so the `--no-deploy` check has one
     definition rather than one per fixture. It cannot be a pytest marker: a
     marker on a fixture never reaches the test item that is running, so it
     would silently do nothing.
 
     Args:
         request: Pytest request object.
-        juju: The model the world is built in.
+        juju: The model the deployment is built in.
         build: Called with `juju` and the remaining arguments to build it.
         args: Positional arguments for `build`.
         kwargs: Keyword arguments for `build`.
 
     Returns:
-        The model, holding the world either way.
+        The model, holding the deployment either way.
     """
     if request.config.getoption("--no-deploy"):
         logger.info(
@@ -533,7 +533,7 @@ def deploy_cos(juju: jubilant.Juju) -> None:
 
 
 # --------------------------------------------------------------------------
-# When: acting on the world
+# When: acting on the deployment
 # --------------------------------------------------------------------------
 
 
@@ -699,7 +699,7 @@ def refresh_to_local(
 
 
 # --------------------------------------------------------------------------
-# Then: reading the world back
+# Then: reading the deployment back
 # --------------------------------------------------------------------------
 
 
@@ -923,9 +923,8 @@ def workload_services(juju: jubilant.Juju, unit: str) -> dict[str, str]:
     )
     services = {}
     for line in task.stdout.splitlines()[1:]:
-        fields = line.split()
-        if len(fields) >= 3:
-            services[fields[0]] = fields[2]
+        name, _startup, current, *_since = line.split()
+        services[name] = current
     return services
 
 
@@ -941,9 +940,6 @@ def api_session(
 
     Returns:
         The authenticated session and the base URL it is bound to.
-
-    Raises:
-        TimeoutError: If the API does not accept a login in time.
     """
     base_url = get_unit_url(juju, app, unit)
     session = requests.Session()
@@ -952,29 +948,27 @@ def api_session(
         "password": get_admin_password(juju, app),
         "provider": "db",
     }
-
-    deadline = time.monotonic() + API_READY_TIMEOUT
     access_token = None
-    while True:
-        try:
-            response = session.post(
-                f"{base_url}/api/v1/security/login",
-                json=auth_payload,
-                timeout=30,
-            )
-            access_token = response.json().get("access_token")
-        except (requests.exceptions.RequestException, ValueError) as exc:
-            logger.info("Superset API not ready yet: %s", exc)
-            access_token = None
 
-        if access_token:
-            break
-        if time.monotonic() >= deadline:
-            raise TimeoutError(
-                f"Superset API at {base_url} did not accept a login within "
-                f"{API_READY_TIMEOUT}s"
-            )
-        time.sleep(API_READY_INTERVAL)
+    def _logged_in() -> bool:
+        """Return True once the API accepts the admin's credentials."""
+        nonlocal access_token
+        response = session.post(
+            f"{base_url}/api/v1/security/login",
+            json=auth_payload,
+            timeout=30,
+        )
+        access_token = response.json().get("access_token")
+        return bool(access_token)
+
+    poll_until(
+        juju,
+        _logged_in,
+        f"Superset API at {base_url} did not accept a login within "
+        f"{API_READY_TIMEOUT}s",
+        timeout=API_READY_TIMEOUT,
+        delay=API_READY_INTERVAL,
+    )
 
     session.headers.update(
         {

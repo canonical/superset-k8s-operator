@@ -89,11 +89,11 @@ make test-integration  # Runs integration tests*
 
 The integration suite is written as Given/When/Then scenarios driven by
 [Jubilant](https://canonical.com/juju/docs/jubilant). Each module builds its own
-world in a temporary model, which costs tens of minutes, so run one module at a
+deployment in a temporary model, which costs tens of minutes, so run one module at a
 time and reuse the deployment it leaves behind:
 
 ```shell
-# Build a world once and keep the model it was built in.
+# Build a deployment once and keep the model it was built in.
 tox -e integration-smtp -- --keep-models \
   --charm-file=./superset-k8s_amd64.charm --superset-image=<image>
 
@@ -101,14 +101,14 @@ tox -e integration-smtp -- --keep-models \
 tox -e integration-smtp -- --no-deploy --model <kept-model>
 ```
 
-`--no-deploy` makes every world fixture adopt what is already in the model
+`--no-deploy` makes every deployment fixture adopt what is already in the model
 instead of building it, so `--charm-file` and `--superset-image` are usually not
 needed. It suits the scenarios that share a module's deployment; the few that
 start from an empty model of their own, such as the blocked-status scenarios in
 `test_deployment.py`, assert that the model is empty and so are worth selecting
 out with `-k` when reusing a model. `test_upgrades.py` still needs both options,
 because refreshing onto the packed charm is what its scenarios do rather than
-how their world is built, and it holds one baseline per model, so a reused model
+how their deployment is built, and it holds one baseline per model, so a reused model
 serves one of its scenarios rather than both. There is one `integration-<module>`
 environment per scenario module, and the scenario steps are logged at INFO, so
 the run reads as the specification it came from.
