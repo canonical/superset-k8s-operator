@@ -1,0 +1,31 @@
+name: Terraform module tests
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "terraform/**"
+      - ".github/workflows/test_terraform_modules.yaml"
+
+jobs:
+  terraform-charm:
+    uses: canonical/operator-workflows/.github/workflows/terraform_modules_test.yaml@main
+    secrets: inherit
+    permissions:
+      contents: read
+    with:
+      k8s-controller: true
+      terraform-directories: '["terraform/charm"]'
+
+  terraform-product:
+    uses: canonical/operator-workflows/.github/workflows/terraform_modules_test.yaml@main
+    secrets: inherit
+    permissions:
+      contents: read
+    with:
+      k8s-controller: true
+      terraform-directories: '["terraform/product"]'
