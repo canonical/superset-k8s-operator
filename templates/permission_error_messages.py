@@ -9,26 +9,45 @@ from flask import request
 # error embedded in the JSON body, so it must be rewritten despite the 2xx status.
 _ASYNC_EVENT_PATH = "/api/v1/async_event"
 
+# Trino builds every authorization denial from a `denyXxx` helper on
+# `io.trino.spi.security.AccessDeniedException`. The relevant ones read:
+# `Access Denied: Cannot <operation> <object>`.
+_ACCESS_DENIED = r"Access Denied:\s*"
+
 # Example:
-#   Access Denied: Cannot select from columns [html_url, login, url, node_id] in table or view users
+#   Access Denied: Cannot select from columns [html_url, login] in table or view users
 _COLUMN_DENIED_PATTERN = re.compile(
-    r"Cannot select from columns \[(?P<columns>[^\]]+)\]\s+in\s+table\s+or\s+view\s+(?P<table>[\w.]+)",
+    _ACCESS_DENIED
+    + r"Cannot select from columns \[(?P<columns>[^\]]+)\]\s+in\s+table\s+or\s+view\s+(?P<table>[\w.\"]+)",
+    re.IGNORECASE,
+)
+
+# Example:
+#   Access Denied: Cannot select from table analytics.default.users
+_TABLE_DENIED_PATTERN = re.compile(
+    _ACCESS_DENIED + r"Cannot select from table\s+(?P<table>[\w.\"]+)",
     re.IGNORECASE,
 )
 
 # Example:
 #   Access Denied: Cannot access catalog sales
 _CATALOG_DENIED_PATTERN = re.compile(
-    r"Cannot access catalog\s+(?P<catalog>[\w-]+)",
+    _ACCESS_DENIED + r"Cannot access catalog\s+(?P<catalog>[\w-]+)",
     re.IGNORECASE,
 )
 
-_DENIED_PATTERNS = [
-    re.compile(r"\bPERMISSION_DENIED\b", re.IGNORECASE),
-    re.compile(r"name=PERMISSION_DENIED", re.IGNORECASE),
-    re.compile(r"\bAccess Denied\b", re.IGNORECASE),
-    re.compile(r"\bnot authorized\b", re.IGNORECASE),
-]
+# A denied read with no dedicated pattern. Writes and DDL are excluded.
+_READ_DENIED_PATTERN = re.compile(
+    _ACCESS_DENIED + r"Cannot (?:select|access|show)\b",
+    re.IGNORECASE,
+)
+
+# The keys Superset carries an error message under. Only values found under
+# these are candidates, so the `sql` a failed query is echoed back with is
+# never rewritten.
+_MESSAGE_KEYS = frozenset(
+    {"message", "msg", "error", "error_message", "errors"}
+)
 
 
 def _build_request_message(request_url):
@@ -39,7 +58,16 @@ def _build_request_message(request_url):
 
 
 def _rewrite_permission_denied_string(msg, request_message):
-    """Return a rewritten message for a permission-denied case, else the original."""
+    """Return a rewritten message for a data-access denial, else the original.
+
+    Args:
+        msg: the candidate message.
+        request_message: the "request access" line to append.
+
+    Returns:
+        The rewritten message, or `msg` unchanged when it is not a Trino
+        denial of a read.
+    """
     if not isinstance(msg, str) or not msg.strip():
         return msg
 
@@ -60,6 +88,15 @@ def _rewrite_permission_denied_string(msg, request_message):
             f"{request_message}"
         )
 
+    # Table-level denial
+    m = _TABLE_DENIED_PATTERN.search(msg)
+    if m:
+        table = (m.group("table") or "").strip()
+        return (
+            f"Access to table '{table}' is restricted.\n\n"
+            f"{request_message}"
+        )
+
     # Catalog-level denial
     m = _CATALOG_DENIED_PATTERN.search(msg)
     if m:
@@ -69,33 +106,42 @@ def _rewrite_permission_denied_string(msg, request_message):
             f"{request_message}"
         )
 
-    # Generic permission denied
-    if any(p.search(msg) for p in _DENIED_PATTERNS):
+    # Any other denied read
+    if _READ_DENIED_PATTERN.search(msg):
         return (
-            "You don’t have access to this dataset.\n\n"
+            "You don\u2019t have access to this dataset.\n\n"
             f"{request_message}"
         )
 
     return msg
 
 
-def _rewrite_any(obj, request_message):
-    """Recursively rewrite denied messages anywhere inside an object.
+def _rewrite_any(obj, request_message, key=None):
+    """Recursively rewrite denied messages found under a `_MESSAGE_KEYS` key.
 
-    Handles dict/list nesting patterns used by:
-    - /api/v1/database/... endpoints (schemas, catalogs, etc.)
-    - /api/v1/sqllab/... endpoints
-    - /api/v1/async_event/ payloads (GLOBAL_ASYNC_QUERIES charts)
-    - legacy /superset/... JSON endpoints, if present
+    Superset nests errors as `errors[].message`, as `result[].errors[].message`
+    on `/api/v1/async_event/`, and as a bare `{"message": ...}`, so the key is
+    carried down through lists as well as dicts.
+
+    Args:
+        obj: the payload, or part of it.
+        request_message: the "request access" line to append.
+        key: the dict key this value was found under, or the nearest enclosing
+            one when it sits inside a list.
+
+    Returns:
+        The payload with any data-access denial rewritten.
     """
     if isinstance(obj, str):
-        return _rewrite_permission_denied_string(obj, request_message)
+        if key in _MESSAGE_KEYS:
+            return _rewrite_permission_denied_string(obj, request_message)
+        return obj
 
     if isinstance(obj, list):
-        return [_rewrite_any(x, request_message) for x in obj]
+        return [_rewrite_any(x, request_message, key) for x in obj]
 
     if isinstance(obj, dict):
-        return {k: _rewrite_any(v, request_message) for k, v in obj.items()}
+        return {k: _rewrite_any(v, request_message, k) for k, v in obj.items()}
 
     return obj
 
@@ -150,6 +196,9 @@ def attach_error_rewriter(app, request_url=None):
                 return response
 
             new_payload = _rewrite_any(payload, request_message)
+            if new_payload == payload:
+                # Nothing matched, so leave the response as Superset serialised it.
+                return response
 
             response.set_data(json.dumps(new_payload))
             response.headers["Content-Length"] = str(len(response.get_data()))

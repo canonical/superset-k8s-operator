@@ -1,0 +1,37 @@
+# Copyright 2025 Canonical Ltd.
+# See LICENSE file for licensing details.
+
+model_uuid        = "b6d87682-bf5d-4e41-8987-33e1db927192"
+external_hostname = "example.com"
+
+superset = {
+  channel = "latest/edge"
+  config = {
+    "feature-flags" = "ALERT_REPORTS,DASHBOARD_RBAC,EMBEDDABLE_CHARTS"
+  }
+}
+
+superset_ui = {
+  units = 2
+  config = {
+    "oauth-admin-email"      = "data-platform@example.com"
+    "self-registration-role" = "Public"
+  }
+}
+
+superset_worker = {
+  units = 3
+  config = {
+    "external-url" = "https://superset-superset-k8s-ui.example.com"
+  }
+}
+
+smtp_integrator_config = {
+  host               = "smtp.example.com"
+  smtp_sender        = "superset-reports@example.com"
+  port               = 587
+  auth_type          = "plain"
+  transport_security = "starttls"
+  user               = "superset"
+  password           = "changeme"
+}

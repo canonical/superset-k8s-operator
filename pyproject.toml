@@ -21,6 +21,7 @@ dependencies = [
 charmlibs-pydeps = [
     "ops>=3.7,<4",
     "pydantic>=1.10,<2",
+    "email-validator>=2",
     "jsonschema>=4.26,<5",
     "cosl>=0.0.53",
     "cryptography>=43.0.0",
@@ -28,7 +29,7 @@ charmlibs-pydeps = [
 
 # Dependencies for formatting and linting
 lint = [
-    "black==22.8.0",
+    "black==26.3.1",
     "codespell==2.2.1",
     "flake8==7.0.0",
     "flake8-builtins==3.0.0",
@@ -56,20 +57,18 @@ unit = [
     "ipdb==0.13.9",
     "ops[testing]>=3.7,<4",
     "psycopg2-binary==2.9.9",
-    "pytest==7.4.0",
+    "pytest==9.0.3",
     "sqlglot>=28.10.0,<29",
 ]
 
 # Dependencies for integration tests
 integration = [
     "celery==5.3.6",
-    "ipdb==0.13.9",
-    "juju==3.5.2.1",
-    "protobuf==3.19.0",
-    "pytest==7.4.0",
-    "pytest-asyncio==0.21",
-    "pytest-operator==0.29.0",
+    "jubilant==1.13.0",
+    "pytest==9.0.3",
     "redis==5.2.1",
+    "requests>=2.32,<3",
+    "PyYAML>=6.0",
 ]
 
 # Testing tools configuration

@@ -15,6 +15,8 @@ OAUTH_CALLBACK_PATH = "/oauth-authorized/oidc"
 OAUTH_SCOPE = "openid email profile"
 OAUTH_GRANT_TYPES = ["authorization_code"]
 CERTIFICATES_RELATION_NAME = "certificates"
+SMTP_RELATION_NAME = "smtp"
+ALERT_REPORTS_FLAG = "ALERT_REPORTS"
 
 # TLS certificate delivery paths inside the workload container.
 # The CA received over the `certificates` relation is installed into the
@@ -26,6 +28,15 @@ CERTIFICATES_RELATION_NAME = "certificates"
 CA_CERT_LOCAL_PATH = "/usr/local/share/ca-certificates/juju-charm-ca.crt"
 CA_CERT_PATH = "/etc/ssl/certs/charm-ca.pem"
 SUPERSET_VERSION = "6.1.0"
+
+# Juju secret holding the signing keys shared by every application of one
+# deployment. It is user-supplied because a charm-generated secret would be
+# per application, and because the secret key outlives the charm: it encrypts
+# the database connection passwords stored in the metadata database.
+SIGNING_KEYS_SECRET_KEYS = ("secret-key", "async-queries-jwt")
+ADMIN_SECRET_LABEL = "superset-admin-password"  # nosec B105
+ADMIN_SECRET_ID_FIELD = "admin-password-secret-id"  # nosec B105
+ADMIN_SECRET_KEY = "password"  # nosec B105
 REDIS_KEY_PREFIX = "superset_results"
 APP_NAME = "superset"
 CONFIG_FILES = [
@@ -36,11 +47,15 @@ CONFIG_FILES = [
     "hive_tls.py",
 ]
 CONFIG_PATH = "/app/pythonpath"
-UI_FUNCTIONS = ["app", "app-gunicorn"]
-DEFAULT_ROLES = ["Public", "Gamma", "Alpha", "Admin"]
+UI_FUNCTION = "app-gunicorn"
+WORKER_FUNCTION = "worker"
 SQL_AB_ROLE = "SELECT name FROM ab_role;"
+HEALTH_URL = f"http://localhost:{APPLICATION_PORT}/health"
+HEALTH_PROBE_TIMEOUT = 5
 
 # Observability literals
 LOG_FILE = "/var/log/superset.log"
 PROMETHEUS_METRICS_PORT = 9102
+CELERY_METRICS_PORT = 9103
 STATSD_PORT = 9125
+METRICS_FUNCTIONS = [UI_FUNCTION, WORKER_FUNCTION]

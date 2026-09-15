@@ -9,7 +9,7 @@ PROJECT_ROOT := $(CURDIR)
 SHELL := /bin/bash
 .SHELLFLAGS := -eu -o pipefail -c
 
-METADATA_YAML := $(PROJECT_ROOT)/metadata.yaml
+CHARMCRAFT_YAML := $(PROJECT_ROOT)/charmcraft.yaml
 ROCK_DIR := $(PROJECT_ROOT)/superset_rock
 ROCKCRAFT_YAML := $(ROCK_DIR)/rockcraft.yaml
 
@@ -19,8 +19,8 @@ REGISTRY := localhost:32000
 ARGS ?=
 
 # Ensure yq is installed: 'sudo snap install yq'
-CHARM_NAME := $(shell yq '.name' $(METADATA_YAML))
-CHARM_ARCH := ubuntu-22.04-amd64
+CHARM_NAME := $(shell yq '.name' $(CHARMCRAFT_YAML))
+CHARM_PLATFORM := $(shell yq '.platforms | keys | .[0]' $(CHARMCRAFT_YAML))
 
 ROCK_NAME := $(shell yq '.name' $(ROCKCRAFT_YAML))
 ROCK_VERSION := $(shell yq '.version' $(ROCKCRAFT_YAML))
@@ -30,7 +30,7 @@ ROCK_ARCH := amd64
 LOCAL_ROCK_TAG := $(ROCK_VERSION)-$(shell date +%s)
 
 # The expected output files from charmcraft/rockcraft pack
-CHARM_FILE := $(PROJECT_ROOT)/$(CHARM_NAME)_$(CHARM_ARCH).charm
+CHARM_FILE := $(PROJECT_ROOT)/$(CHARM_NAME)_$(CHARM_PLATFORM).charm
 ROCK_FILE := $(ROCK_DIR)/$(ROCK_NAME)_$(ROCK_VERSION)_$(ROCK_ARCH).rock
 
 IMPORT_SCRIPT := $(PROJECT_ROOT)/scripts/import_rock.sh

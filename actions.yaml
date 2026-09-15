@@ -1,5 +1,0 @@
-# Copyright 2023 Canonical Ltd.
-# See LICENSE file for licensing details.
-
-restart:
-    description: Restart the application server.

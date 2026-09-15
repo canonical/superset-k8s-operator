@@ -9,3 +9,10 @@ __pycache__/
 .vscode/
 *.rock
 .venv/
+
+# Terraform
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfplan
