@@ -83,8 +83,27 @@ _pyhive_hive = types.ModuleType("pyhive.hive")
 setattr(_pyhive_hive, "get_installed_sasl", _fake_get_installed_sasl)
 _pyhive = types.ModuleType("pyhive")
 setattr(_pyhive, "hive", _pyhive_hive)
+
+
+def _fake_dialect_connect(self, *cargs, **cparams):
+    """Stand in for the base dialect's DBAPI connect call.
+
+    Args:
+        cargs: positional DBAPI connect arguments.
+        cparams: keyword DBAPI connect arguments.
+
+    Returns:
+        The arguments the DBAPI would have been called with.
+    """
+    return cargs, cparams
+
+
 _pyhive_sqlalchemy = types.ModuleType("pyhive.sqlalchemy_hive")
-setattr(_pyhive_sqlalchemy, "HiveDialect", type("HiveDialect", (), {}))
+setattr(
+    _pyhive_sqlalchemy,
+    "HiveDialect",
+    type("HiveDialect", (), {"connect": _fake_dialect_connect}),
+)
 
 _thrift_ssl_socket = types.ModuleType("thrift.transport.TSSLSocket")
 setattr(_thrift_ssl_socket, "TSSLSocket", _FakeTSSLSocket)
@@ -137,26 +156,40 @@ class TestSslContext(unittest.TestCase):
         self.assertFalse(context.check_hostname)
         self.assertEqual(context.verify_mode, ssl.CERT_NONE)
 
+    def test_unrecognized_boolean_value_raises(self):
+        """A misspelled boolean must not silently disable verification."""
+        with self.assertRaises(ValueError):
+            hive_tls._as_bool("trueeeee", default=True)
+
 
 class TestConnectArgs(unittest.TestCase):
-    """A hive+tls URL maps onto PyHive's thrift_transport argument."""
+    """A hive+tls URL maps onto PyHive's thrift_transport argument.
 
-    def _connect_args(self, uri):
-        """Build the connection kwargs for a URI.
+    create_connect_args now only extracts raw settings; connect() builds the
+    transport. These tests call both in sequence, the way SQLAlchemy does
+    (with any ``connect_args`` override merged in between).
+    """
+
+    def _connect_kwargs(self, uri, connect_args=None):
+        """Build the connection kwargs for a URI, as SQLAlchemy would.
 
         Args:
             uri: the SQLAlchemy URI to translate.
+            connect_args: extra kwargs simulating Superset's Engine
+                Parameters, merged on top of the URI-derived values.
 
         Returns:
             The keyword arguments the dialect would call PyHive with.
         """
         dialect = hive_tls.HiveTLSDialect()
-        _, kwargs = dialect.create_connect_args(make_url(uri))
+        _, cparams = dialect.create_connect_args(make_url(uri))
+        cparams.update(connect_args or {})
+        _, kwargs = dialect.connect(**cparams)
         return kwargs
 
     def test_transport_wraps_a_tls_socket(self):
         """The thrift transport wraps a TLS socket to the right host/port."""
-        kwargs = self._connect_args(
+        kwargs = self._connect_kwargs(
             "hive+tls://admin:secret@kyuubi-0:10009/telemetry"
         )
         transport = kwargs["thrift_transport"]
@@ -167,7 +200,7 @@ class TestConnectArgs(unittest.TestCase):
 
     def test_host_port_and_credentials_are_not_passed_to_pyhive(self):
         """Only thrift_transport, username and database reach PyHive."""
-        kwargs = self._connect_args(
+        kwargs = self._connect_kwargs(
             "hive+tls://admin:secret@kyuubi-0:10009/telemetry"
         )
         self.assertEqual(
@@ -178,12 +211,12 @@ class TestConnectArgs(unittest.TestCase):
 
     def test_defaults_to_the_kyuubi_thrift_binary_port(self):
         """A URL with no port defaults to Kyuubi's thrift binary port."""
-        kwargs = self._connect_args("hive+tls://admin:secret@kyuubi-0/default")
+        kwargs = self._connect_kwargs("hive+tls://admin:secret@kyuubi-0/default")
         self.assertEqual(kwargs["thrift_transport"].transport.port, 10009)
 
     def test_thrift_hostname_check_is_bypassed(self):
         """Thrift's own hostname check is bypassed in favour of SSLContext."""
-        kwargs = self._connect_args(
+        kwargs = self._connect_kwargs(
             "hive+tls://admin:secret@kyuubi-0:10009/telemetry"
         )
         socket_kwargs = kwargs["thrift_transport"].transport.kwargs
@@ -195,7 +228,7 @@ class TestConnectArgs(unittest.TestCase):
 
     def test_query_parameters_configure_verification(self):
         """The check_hostname query parameter configures the SSL context."""
-        kwargs = self._connect_args(
+        kwargs = self._connect_kwargs(
             "hive+tls://admin:secret@kyuubi.svc:10009/telemetry"
             "?check_hostname=false"
         )
@@ -204,6 +237,38 @@ class TestConnectArgs(unittest.TestCase):
 
     def test_sasl_password_placeholder_when_absent(self):
         """A missing password is replaced with the PLAIN mechanism placeholder."""
-        kwargs = self._connect_args("hive+tls://admin@kyuubi-0:10009/default")
+        kwargs = self._connect_kwargs("hive+tls://admin@kyuubi-0:10009/default")
         sasl_args = kwargs["thrift_transport"].sasl_factory()
         self.assertEqual(sasl_args["password"], "x")
+
+    def test_engine_parameters_override_uri_query_parameter(self):
+        """A connect_args value overrides the same-named URI query parameter.
+
+        Simulates Superset's Engine Parameters field, which SQLAlchemy
+        merges on top of create_connect_args' output before connect() runs.
+        """
+        kwargs = self._connect_kwargs(
+            "hive+tls://admin:secret@kyuubi-0:10009/telemetry?ssl_verify=true",
+            connect_args={"ssl_verify": "false"},
+        )
+        context = kwargs["thrift_transport"].transport.kwargs["ssl_context"]
+        self.assertEqual(context.verify_mode, ssl.CERT_NONE)
+
+    def test_engine_parameters_alone_configure_verification(self):
+        """Engine Parameters work with no TLS query parameters in the URI."""
+        kwargs = self._connect_kwargs(
+            "hive+tls://admin:secret@kyuubi-0:10009/telemetry",
+            connect_args={"ssl_verify": "false"},
+        )
+        context = kwargs["thrift_transport"].transport.kwargs["ssl_context"]
+        self.assertEqual(context.verify_mode, ssl.CERT_NONE)
+
+    def test_engine_parameters_with_unrecognized_value_still_raises(self):
+        """A typo in Engine Parameters is caught the same as in the URI."""
+        dialect = hive_tls.HiveTLSDialect()
+        _, cparams = dialect.create_connect_args(
+            make_url("hive+tls://admin:secret@kyuubi-0:10009/telemetry")
+        )
+        cparams.update({"ssl_verify": "trueeeee"})
+        with self.assertRaises(ValueError):
+            dialect.connect(**cparams)

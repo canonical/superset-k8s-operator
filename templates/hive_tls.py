@@ -23,6 +23,10 @@ Query parameters:
         server certificate does not carry, such as a Kubernetes ``Service``
         DNS name when Kyuubi only requests SANs for its pod and node.
     ssl_verify: Set to ``false`` to skip certificate verification entirely.
+
+These can also be set as SQLAlchemy ``connect_args`` (Superset's "Engine
+Parameters" field), e.g. ``{"ssl_verify": "false"}``. A value set there
+overrides the same-named URI query parameter.
 """
 
 import ssl
@@ -36,6 +40,7 @@ from thrift_sasl import TSaslClientTransport
 KYUUBI_THRIFT_BINARY_PORT = 10009
 
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
+_FALSY = frozenset({"0", "false", "no", "off"})
 
 
 def _as_bool(value: Any, default: bool) -> bool:
@@ -47,10 +52,24 @@ def _as_bool(value: Any, default: bool) -> bool:
 
     Returns:
         The parsed boolean.
+
+    Raises:
+        ValueError: value is present but is not a recognized boolean. A
+            misspelled value (e.g. ``ssl_verify=trueeeee``) must not be
+            silently treated as false, since that would disable certificate
+            verification without any indication to the user.
     """
     if value is None:
         return default
-    return str(value).strip().lower() in _TRUTHY
+    normalized = str(value).strip().lower()
+    if normalized in _TRUTHY:
+        return True
+    if normalized in _FALSY:
+        return False
+    raise ValueError(
+        "Invalid boolean value {!r} for a hive+tls query parameter; "
+        "expected one of {}.".format(value, sorted(_TRUTHY | _FALSY))
+    )
 
 
 def build_ssl_context(
@@ -102,29 +121,70 @@ class HiveTLSDialect(HiveDialect):
     supports_statement_cache = False
 
     def create_connect_args(self, url):
-        """Translate a ``hive+tls`` URL into PyHive connection arguments.
+        """Extract raw connection settings from a ``hive+tls`` URL.
+
+        The TLS socket and SASL transport are *not* built here: SQLAlchemy
+        calls ``create_connect_args`` once, at engine creation, then merges
+        its result with any ``connect_args`` the caller supplies (Superset's
+        "Engine Parameters") before invoking :meth:`connect` for every
+        pooled connection. Returning plain values instead of a pre-built
+        transport lets a value set in Engine Parameters (e.g.
+        ``{"ssl_verify": "false"}``) override the same-named URI query
+        parameter, so both are supported as equivalent ways to configure TLS.
 
         Args:
             url: The SQLAlchemy URL to connect with.
 
         Returns:
-            A tuple of positional and keyword arguments for ``hive.connect``.
+            A tuple of positional and keyword arguments, later consumed by
+            :meth:`connect`.
         """
         query = dict(url.query)
-        host = url.host
-        port = url.port or KYUUBI_THRIFT_BINARY_PORT
-        username = url.username
-        # SASL PLAIN rejects an empty password; PyHive substitutes the same
-        # placeholder when authentication is not password based.
-        password = url.password or "x"
+        return [], {
+            "host": url.host,
+            "port": url.port or KYUUBI_THRIFT_BINARY_PORT,
+            "username": url.username,
+            # SASL PLAIN rejects an empty password; PyHive substitutes the
+            # same placeholder when authentication is not password based.
+            "password": url.password or "x",
+            "database": url.database or "default",
+            "ssl_cert": query.get("ssl_cert"),
+            "check_hostname": query.get("check_hostname"),
+            "ssl_verify": query.get("ssl_verify"),
+        }
+
+    def connect(self, *cargs, **cparams):
+        """Build the TLS transport and connect to Kyuubi.
+
+        Runs once per pooled DBAPI connection, after SQLAlchemy has merged
+        Engine Parameters' ``connect_args`` on top of the values from
+        ``create_connect_args``, so ``cparams`` reflects whichever source
+        set each option (Engine Parameters win on conflicts).
+
+        Args:
+            cargs: Positional DBAPI connect arguments.
+            cparams: Keyword DBAPI connect arguments; see
+                ``create_connect_args`` for the recognized keys.
+
+        Returns:
+            The DBAPI connection.
+        """
+        host = cparams.pop("host")
+        port = cparams.pop("port")
+        username = cparams.pop("username")
+        password = cparams.pop("password", "x")
+        database = cparams.pop("database", "default")
+        ssl_cert = cparams.pop("ssl_cert", None)
+        check_hostname = _as_bool(cparams.pop("check_hostname", None), True)
+        ssl_verify = _as_bool(cparams.pop("ssl_verify", None), True)
 
         socket = TSSLSocket(
             host,
             port,
             ssl_context=build_ssl_context(
-                ca_bundle=query.get("ssl_cert"),
-                check_hostname=_as_bool(query.get("check_hostname"), True),
-                verify=_as_bool(query.get("ssl_verify"), True),
+                ca_bundle=ssl_cert,
+                check_hostname=check_hostname,
+                verify=ssl_verify,
             ),
             server_hostname=host,
             validate_callback=_skip_thrift_hostname_check,
@@ -140,8 +200,12 @@ class HiveTLSDialect(HiveDialect):
             socket,
         )
 
-        return [], {
-            "thrift_transport": transport,
-            "username": username,
-            "database": url.database or "default",
-        }
+        # host/port/password are consumed above; PyHive rejects them
+        # alongside thrift_transport.
+        return super().connect(
+            *cargs,
+            thrift_transport=transport,
+            username=username,
+            database=database,
+            **cparams,
+        )
