@@ -1,105 +1,136 @@
+#!/usr/bin/env python3
 # Copyright 2023 Canonical Ltd.
 # See LICENSE file for licensing details.
 
-"""Superset charm upgrades integration tests."""
+"""Feature: refreshing a deployed charm to the new one being built.
 
-import asyncio
+Merging publishes to `latest/edge`, and the revision is promoted from there.
+Every published release an operator can be running has to come out of that
+refresh as active and with its content intact.
+"""
+
 import logging
+from pathlib import Path
 
+import jubilant
 import pytest
-import pytest_asyncio
-import requests
-from integration.helpers import (
-    APP_NAME,
-    POSTGRES_NAME,
-    REDIS_NAME,
-    SECRET_KEY,
-    create_signing_keys_secret,
-    get_unit_url,
-    grant_signing_keys_secret,
-    perform_superset_integrations,
-)
-from pytest_operator.plugin import OpsTest
+import steps
+from bdd import and_, given, then, when
 
 logger = logging.getLogger(__name__)
 
+# The published releases a deployment can be refreshed from to
+# test both major and minor version upgrades.
+BASELINES = ["5/stable", "6/stable"]
 
-@pytest_asyncio.fixture(name="deploy-upgrade", scope="module")
-async def deploy(ops_test: OpsTest):
-    """Deploy the app."""
-    await asyncio.gather(
-        ops_test.model.deploy(POSTGRES_NAME, channel="14", trust=True),
-        ops_test.model.deploy(REDIS_NAME, channel="edge", trust=True),
+# Baselines published before the signing keys secret replaced
+# `superset-secret-key`. They take the key as plain configuration, which the
+# charm being built no longer declares. Drop a channel from here once a
+# revision carrying the secret is promoted into it, and delete the constant
+# and the branch that reads it once it is empty.
+LEGACY_SECRET_KEY_BASELINES = frozenset({"5/stable", "6/stable"})
+
+
+def configure_signing_keys(juju: jubilant.Juju, app: str) -> None:
+    """Give an application the signing keys secret this charm requires.
+
+    Args:
+        juju: Jubilant object.
+        app: Application name.
+    """
+    secret_id = steps.add_signing_keys_secret(juju)
+    juju.grant_secret(steps.SIGNING_KEYS_SECRET_NAME, app)
+    juju.config(app, {"signing-keys-secret-id": secret_id})
+
+
+def deploy_baseline(juju: jubilant.Juju, channel: str) -> None:
+    """Deploy a published release on its dependencies.
+
+    Args:
+        juju: Jubilant object.
+        channel: The channel to deploy from.
+    """
+    logger.info("Deploying '%s' from channel '%s'", steps.CHARM_NAME, channel)
+    legacy = channel in LEGACY_SECRET_KEY_BASELINES
+
+    steps.deploy_dependencies(juju)
+    config: dict = {"load-examples": True}
+    if legacy:
+        config["superset-secret-key"] = steps.SECRET_KEY
+
+    juju.deploy(
+        steps.CHARM_NAME,
+        app=steps.CHARM_NAME,
+        channel=channel,
+        config=config,
     )
-    await ops_test.model.wait_for_idle(
-        apps=[POSTGRES_NAME, REDIS_NAME],
-        status="active",
-        raise_on_blocked=False,
-        timeout=2000,
+    steps.integrate_dependencies(juju, steps.CHARM_NAME)
+    if not legacy:
+        configure_signing_keys(juju, steps.CHARM_NAME)
+
+    steps.wait_for_active(
+        juju, [steps.CHARM_NAME], timeout=steps.DEPLOY_TIMEOUT
     )
-    # The released charm still takes the secret key as plain config. The
-    # refresh below is where the deployment moves onto the signing keys
-    # secret, which is the documented migration.
-    superset_config = {
-        "superset-secret-key": SECRET_KEY,
-        "load-examples": True,
-    }
-    await ops_test.model.deploy(
-        APP_NAME,
-        channel="5/edge",
-        config=superset_config,
-    )
-    await perform_superset_integrations(ops_test, APP_NAME)
 
 
-@pytest.mark.abort_on_fail
-@pytest.mark.usefixtures("deploy-upgrade")
-class TestUpgrade:
-    """Integration test for Superset charm upgrade from previous release."""
+@pytest.fixture(scope="module")
+def a_published_deployment(request: pytest.FixtureRequest):
+    """Deploy a baseline in a model of its own.
 
-    async def test_upgrade(
-        self, ops_test: OpsTest, charm: str, charm_image: str
-    ):
-        """Builds the current charm and refreshes the current deployment."""
-        resources = {"superset-image": charm_image}
+    Args:
+        request: Pytest request object, carrying the channel to deploy.
 
-        await ops_test.model.applications[APP_NAME].refresh(
-            path=str(charm), resources=resources
-        )
+    Yields:
+        A tuple of the Jubilant object and the channel it deployed from.
+    """
+    # A model kept from an earlier run already holds the refreshed charm.
+    if request.config.getoption("--no-deploy"):
+        pytest.skip("a kept model no longer holds a published release")
 
-        # `superset-secret-key` is gone from the refreshed charm, so the unit
-        # blocks until the signing keys secret is created and granted.
-        await ops_test.model.wait_for_idle(
-            apps=[APP_NAME],
-            status="blocked",
-            raise_on_blocked=False,
-            timeout=600,
-        )
+    channel = request.param
+    keep = request.config.getoption("--keep-models")
+    with jubilant.temp_model(keep=keep) as juju:
+        juju.wait_timeout = steps.DEPLOY_TIMEOUT
+        deploy_baseline(juju, channel)
 
-        signing_keys_secret_id = await create_signing_keys_secret(ops_test)
-        await grant_signing_keys_secret(ops_test, APP_NAME)
-        await ops_test.model.applications[APP_NAME].set_config(
-            {"signing-keys-secret-id": signing_keys_secret_id}
-        )
+        yield juju, channel
 
-        await ops_test.model.wait_for_idle(
-            apps=[APP_NAME],
-            status="active",
-            raise_on_blocked=False,
-            timeout=600,
-        )
+        if request.session.testsfailed:
+            logger.info("Collecting Juju logs from model '%s'", juju.model)
+            logger.info("%s", juju.debug_log(limit=500))
 
-        assert (
-            ops_test.model.applications[APP_NAME].units[0].workload_status
-            == "active"
-        )
 
-    async def test_ui_relation(self, ops_test: OpsTest):
-        """Perform GET request on the Superset UI host."""
-        url = await get_unit_url(
-            ops_test, application=APP_NAME, unit=0, port=8088
-        )
-        logger.info("curling app address: %s", url)
+@pytest.mark.parametrize("a_published_deployment", BASELINES, indirect=True)
+def test_a_published_deployment_survives_the_refresh(
+    a_published_deployment, charm: Path, charm_image: str
+):
+    """Scenario: a published deployment is refreshed onto this charm.
 
-        response = requests.get(url, timeout=300)
-        assert response.status_code == 200
+    Given a deployment of a published release serving its example content
+    When it is refreshed onto the charm being built
+    Then it is active and serving
+    And the example content it held is still there
+    """
+    juju, channel = a_published_deployment
+    app = steps.CHARM_NAME
+
+    with given("a deployment of a published release serving its content"):
+        logger.info("Baseline channel: %s", channel)
+        steps.assert_ui_serves(juju, app)
+
+    with when("it is refreshed onto the charm being built"):
+        # The UI loads the examples on every start, so leaving this on would
+        # put back any charts the refresh lost.
+        juju.config(app, {"load-examples": False})
+        steps.refresh_to_local(juju, app, charm, charm_image)
+        configure_signing_keys(juju, app)
+
+    with then("it is active and serving"):
+        steps.wait_for_active(juju, [app], timeout=steps.DEPLOY_TIMEOUT)
+        steps.assert_ui_serves(juju, app)
+
+    with and_("the example content it held is still there"):
+        session, url = steps.api_session(juju, app)
+        charts = steps.chart_names(session, url)
+        assert charts, "the refreshed deployment holds no charts"
+        logger.info("Charts surviving the refresh: %d", len(charts))

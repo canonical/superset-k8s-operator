@@ -85,6 +85,45 @@ make test-integration  # Runs integration tests*
 
 *: It is recommended to let CI runners run integration tests on GitHub Actions.
 
+### Iterating on an integration scenario
+
+The integration suite is written as Given/When/Then scenarios driven by
+[Jubilant](https://canonical.com/juju/docs/jubilant). Each module builds its own
+deployment in a temporary model, which costs tens of minutes, so run one module at a
+time and reuse the deployment it leaves behind:
+
+```shell
+# Build a deployment once and keep the model it was built in.
+tox -e integration-smtp -- --keep-models \
+  --charm-file=./superset-k8s_amd64.charm --superset-image=<image>
+
+# Re-run the scenarios against that model, deploying nothing.
+tox -e integration-smtp -- --no-deploy --model <kept-model>
+```
+
+`--no-deploy` makes every deployment fixture adopt what is already in the model
+instead of building it, so `--charm-file` and `--superset-image` are usually not
+needed. It suits the scenarios that share a module's deployment; the few that
+start from an empty model of their own, such as the blocked-status scenarios in
+`test_deployment.py`, assert that the model is empty and so are worth selecting
+out with `-k` when reusing a model. The scenario in `test_lifecycle.py` that
+redeploys the UI still needs both options, because deploying the packed charm
+is what it does rather than how its deployment is built. `test_upgrades.py` is
+skipped, because a kept model holds the refreshed charm rather than the
+published release its scenarios start from. There is one `integration-<module>`
+environment per scenario module, and the scenario steps are logged at INFO, so
+the run reads as the specification it came from.
+
+`jubilant wait` is useful alongside a kept model for watching it settle by hand.
+It takes the ready condition as a Python expression, with `jubilant`, `juju` and
+`status` in scope:
+
+```shell
+jubilant wait --model <kept-model> \
+  'jubilant.all_active(status, "superset-k8s-ui")' \
+  --error 'jubilant.any_error(status)'
+```
+
 ## Deploying locally
 
 ### Environment setup
@@ -267,9 +306,11 @@ Depending on the changes introduced with the new version of Superset, we may nee
 
 If a channel for the new version does not exist on Charmhub, you must request for it to be created. This can be done by creating a new topic on [Discourse](https://discourse.charmhub.io/) requesting the creation of such tracks. In this case, you should request the creation of channels `6/edge` and `6/stable`.
 
-## Update major_upgrades integration test
+## Update the upgrade scenarios
 
-The purpose of the [`test_major_upgrades.py`](./tests/integration/test_major_upgrades.py) is to test the compatibility of upgrading the charm between major versions of Superset. To do so, we must modify this test to deploy the stable version of the previous release (e.g. `5/stable` if we are attempting to upgrade to Superset v6). The success of this test ensures there are no breaking changes when performing major upgrades with the Superset charm.
+[`test_upgrades.py`](./tests/integration/test_upgrades.py) refreshes a published deployment onto the charm being built and asserts it comes back active with its content intact. It runs once per channel in `BASELINES`, the releases an operator can be upgrading from. Move them up a track when a new major opens.
+
+`LEGACY_SECRET_KEY_BASELINES` names the baselines that predate the signing keys secret and so take `superset-secret-key`, which the charm being built no longer declares. Drop a channel from it once a revision carrying the secret is promoted into that channel, and delete the constant and the branch that reads it once it is empty.
 
 ## Test and promote charm
 

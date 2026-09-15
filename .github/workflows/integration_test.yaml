@@ -17,18 +17,25 @@ jobs:
       packages: write
     with:
       test-timeout: 90
-      channel: 1.35-strict/stable
-      modules: >-
-        ["test_charm.py",
-        "test_oauth.py",
-        "test_scaling.py",
-        "test_upgrades.py",
-        "test_major_upgrades.py",
-        "test_trino_catalog.py",
-        "test_reports.py",
-        "test_smtp.py"]
-      juju-channel: 3/stable
+      provider: "k8s"
+      channel: "1.32-classic/stable"
+      use-canonical-k8s: true
+      upload-image: "artifact"
+      pre-run-script: .github/scripts/setup-artifact-import.sh
+      extra-arguments: |
+        --kube-config=~/.kube/config
+      juju-channel: "3/stable"
       self-hosted-runner: false
-      microk8s-addons: "dns rbac storage metallb:10.15.119.2-10.15.119.4 registry"
       trivy-severity-config: CRITICAL
+      modules: >-
+        ["test_deployment.py",
+        "test_lifecycle.py",
+        "test_scaling.py",
+        "test_relation_order.py",
+        "test_upgrades.py",
+        "test_oauth.py",
+        "test_smtp.py",
+        "test_reports.py",
+        "test_trino_catalog.py",
+        "test_observability.py"]
       with-uv: true

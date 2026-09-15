@@ -1,148 +1,196 @@
+#!/usr/bin/env python3
 # Copyright 2023 Canonical Ltd.
 # See LICENSE file for licensing details.
 
-"""Integration tests for Superset's OAuth relation."""
+"""Feature: authenticating Superset users against an identity provider.
+
+The charm registers itself as an OAuth client over the `oauth` relation. The
+callback it registers has to be the address a browser is sent back to, so it
+is derived from the ingress URL and the relation is refused without HTTPS.
+"""
 
 import json
+import logging
 from urllib.parse import parse_qs, urlparse
 
+import jubilant
 import pytest
-import pytest_asyncio
-import requests
-import yaml
-from integration.helpers import (
-    TLS_NAME,
-    TRAEFIK_CONFIG,
-    TRAEFIK_NAME,
-    UI_NAME,
-    get_unit_url,
-)
-from pytest_operator.plugin import OpsTest
+import steps
+from bdd import and_, given, then, when
 
-TRAEFIK_DOMAIN = TRAEFIK_CONFIG["external_hostname"]
-OAUTH_INTEGRATOR_NAME = "oauth-external-idp-integrator"
-OAUTH_STUB_CONFIG = {
-    "issuer_url": "https://accounts.google.com",
-    "authorization_endpoint": "https://accounts.google.com/o/oauth2/auth",
-    "token_endpoint": "https://oauth2.googleapis.com/token",  # nosec B105
-    "introspection_endpoint": "https://oauth2.googleapis.com/tokeninfo",
-    "userinfo_endpoint": "https://openidconnect.googleapis.com/v1/userinfo",
-    "jwks_endpoint": "https://www.googleapis.com/oauth2/v3/certs",
-    "scope": "openid email profile",
-    "client_id": "stub-google-client-id",
-    "client_secret": "stub-google-client-secret",  # nosec B105
-}
+logger = logging.getLogger(__name__)
 
 
-@pytest_asyncio.fixture(name="deploy-oauth", scope="module")
-async def deploy_oauth(ops_test: OpsTest, deploy) -> None:
-    """Add a stub Google OAuth provider to the shared deployment.
+def _relate_idp(juju: jubilant.Juju) -> None:
+    """Deploy the stub identity provider and relate it to the UI.
 
     Args:
-        ops_test: Pytest-operator test context.
-        deploy: Shared deployment fixture from the integration conftest.
+        juju: Jubilant object.
     """
-    del deploy
-    await ops_test.model.deploy(TLS_NAME, channel="1/stable")
-    await ops_test.model.wait_for_idle(
-        apps=[TLS_NAME],
-        status="active",
-        raise_on_blocked=False,
-        timeout=1200,
-    )
-    await ops_test.model.integrate(
-        f"{TRAEFIK_NAME}:certificates", f"{TLS_NAME}:certificates"
-    )
-    await ops_test.model.wait_for_idle(
-        apps=[TRAEFIK_NAME, UI_NAME],
-        status="active",
-        raise_on_blocked=False,
-        timeout=1200,
-    )
-    await ops_test.model.deploy(
-        OAUTH_INTEGRATOR_NAME,
-        channel="latest/edge",
-        config=OAUTH_STUB_CONFIG,
-    )
-    await ops_test.model.wait_for_idle(
-        apps=[UI_NAME],
-        status="active",
-        raise_on_blocked=False,
-        timeout=2000,
-    )
-    await ops_test.model.wait_for_idle(
-        apps=[OAUTH_INTEGRATOR_NAME],
-        status="blocked",
-        raise_on_blocked=False,
-        timeout=1200,
-    )
-
-    await ops_test.model.integrate(
-        f"{UI_NAME}:oauth",
-        f"{OAUTH_INTEGRATOR_NAME}:oauth",
-    )
-    await ops_test.model.wait_for_idle(
-        apps=[UI_NAME, OAUTH_INTEGRATOR_NAME],
-        status="active",
-        raise_on_blocked=False,
-        timeout=1200,
+    steps.deploy_oauth_integrator(juju)
+    juju.integrate(
+        f"{steps.UI_NAME}:oauth", f"{steps.OAUTH_INTEGRATOR_NAME}:oauth"
     )
 
 
-async def _oauth_client_relation_data(ops_test: OpsTest) -> dict[str, str]:
-    """Return the OAuth client application data visible to the provider."""
-    return_code, stdout, stderr = await ops_test.juju(
-        "show-unit", f"{OAUTH_INTEGRATOR_NAME}/0"
+def _add_ingress_tls(juju: jubilant.Juju) -> None:
+    """Put a TLS provider behind Traefik and settle the deployment.
+
+    Args:
+        juju: Jubilant object.
+    """
+    steps.deploy_tls(juju)
+    juju.integrate(
+        f"{steps.TRAEFIK_NAME}:certificates", f"{steps.TLS_NAME}:certificates"
     )
-    assert return_code == 0, stderr
-
-    unit_data = yaml.safe_load(stdout)[f"{OAUTH_INTEGRATOR_NAME}/0"]
-    for relation in unit_data.get("relation-info", []):
-        application_data = relation.get("application-data", {})
-        if (
-            relation.get("endpoint") == "oauth"
-            and "redirect_uri" in application_data
-        ):
-            return application_data
-    raise AssertionError("OAuth client registration data was not published")
+    steps.wait_for_active(
+        juju,
+        [steps.UI_NAME, steps.TRAEFIK_NAME, steps.OAUTH_INTEGRATOR_NAME],
+        timeout=steps.SETTLE_TIMEOUT,
+    )
 
 
-@pytest.mark.abort_on_fail
-@pytest.mark.usefixtures("deploy-oauth")
-class TestOAuth:
-    """Verify OAuth registration and workload configuration."""
+@pytest.fixture(scope="module")
+def an_oauth_provider_over_plain_http(
+    request: pytest.FixtureRequest,
+    superset_deployment_with_ingress: jubilant.Juju,
+) -> jubilant.Juju:
+    """Relate an OAuth provider to a UI whose ingress is still plain HTTP.
 
-    async def test_client_registration(self, ops_test: OpsTest) -> None:
-        """Register the HTTPS OIDC callback and requested client settings."""
-        relation_data = await _oauth_client_relation_data(ops_test)
+    Args:
+        request: Pytest request object.
+        superset_deployment_with_ingress: The deployment behind Traefik.
 
-        expected_host = f"{ops_test.model_name}-{UI_NAME}.{TRAEFIK_DOMAIN}"
-        assert relation_data["redirect_uri"] == (
+    Returns:
+        The model, with the oauth relation in place and no TLS anywhere.
+    """
+    logger.info("Relating a stub identity provider with no TLS on the ingress")
+    return steps.adopt_or_build(
+        request, superset_deployment_with_ingress, _relate_idp
+    )
+
+
+@pytest.fixture(scope="module")
+def an_oauth_provider_over_https(
+    request: pytest.FixtureRequest,
+    an_oauth_provider_over_plain_http: jubilant.Juju,
+) -> jubilant.Juju:
+    """Put TLS on the ingress so the OAuth relation can be satisfied.
+
+    Args:
+        request: Pytest request object.
+        an_oauth_provider_over_plain_http: The blocked deployment.
+
+    Returns:
+        The model, with the UI active behind an HTTPS ingress.
+    """
+    logger.info("Putting TLS on the ingress")
+    return steps.adopt_or_build(
+        request, an_oauth_provider_over_plain_http, _add_ingress_tls
+    )
+
+
+def test_an_oauth_relation_without_https_blocks_the_ui(
+    an_oauth_provider_over_plain_http: jubilant.Juju,
+):
+    """Scenario: an identity provider is related before the ingress has TLS.
+
+    A callback served over plain HTTP is one an identity provider will not
+    redirect a browser back to, so the charm refuses to register it.
+
+    Given a Superset deployment behind a plain HTTP ingress
+    When an identity provider is related to the UI
+    Then the UI blocks saying OAuth requires an HTTPS ingress URL
+    """
+    juju = an_oauth_provider_over_plain_http
+
+    with given("a Superset deployment behind a plain HTTP ingress"):
+        assert steps.proxied_url(juju).startswith("http://")
+
+    with when("an identity provider is related to the UI"):
+        pass
+
+    with then("the UI blocks saying OAuth requires an HTTPS ingress URL"):
+        steps.assert_blocked_with(
+            juju, [steps.UI_NAME], "OAuth requires an HTTPS ingress URL"
+        )
+
+
+def test_the_charm_registers_an_https_callback(
+    an_oauth_provider_over_https: jubilant.Juju,
+):
+    """Scenario: TLS is added and the charm registers itself as a client.
+
+    Given a Superset deployment behind an HTTPS ingress with an identity
+      provider related
+    Then the UI is active
+    And it published an HTTPS callback under its own ingress hostname
+    And it asked for the scope and grant types Superset needs
+    """
+    juju = an_oauth_provider_over_https
+
+    with given(
+        "a Superset deployment behind an HTTPS ingress with an identity "
+        "provider related"
+    ):
+        pass
+
+    with then("the UI is active"):
+        steps.assert_active(juju, [steps.UI_NAME])
+
+    # `juju show-unit` reports the REMOTE application's databag, so what the
+    # charm published is read from the provider's unit.
+    with and_("it published an HTTPS callback under its own ingress hostname"):
+        data = steps.published_relation_data(
+            juju,
+            f"{steps.OAUTH_INTEGRATOR_NAME}/0",
+            "oauth",
+            "redirect_uri",
+        )
+        model = steps.model_short_name(juju.model or "")
+        expected_host = f"{model}-{steps.UI_NAME}.{steps.TRAEFIK_DOMAIN}"
+        assert data["redirect_uri"] == (
             f"https://{expected_host}/oauth-authorized/oidc"
-        )
-        assert relation_data["scope"] == "openid email profile"
-        assert json.loads(relation_data["grant_types"]) == [
-            "authorization_code"
-        ]
+        ), data["redirect_uri"]
 
-    async def test_login_redirects_to_google(self, ops_test: OpsTest) -> None:
-        """Use relation data to build a Google authorization redirect."""
-        unit_url = await get_unit_url(
-            ops_test,
-            application=UI_NAME,
-            unit=0,
-            port=8088,
-        )
-        response = requests.get(
-            f"{unit_url}/login/oidc",
+    with and_("it asked for the scope and grant types Superset needs"):
+        assert data["scope"] == "openid email profile"
+        assert json.loads(data["grant_types"]) == ["authorization_code"]
+
+
+def test_the_login_route_redirects_to_the_identity_provider(
+    an_oauth_provider_over_https: jubilant.Juju,
+):
+    """Scenario: a user starts a login against the configured provider.
+
+    Given a Superset deployment registered with an identity provider
+    When the OIDC login route is requested
+    Then it redirects to the provider's authorization endpoint
+    And it carries the client identifier and scope the provider published
+    """
+    juju = an_oauth_provider_over_https
+
+    with given("a Superset deployment registered with an identity provider"):
+        steps.assert_active(juju, [steps.UI_NAME])
+
+    with when("the OIDC login route is requested"):
+        url = steps.get_unit_url(juju, steps.UI_NAME)
+        response = steps.request_until(
+            None,
+            "GET",
+            f"{url}/login/oidc",
+            expected_status=302,
             allow_redirects=False,
-            timeout=30,
         )
 
-        assert response.status_code in (302, 303)
-        location = response.headers["Location"]
-        redirect = urlparse(location)
+    with then("it redirects to the provider's authorization endpoint"):
+        assert response.status_code in (302, 303), response.status_code
+        redirect = urlparse(response.headers["Location"])
+        assert redirect.hostname == "accounts.google.com", redirect.hostname
+
+    with and_(
+        "it carries the client identifier and scope the provider published"
+    ):
         query = parse_qs(redirect.query)
-        assert redirect.hostname == "accounts.google.com"
-        assert query["client_id"] == [OAUTH_STUB_CONFIG["client_id"]]
-        assert query["scope"] == [OAUTH_STUB_CONFIG["scope"]]
+        assert query["client_id"] == [steps.OAUTH_STUB_CONFIG["client_id"]]
+        assert query["scope"] == [steps.OAUTH_STUB_CONFIG["scope"]]
