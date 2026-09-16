@@ -41,4 +41,5 @@ header:
     - 'templates/*'
     - 'uv.lock'
     - 'superset_rock/startup-scripts/**'
+    - 'apm.lock.yaml'
   comment: on-failure
