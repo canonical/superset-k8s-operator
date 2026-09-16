@@ -1,3 +1,5 @@
+# Copyright 2026 Canonical Ltd.
+# See LICENSE file for licensing details.
 name: superset-k8s-operator
 version: 0.0.1-rc1
 description: APM project for superset-k8s-operator
