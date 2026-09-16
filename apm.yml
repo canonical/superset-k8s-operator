@@ -8,6 +8,7 @@ description: APM project for superset-k8s-operator
 # Accepted values: agent-skills, antigravity, claude, codex, copilot, cursor, gemini, grok-build, kiro, opencode, windsurf
 targets:
 - claude
+- codex
 - copilot
 - opencode
 dependencies:
