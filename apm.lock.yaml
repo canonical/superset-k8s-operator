@@ -1,5 +1,5 @@
 lockfile_version: '1'
-generated_at: '2026-09-15T14:19:34.574671+00:00'
+generated_at: '2026-09-16T13:01:15.730812+00:00'
 apm_version: 0.29.0
 dependencies:
 - repo_url: canonical/canonical-data-mesh-docs
@@ -275,7 +275,7 @@ deployments:
   active_owner: microsoft/apm/packages/apm-guide
   content_hash: sha256:b38359a5bf58a9448be0b4e204a1cf6f3e73c1bd832bcffc792f9f3d245cdf39
 - kind: project-relative
-  target: copilot
+  target: codex
   value: .agents/skills/apm-usage
   runtime: null
   scope: project
@@ -284,7 +284,7 @@ deployments:
   active_owner: microsoft/apm/packages/apm-guide
   content_hash: null
 - kind: project-relative
-  target: copilot
+  target: codex
   value: .agents/skills/apm-usage/SKILL.md
   runtime: null
   scope: project
@@ -293,7 +293,7 @@ deployments:
   active_owner: microsoft/apm/packages/apm-guide
   content_hash: sha256:a76e5e768e5d2257cf910d04063418424a6dc1ff7c02949c69c9824d90e05565
 - kind: project-relative
-  target: copilot
+  target: codex
   value: .agents/skills/apm-usage/authentication.md
   runtime: null
   scope: project
@@ -302,7 +302,7 @@ deployments:
   active_owner: microsoft/apm/packages/apm-guide
   content_hash: sha256:7bc0522150f74e93f5dd11e9a892ab7df91474755f527a8074a596ccf251cd1c
 - kind: project-relative
-  target: copilot
+  target: codex
   value: .agents/skills/apm-usage/commands.md
   runtime: null
   scope: project
@@ -311,7 +311,7 @@ deployments:
   active_owner: microsoft/apm/packages/apm-guide
   content_hash: sha256:5e40cf98efa3261449d165253ba50aa2da156133829c09477a2277c5a023af85
 - kind: project-relative
-  target: copilot
+  target: codex
   value: .agents/skills/apm-usage/dependencies.md
   runtime: null
   scope: project
@@ -320,7 +320,7 @@ deployments:
   active_owner: microsoft/apm/packages/apm-guide
   content_hash: sha256:f0b4b61dcfb4c66c08b23366f9f64decee840363bbb1db590f770da33b366b76
 - kind: project-relative
-  target: copilot
+  target: codex
   value: .agents/skills/apm-usage/governance.md
   runtime: null
   scope: project
@@ -329,7 +329,7 @@ deployments:
   active_owner: microsoft/apm/packages/apm-guide
   content_hash: sha256:6a75072a9350b444bfef7e985fb4c9baf760b4fe31e661da772b2fb87c67e755
 - kind: project-relative
-  target: copilot
+  target: codex
   value: .agents/skills/apm-usage/installation.md
   runtime: null
   scope: project
@@ -338,7 +338,7 @@ deployments:
   active_owner: microsoft/apm/packages/apm-guide
   content_hash: sha256:c70544c5d1f85102c5e144ac6ae1ca68fcf8ba6a8323cb2ca6adc840d13aa960
 - kind: project-relative
-  target: copilot
+  target: codex
   value: .agents/skills/apm-usage/package-authoring.md
   runtime: null
   scope: project
@@ -347,7 +347,7 @@ deployments:
   active_owner: microsoft/apm/packages/apm-guide
   content_hash: sha256:8b1c65ee8f99ee3ed96ceb160037919149211919a213c93c06cc8ad45ac58dad
 - kind: project-relative
-  target: copilot
+  target: codex
   value: .agents/skills/apm-usage/troubleshooting.md
   runtime: null
   scope: project
@@ -356,7 +356,7 @@ deployments:
   active_owner: microsoft/apm/packages/apm-guide
   content_hash: sha256:43676bd88638a042188ef5763fe4a48a245862d60797141088d67f7ce8279e2e
 - kind: project-relative
-  target: copilot
+  target: codex
   value: .agents/skills/apm-usage/workflow.md
   runtime: null
   scope: project
