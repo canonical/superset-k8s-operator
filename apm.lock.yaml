@@ -1,0 +1,384 @@
+lockfile_version: '1'
+generated_at: '2026-09-17T10:36:43.526501+00:00'
+apm_version: 0.29.0
+dependencies:
+- repo_url: canonical/canonical-data-mesh-docs
+  name: data-mesh-guidelines
+  host: github.com
+  resolved_commit: ed0d2792287d6dd951321386e63570ae5a9f6537
+  version: 0.0.1-rc1
+  virtual_path: resources/development
+  is_virtual: true
+  package_type: apm_package
+  content_hash: sha256:760ed9f6458b32889620ec143d7d312ca768ab6d9ef1ffb7d2827f33bd129481
+- repo_url: canonical/copilot-collections
+  name: copilot-collections-core-directive
+  host: github.com
+  resolved_commit: 9b23e98d7cb04d81e77cde1140a5700d8eb627bb
+  version: 1.0.0
+  virtual_path: assets/instructions/common/core-directive.instructions.md
+  is_virtual: true
+  depth: 2
+  resolved_by: canonical/canonical-data-mesh-docs
+  package_type: apm_package
+  deployed_files:
+  - .claude/rules/core-directive.md
+  - .github/instructions/core-directive.instructions.md
+  deployed_file_hashes:
+    .claude/rules/core-directive.md: sha256:2e72e9758b8742784c49850bd682ed5b94fb2421c4d32b7ffa51867160fac178
+    .github/instructions/core-directive.instructions.md: sha256:72500a4221558125e60ff5d2207dccaa0d486ff8430a4358575874501813e50e
+  content_hash: sha256:6d3ac3584dfd822e14b11fc0644bf5280ab6490a821a6697f2b9e5f017f63977
+- repo_url: canonical/copilot-collections
+  name: copilot-collections-instructions
+  host: github.com
+  resolved_commit: 9b23e98d7cb04d81e77cde1140a5700d8eb627bb
+  version: 1.0.0
+  virtual_path: assets/instructions/common/instructions.instructions.md
+  is_virtual: true
+  depth: 2
+  resolved_by: canonical/canonical-data-mesh-docs
+  package_type: apm_package
+  deployed_files:
+  - .claude/rules/instructions.md
+  - .github/instructions/instructions.instructions.md
+  deployed_file_hashes:
+    .claude/rules/instructions.md: sha256:fe1d88831fcb3159298a96c0f40b680a5db10514ef6bd52a69b5468a97ddce01
+    .github/instructions/instructions.instructions.md: sha256:0c33b4d185a1f076d403e1f3bd09a30781808423bf81e74820441dcee943c133
+  content_hash: sha256:c85c481ce9095429ad463e574441213eaad8e342bf939bb7bbbb515814d4a9fc
+- repo_url: canonical/copilot-collections
+  name: copilot-collections-secret-guard
+  host: github.com
+  resolved_commit: 9b23e98d7cb04d81e77cde1140a5700d8eb627bb
+  version: 1.0.0
+  virtual_path: assets/instructions/common/secret-guard.instructions.md
+  is_virtual: true
+  depth: 2
+  resolved_by: canonical/canonical-data-mesh-docs
+  package_type: apm_package
+  deployed_files:
+  - .claude/rules/secret-guard.md
+  - .github/instructions/secret-guard.instructions.md
+  deployed_file_hashes:
+    .claude/rules/secret-guard.md: sha256:639b21c3544f42d380b96befe6f289e9db925c0dc59939379ff3ba92e6b5045c
+    .github/instructions/secret-guard.instructions.md: sha256:b3087590480edc07969ffe00fd0f64a6eb06f1dfc4d2d9f0c44ff464274e342e
+  content_hash: sha256:e7bae875010601bee2dc5e4333649ccadaba8559431bc9afba0471a5bc0cb80f
+- repo_url: microsoft/apm
+  name: apm-guide
+  host: github.com
+  resolved_commit: e08c2d553585d48a279d5ef6c531b6873df352d7
+  version: 1.0.0
+  virtual_path: packages/apm-guide
+  is_virtual: true
+  depth: 2
+  resolved_by: canonical/canonical-data-mesh-docs
+  package_type: apm_package
+  deployed_files:
+  - .agents/skills/apm-usage
+  - .agents/skills/apm-usage/SKILL.md
+  - .agents/skills/apm-usage/authentication.md
+  - .agents/skills/apm-usage/commands.md
+  - .agents/skills/apm-usage/dependencies.md
+  - .agents/skills/apm-usage/governance.md
+  - .agents/skills/apm-usage/installation.md
+  - .agents/skills/apm-usage/package-authoring.md
+  - .agents/skills/apm-usage/troubleshooting.md
+  - .agents/skills/apm-usage/workflow.md
+  - .claude/agents/apm-expert.md
+  - .claude/skills/apm-usage
+  - .claude/skills/apm-usage/SKILL.md
+  - .claude/skills/apm-usage/authentication.md
+  - .claude/skills/apm-usage/commands.md
+  - .claude/skills/apm-usage/dependencies.md
+  - .claude/skills/apm-usage/governance.md
+  - .claude/skills/apm-usage/installation.md
+  - .claude/skills/apm-usage/package-authoring.md
+  - .claude/skills/apm-usage/troubleshooting.md
+  - .claude/skills/apm-usage/workflow.md
+  - .github/agents/apm-expert.agent.md
+  - .opencode/agents/apm-expert.md
+  deployed_file_hashes:
+    .agents/skills/apm-usage/SKILL.md: sha256:a76e5e768e5d2257cf910d04063418424a6dc1ff7c02949c69c9824d90e05565
+    .agents/skills/apm-usage/authentication.md: sha256:7bc0522150f74e93f5dd11e9a892ab7df91474755f527a8074a596ccf251cd1c
+    .agents/skills/apm-usage/commands.md: sha256:5e40cf98efa3261449d165253ba50aa2da156133829c09477a2277c5a023af85
+    .agents/skills/apm-usage/dependencies.md: sha256:f0b4b61dcfb4c66c08b23366f9f64decee840363bbb1db590f770da33b366b76
+    .agents/skills/apm-usage/governance.md: sha256:6a75072a9350b444bfef7e985fb4c9baf760b4fe31e661da772b2fb87c67e755
+    .agents/skills/apm-usage/installation.md: sha256:c70544c5d1f85102c5e144ac6ae1ca68fcf8ba6a8323cb2ca6adc840d13aa960
+    .agents/skills/apm-usage/package-authoring.md: sha256:8b1c65ee8f99ee3ed96ceb160037919149211919a213c93c06cc8ad45ac58dad
+    .agents/skills/apm-usage/troubleshooting.md: sha256:43676bd88638a042188ef5763fe4a48a245862d60797141088d67f7ce8279e2e
+    .agents/skills/apm-usage/workflow.md: sha256:b38359a5bf58a9448be0b4e204a1cf6f3e73c1bd832bcffc792f9f3d245cdf39
+    .claude/agents/apm-expert.md: sha256:f6cded3e7eef97ad8fff06208bcfd5a0beafb9cfe810f78e10294c90e16fd8ae
+    .claude/skills/apm-usage/SKILL.md: sha256:a76e5e768e5d2257cf910d04063418424a6dc1ff7c02949c69c9824d90e05565
+    .claude/skills/apm-usage/authentication.md: sha256:7bc0522150f74e93f5dd11e9a892ab7df91474755f527a8074a596ccf251cd1c
+    .claude/skills/apm-usage/commands.md: sha256:5e40cf98efa3261449d165253ba50aa2da156133829c09477a2277c5a023af85
+    .claude/skills/apm-usage/dependencies.md: sha256:f0b4b61dcfb4c66c08b23366f9f64decee840363bbb1db590f770da33b366b76
+    .claude/skills/apm-usage/governance.md: sha256:6a75072a9350b444bfef7e985fb4c9baf760b4fe31e661da772b2fb87c67e755
+    .claude/skills/apm-usage/installation.md: sha256:c70544c5d1f85102c5e144ac6ae1ca68fcf8ba6a8323cb2ca6adc840d13aa960
+    .claude/skills/apm-usage/package-authoring.md: sha256:8b1c65ee8f99ee3ed96ceb160037919149211919a213c93c06cc8ad45ac58dad
+    .claude/skills/apm-usage/troubleshooting.md: sha256:43676bd88638a042188ef5763fe4a48a245862d60797141088d67f7ce8279e2e
+    .claude/skills/apm-usage/workflow.md: sha256:b38359a5bf58a9448be0b4e204a1cf6f3e73c1bd832bcffc792f9f3d245cdf39
+    .github/agents/apm-expert.agent.md: sha256:f6cded3e7eef97ad8fff06208bcfd5a0beafb9cfe810f78e10294c90e16fd8ae
+    .opencode/agents/apm-expert.md: sha256:f6cded3e7eef97ad8fff06208bcfd5a0beafb9cfe810f78e10294c90e16fd8ae
+  content_hash: sha256:680f10a401d9479d66cc2fd6e83812a235d49f52a4a805053a148f476d773dec
+  declared_license: MIT
+deployments:
+- kind: project-relative
+  target: claude
+  value: .claude/agents/apm-expert.md
+  runtime: null
+  scope: project
+  owners:
+  - microsoft/apm/packages/apm-guide
+  active_owner: microsoft/apm/packages/apm-guide
+  content_hash: sha256:f6cded3e7eef97ad8fff06208bcfd5a0beafb9cfe810f78e10294c90e16fd8ae
+- kind: project-relative
+  target: claude
+  value: .claude/rules/core-directive.md
+  runtime: null
+  scope: project
+  owners:
+  - canonical/copilot-collections/assets/instructions/common/core-directive.instructions.md
+  active_owner: canonical/copilot-collections/assets/instructions/common/core-directive.instructions.md
+  content_hash: sha256:2e72e9758b8742784c49850bd682ed5b94fb2421c4d32b7ffa51867160fac178
+- kind: project-relative
+  target: claude
+  value: .claude/rules/instructions.md
+  runtime: null
+  scope: project
+  owners:
+  - canonical/copilot-collections/assets/instructions/common/instructions.instructions.md
+  active_owner: canonical/copilot-collections/assets/instructions/common/instructions.instructions.md
+  content_hash: sha256:fe1d88831fcb3159298a96c0f40b680a5db10514ef6bd52a69b5468a97ddce01
+- kind: project-relative
+  target: claude
+  value: .claude/rules/secret-guard.md
+  runtime: null
+  scope: project
+  owners:
+  - canonical/copilot-collections/assets/instructions/common/secret-guard.instructions.md
+  active_owner: canonical/copilot-collections/assets/instructions/common/secret-guard.instructions.md
+  content_hash: sha256:639b21c3544f42d380b96befe6f289e9db925c0dc59939379ff3ba92e6b5045c
+- kind: project-relative
+  target: claude
+  value: .claude/skills/apm-usage
+  runtime: null
+  scope: project
+  owners:
+  - microsoft/apm/packages/apm-guide
+  active_owner: microsoft/apm/packages/apm-guide
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/apm-usage/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - microsoft/apm/packages/apm-guide
+  active_owner: microsoft/apm/packages/apm-guide
+  content_hash: sha256:a76e5e768e5d2257cf910d04063418424a6dc1ff7c02949c69c9824d90e05565
+- kind: project-relative
+  target: claude
+  value: .claude/skills/apm-usage/authentication.md
+  runtime: null
+  scope: project
+  owners:
+  - microsoft/apm/packages/apm-guide
+  active_owner: microsoft/apm/packages/apm-guide
+  content_hash: sha256:7bc0522150f74e93f5dd11e9a892ab7df91474755f527a8074a596ccf251cd1c
+- kind: project-relative
+  target: claude
+  value: .claude/skills/apm-usage/commands.md
+  runtime: null
+  scope: project
+  owners:
+  - microsoft/apm/packages/apm-guide
+  active_owner: microsoft/apm/packages/apm-guide
+  content_hash: sha256:5e40cf98efa3261449d165253ba50aa2da156133829c09477a2277c5a023af85
+- kind: project-relative
+  target: claude
+  value: .claude/skills/apm-usage/dependencies.md
+  runtime: null
+  scope: project
+  owners:
+  - microsoft/apm/packages/apm-guide
+  active_owner: microsoft/apm/packages/apm-guide
+  content_hash: sha256:f0b4b61dcfb4c66c08b23366f9f64decee840363bbb1db590f770da33b366b76
+- kind: project-relative
+  target: claude
+  value: .claude/skills/apm-usage/governance.md
+  runtime: null
+  scope: project
+  owners:
+  - microsoft/apm/packages/apm-guide
+  active_owner: microsoft/apm/packages/apm-guide
+  content_hash: sha256:6a75072a9350b444bfef7e985fb4c9baf760b4fe31e661da772b2fb87c67e755
+- kind: project-relative
+  target: claude
+  value: .claude/skills/apm-usage/installation.md
+  runtime: null
+  scope: project
+  owners:
+  - microsoft/apm/packages/apm-guide
+  active_owner: microsoft/apm/packages/apm-guide
+  content_hash: sha256:c70544c5d1f85102c5e144ac6ae1ca68fcf8ba6a8323cb2ca6adc840d13aa960
+- kind: project-relative
+  target: claude
+  value: .claude/skills/apm-usage/package-authoring.md
+  runtime: null
+  scope: project
+  owners:
+  - microsoft/apm/packages/apm-guide
+  active_owner: microsoft/apm/packages/apm-guide
+  content_hash: sha256:8b1c65ee8f99ee3ed96ceb160037919149211919a213c93c06cc8ad45ac58dad
+- kind: project-relative
+  target: claude
+  value: .claude/skills/apm-usage/troubleshooting.md
+  runtime: null
+  scope: project
+  owners:
+  - microsoft/apm/packages/apm-guide
+  active_owner: microsoft/apm/packages/apm-guide
+  content_hash: sha256:43676bd88638a042188ef5763fe4a48a245862d60797141088d67f7ce8279e2e
+- kind: project-relative
+  target: claude
+  value: .claude/skills/apm-usage/workflow.md
+  runtime: null
+  scope: project
+  owners:
+  - microsoft/apm/packages/apm-guide
+  active_owner: microsoft/apm/packages/apm-guide
+  content_hash: sha256:b38359a5bf58a9448be0b4e204a1cf6f3e73c1bd832bcffc792f9f3d245cdf39
+- kind: project-relative
+  target: codex
+  value: .agents/skills/apm-usage
+  runtime: null
+  scope: project
+  owners:
+  - microsoft/apm/packages/apm-guide
+  active_owner: microsoft/apm/packages/apm-guide
+  content_hash: null
+- kind: project-relative
+  target: codex
+  value: .agents/skills/apm-usage/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - microsoft/apm/packages/apm-guide
+  active_owner: microsoft/apm/packages/apm-guide
+  content_hash: sha256:a76e5e768e5d2257cf910d04063418424a6dc1ff7c02949c69c9824d90e05565
+- kind: project-relative
+  target: codex
+  value: .agents/skills/apm-usage/authentication.md
+  runtime: null
+  scope: project
+  owners:
+  - microsoft/apm/packages/apm-guide
+  active_owner: microsoft/apm/packages/apm-guide
+  content_hash: sha256:7bc0522150f74e93f5dd11e9a892ab7df91474755f527a8074a596ccf251cd1c
+- kind: project-relative
+  target: codex
+  value: .agents/skills/apm-usage/commands.md
+  runtime: null
+  scope: project
+  owners:
+  - microsoft/apm/packages/apm-guide
+  active_owner: microsoft/apm/packages/apm-guide
+  content_hash: sha256:5e40cf98efa3261449d165253ba50aa2da156133829c09477a2277c5a023af85
+- kind: project-relative
+  target: codex
+  value: .agents/skills/apm-usage/dependencies.md
+  runtime: null
+  scope: project
+  owners:
+  - microsoft/apm/packages/apm-guide
+  active_owner: microsoft/apm/packages/apm-guide
+  content_hash: sha256:f0b4b61dcfb4c66c08b23366f9f64decee840363bbb1db590f770da33b366b76
+- kind: project-relative
+  target: codex
+  value: .agents/skills/apm-usage/governance.md
+  runtime: null
+  scope: project
+  owners:
+  - microsoft/apm/packages/apm-guide
+  active_owner: microsoft/apm/packages/apm-guide
+  content_hash: sha256:6a75072a9350b444bfef7e985fb4c9baf760b4fe31e661da772b2fb87c67e755
+- kind: project-relative
+  target: codex
+  value: .agents/skills/apm-usage/installation.md
+  runtime: null
+  scope: project
+  owners:
+  - microsoft/apm/packages/apm-guide
+  active_owner: microsoft/apm/packages/apm-guide
+  content_hash: sha256:c70544c5d1f85102c5e144ac6ae1ca68fcf8ba6a8323cb2ca6adc840d13aa960
+- kind: project-relative
+  target: codex
+  value: .agents/skills/apm-usage/package-authoring.md
+  runtime: null
+  scope: project
+  owners:
+  - microsoft/apm/packages/apm-guide
+  active_owner: microsoft/apm/packages/apm-guide
+  content_hash: sha256:8b1c65ee8f99ee3ed96ceb160037919149211919a213c93c06cc8ad45ac58dad
+- kind: project-relative
+  target: codex
+  value: .agents/skills/apm-usage/troubleshooting.md
+  runtime: null
+  scope: project
+  owners:
+  - microsoft/apm/packages/apm-guide
+  active_owner: microsoft/apm/packages/apm-guide
+  content_hash: sha256:43676bd88638a042188ef5763fe4a48a245862d60797141088d67f7ce8279e2e
+- kind: project-relative
+  target: codex
+  value: .agents/skills/apm-usage/workflow.md
+  runtime: null
+  scope: project
+  owners:
+  - microsoft/apm/packages/apm-guide
+  active_owner: microsoft/apm/packages/apm-guide
+  content_hash: sha256:b38359a5bf58a9448be0b4e204a1cf6f3e73c1bd832bcffc792f9f3d245cdf39
+- kind: project-relative
+  target: copilot
+  value: .github/agents/apm-expert.agent.md
+  runtime: null
+  scope: project
+  owners:
+  - microsoft/apm/packages/apm-guide
+  active_owner: microsoft/apm/packages/apm-guide
+  content_hash: sha256:f6cded3e7eef97ad8fff06208bcfd5a0beafb9cfe810f78e10294c90e16fd8ae
+- kind: project-relative
+  target: copilot
+  value: .github/instructions/core-directive.instructions.md
+  runtime: null
+  scope: project
+  owners:
+  - canonical/copilot-collections/assets/instructions/common/core-directive.instructions.md
+  active_owner: canonical/copilot-collections/assets/instructions/common/core-directive.instructions.md
+  content_hash: sha256:72500a4221558125e60ff5d2207dccaa0d486ff8430a4358575874501813e50e
+- kind: project-relative
+  target: copilot
+  value: .github/instructions/instructions.instructions.md
+  runtime: null
+  scope: project
+  owners:
+  - canonical/copilot-collections/assets/instructions/common/instructions.instructions.md
+  active_owner: canonical/copilot-collections/assets/instructions/common/instructions.instructions.md
+  content_hash: sha256:0c33b4d185a1f076d403e1f3bd09a30781808423bf81e74820441dcee943c133
+- kind: project-relative
+  target: copilot
+  value: .github/instructions/secret-guard.instructions.md
+  runtime: null
+  scope: project
+  owners:
+  - canonical/copilot-collections/assets/instructions/common/secret-guard.instructions.md
+  active_owner: canonical/copilot-collections/assets/instructions/common/secret-guard.instructions.md
+  content_hash: sha256:b3087590480edc07969ffe00fd0f64a6eb06f1dfc4d2d9f0c44ff464274e342e
+- kind: project-relative
+  target: opencode
+  value: .opencode/agents/apm-expert.md
+  runtime: null
+  scope: project
+  owners:
+  - microsoft/apm/packages/apm-guide
+  active_owner: microsoft/apm/packages/apm-guide
+  content_hash: sha256:f6cded3e7eef97ad8fff06208bcfd5a0beafb9cfe810f78e10294c90e16fd8ae

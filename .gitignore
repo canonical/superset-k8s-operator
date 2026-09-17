@@ -16,3 +16,17 @@ __pycache__/
 *.tfstate
 *.tfstate.*
 *.tfplan
+
+# APM dependencies
+apm_modules/
+# ignored as apm takes care of populating the files
+.claude
+CLAUDE.md
+.opencode
+AGENTS.md
+.codex
+# .github/instructions and .agents/skills are not ignored
+# as we would like for them to be available in the Web Chat/IDE 
+# These skills are ignored because they are not necessary there.
+.agents/skills/apm-usage
+.github/agents/apm-*
