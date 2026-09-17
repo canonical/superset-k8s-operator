@@ -15,7 +15,6 @@ dependencies:
   apm:
   - git: canonical/canonical-data-mesh-docs
     path: resources/development
-    ref: apm-demo
   mcp: []
 includes: auto
 scripts: {}

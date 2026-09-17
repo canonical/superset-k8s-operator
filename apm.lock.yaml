@@ -1,17 +1,16 @@
 lockfile_version: '1'
-generated_at: '2026-09-16T13:01:15.730812+00:00'
+generated_at: '2026-09-17T10:36:43.526501+00:00'
 apm_version: 0.29.0
 dependencies:
 - repo_url: canonical/canonical-data-mesh-docs
   name: data-mesh-guidelines
   host: github.com
-  resolved_commit: aec0828d9c3438cd4ada56cd9157c40660c3c16b
-  resolved_ref: apm-demo
+  resolved_commit: ed0d2792287d6dd951321386e63570ae5a9f6537
   version: 0.0.1-rc1
   virtual_path: resources/development
   is_virtual: true
   package_type: apm_package
-  content_hash: sha256:ebed0c687eca94053a70a0afd9d22a926e13c14ae567dab670b6fe082bc8c496
+  content_hash: sha256:760ed9f6458b32889620ec143d7d312ca768ab6d9ef1ffb7d2827f33bd129481
 - repo_url: canonical/copilot-collections
   name: copilot-collections-core-directive
   host: github.com
@@ -63,23 +62,6 @@ dependencies:
     .claude/rules/secret-guard.md: sha256:639b21c3544f42d380b96befe6f289e9db925c0dc59939379ff3ba92e6b5045c
     .github/instructions/secret-guard.instructions.md: sha256:b3087590480edc07969ffe00fd0f64a6eb06f1dfc4d2d9f0c44ff464274e342e
   content_hash: sha256:e7bae875010601bee2dc5e4333649ccadaba8559431bc9afba0471a5bc0cb80f
-- repo_url: canonical/copilot-collections
-  name: copilot-collections-code-commenting
-  host: github.com
-  resolved_commit: 9b23e98d7cb04d81e77cde1140a5700d8eb627bb
-  version: 1.0.0
-  virtual_path: assets/instructions/python/code-commenting.instructions.md
-  is_virtual: true
-  depth: 2
-  resolved_by: canonical/canonical-data-mesh-docs
-  package_type: apm_package
-  deployed_files:
-  - .claude/rules/code-commenting.md
-  - .github/instructions/code-commenting.instructions.md
-  deployed_file_hashes:
-    .claude/rules/code-commenting.md: sha256:c2e065a38b3dc96e17c29a55f5a10d1f2a9e034904490b4e72ddf6c8f44312f7
-    .github/instructions/code-commenting.instructions.md: sha256:59d57b08259bf1078691e594a73628867d9e2d278bf1ada96582fdac56a55116
-  content_hash: sha256:6d7b9920e0efa8b8141307090a23c722ce38732884ef14b078c3c2bd9da65cc2
 - repo_url: microsoft/apm
   name: apm-guide
   host: github.com
@@ -148,15 +130,6 @@ deployments:
   - microsoft/apm/packages/apm-guide
   active_owner: microsoft/apm/packages/apm-guide
   content_hash: sha256:f6cded3e7eef97ad8fff06208bcfd5a0beafb9cfe810f78e10294c90e16fd8ae
-- kind: project-relative
-  target: claude
-  value: .claude/rules/code-commenting.md
-  runtime: null
-  scope: project
-  owners:
-  - canonical/copilot-collections/assets/instructions/python/code-commenting.instructions.md
-  active_owner: canonical/copilot-collections/assets/instructions/python/code-commenting.instructions.md
-  content_hash: sha256:c2e065a38b3dc96e17c29a55f5a10d1f2a9e034904490b4e72ddf6c8f44312f7
 - kind: project-relative
   target: claude
   value: .claude/rules/core-directive.md
@@ -373,15 +346,6 @@ deployments:
   - microsoft/apm/packages/apm-guide
   active_owner: microsoft/apm/packages/apm-guide
   content_hash: sha256:f6cded3e7eef97ad8fff06208bcfd5a0beafb9cfe810f78e10294c90e16fd8ae
-- kind: project-relative
-  target: copilot
-  value: .github/instructions/code-commenting.instructions.md
-  runtime: null
-  scope: project
-  owners:
-  - canonical/copilot-collections/assets/instructions/python/code-commenting.instructions.md
-  active_owner: canonical/copilot-collections/assets/instructions/python/code-commenting.instructions.md
-  content_hash: sha256:59d57b08259bf1078691e594a73628867d9e2d278bf1ada96582fdac56a55116
 - kind: project-relative
   target: copilot
   value: .github/instructions/core-directive.instructions.md
