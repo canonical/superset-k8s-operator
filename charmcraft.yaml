@@ -504,6 +504,24 @@ config:
       default: false
       type: boolean
 
+    extra-sequential-color-schemes:
+      description: |
+        JSON string representation of EXTRA_SEQUENTIAL_COLOR_SCHEMES array.
+        It allows to add custom color schemas to customise dashboards coloring.
+        
+        Applies to: the UI application
+      type: string
+      default: ""
+
+    extra-categorical-color-schemes:
+      description: |
+        JSON string representation of EXTRA_CATEGORICAL_COLOR_SCHEMES array.
+        It allows to add custom color schemas to customise dashboards coloring.
+        
+        Applies to: the UI application
+      type: string
+      default: ""
+
 actions:
   restart:
     description: Restart the application server.

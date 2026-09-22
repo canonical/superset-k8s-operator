@@ -729,6 +729,8 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "ENABLE_RAISE_FOR_ACCESS_PATCH": self.config[
                 "enable-raise-for-access-patch"
             ],
+            "EXTRA_SEQUENTIAL_COLOR_SCHEMES": self.config["extra-sequential-color-schemes"],
+            "EXTRA_CATEGORICAL_COLOR_SCHEMES": self.config["extra-categorical-color-schemes"],
         }
         if self.config["feature-flags"]:
             env.update(self.config["feature-flags"])
