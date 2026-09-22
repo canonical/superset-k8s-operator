@@ -34,6 +34,70 @@ if all([SENTRY_DSN, SENTRY_ENVIRONMENT, SENTRY_RELEASE]):
         before_send=sentry_before_send,
         )
 
+# ==========================================
+# CUSTOM CANONICAL BRANDING COLOR PALETTES
+# ==========================================
+
+EXTRA_SEQUENTIAL_COLOR_SCHEMES = [
+    {
+        "id": "ubuntu_orange_sequential",
+        "description": "Smooth sequential gradient from light to full Ubuntu Orange.",
+        "label": "Ubuntu Orange Sequential",
+        "isLinear": True,
+        "colors": [
+            "#FDEEE9",  # Orange (10%)
+            "#F8CCBC",  # Orange (30%)
+            "#F4AA90",  # Orange (50%)
+            "#F08763",  # Orange (70%)
+            "#EB6536",  # Orange (90%)
+            "#E95420"   # Orange (100%)
+        ]
+    },
+    {
+        "id": "canonical_grey_sequential",
+        "description": "Smooth greyscale sequential gradient using warm grey brand assets.",
+        "label": "Canonical Grey Sequential",
+        "isLinear": True,
+        "colors": [
+            "#F6F6F5",  # Warm Grey (10%)
+            "#E6E4E2",  # Warm Grey (30%)
+            "#D6D3CF",  # Warm Grey (50%)
+            "#C6C1BB",  # Warm Grey (70%)
+            "#B6AFA8",  # Warm Grey (90%)
+            "#AEA79F"   # Warm Grey (100%)
+        ]
+    }
+]
+
+EXTRA_CATEGORICAL_COLOR_SCHEMES = [
+    {
+        "id": "canonical_orange_balanced",
+        "description": "Improved Canonical theme utilizing a muted secondary layer and functional validation green.",
+        "label": "Canonical Orange Style (Balanced)",
+        "colors": [
+            "#E95420",  # 1. Ubuntu Orange (Primary Intent / Highlight metric)
+            "#EADDE9",  # 2. Muted Tint / Light Aubergine Grey (Soft Secondary contrast)
+            "#388E3C",  # 3. Canonical Success Green (Balances out negative semantic Orange)
+            "#772953",  # 4. Canonical Aubergine (Pushed down to tertiary position)
+            "#AEA79F",  # 5. Warm Grey (Neutral structure)
+            "#5E2750"   # 6. Mid Aubergine
+        ]
+    },
+    {
+        "id": "canonical_greyscale",
+        "description": "Clean greyscale palette optimized for high-contrast category differentiation.",
+        "label": "Canonical Greyscale",
+        "colors": [
+            "#333333",  # Deep Charcoal
+            "#AEA79F",  # Warm Grey (100%)
+            "#CECAC5",  # Warm Grey (60%)
+            "#DEDBD8",  # Warm Grey (40%)
+            "#666666",  # Medium Grey
+            "#F2F1F0"   # Warm Grey (15%)
+        ]
+    }
+]
+
 # StatsD logging
 STATS_LOGGER = StatsdStatsLogger(host="localhost", port=os.getenv("STATSD_PORT"))
 
