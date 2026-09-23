@@ -10,6 +10,7 @@ on:
 
 jobs:
   integration-tests:
+    # stub removed
     uses: canonical/operator-workflows/.github/workflows/integration_test.yaml@main
     secrets: inherit
     permissions:
