@@ -10,6 +10,7 @@ on:
 
 jobs:
   integration-tests:
+    if: "!(github.event.pull_request.draft == true && contains(github.event.pull_request.title, '#no-integration'))"
     uses: canonical/operator-workflows/.github/workflows/integration_test.yaml@main
     secrets: inherit
     permissions:
