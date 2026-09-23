@@ -9,7 +9,7 @@ develop a new k8s charm using the Operator Framework:
 
 https://discourse.charmhub.io/t/4208
 """
-
+import json
 import logging
 import os
 import secrets
@@ -299,6 +299,10 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         """
         try:
             _ = self.config
+
+            if msg := self._validate_extra_palettes_config():
+                raise ValueError(msg)
+
             return None
         except ValidationError as e:
             missing = [
@@ -842,6 +846,21 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             )
 
         return pebble_layer
+
+    def _validate_extra_palettes_config(self) -> Optional[str]:
+        """Validates that extra-sequential-color-schemes and extra-categorical-color-schemes,
+         if provided, can be decoded from a JSON string into a list of dictionaries."""
+
+        for k in ["extra_sequential_color_schemes", "extra_categorical_color_schemes"]:
+            if item := self.config[k]:
+                try:
+                    parsed = json.loads(item)
+                except (json.JSONDecodeError, TypeError) as e:
+                    logger.error("Invalid JSON for config key %s: %s", k, e)
+                    return f"Invalid JSON format for config key {k}"
+                if not isinstance(parsed, list):
+                    logger.error("Invalid JSON for config key - list expected %s: %s", k, item)
+                    return f"Invalid JSON body for config key {k}: should be a list"
 
     def reconcile(self, force_trino_credentials: bool = False):
         """Reconcile the charm to its desired state.
