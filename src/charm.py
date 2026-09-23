@@ -302,11 +302,9 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             _ = self.config
 
             if msg := self._validate_extra_palettes_config():
-                raise ValueError(msg)
+                return BlockedStatus(e)(msg)
 
             return None
-        except ValidationError as e:
-            return BlockedStatus(e)
         except ValidationError as e:
             missing = [
                 str(err["loc"][0]).replace("_", "-")
