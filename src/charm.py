@@ -853,10 +853,10 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         return pebble_layer
 
     def _validate_extra_palettes_config(self) -> Optional[str]:
-        """Validates that extra-sequential-color-schemes and extra-categorical-color-schemes,
-        if provided, can be decoded from a JSON string into a list of dictionaries.
-        """
+        """Validate that extra-sequential-color-schemes and extra-categorical-color-schemes.
 
+        If provided, can be decoded from a JSON string into a list of dictionaries.
+        """
         for k in [
             "extra_sequential_color_schemes",
             "extra_categorical_color_schemes",
