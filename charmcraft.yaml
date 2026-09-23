@@ -508,6 +508,8 @@ config:
       description: |
         JSON string representation of EXTRA_SEQUENTIAL_COLOR_SCHEMES array.
         It allows to add custom color schemes to customise dashboards coloring.
+        Example value:
+          '[{"id": "custom_grey_sequential", "description": "Smooth greyscale sequential gradient using warm grey brand assets.", "label": "Smooth Grey Sequential", "isLinear": true, "colors": ["#F6F6F5", "#E6E4E2", "#D6D3CF", "#C6C1BB", "#B6AFA8", "#AEA79F"]}]'
 
         Applies to: the UI application
       type: string
@@ -517,6 +519,8 @@ config:
       description: |
         JSON string representation of EXTRA_CATEGORICAL_COLOR_SCHEMES array.
         It allows to add custom color schemes to customise dashboards coloring.
+        Example value:
+          '[{"id": "custom_greyscale", "description": "Clean greyscale palette optimized for high-contrast category differentiation.", "label": "Smooth Greyscale", "colors": ["#333333", "#AEA79F", "#CECAC5", "#DEDBD8", "#666666", "#F2F1F0"]}]'
 
         Applies to: the UI application
       type: string
