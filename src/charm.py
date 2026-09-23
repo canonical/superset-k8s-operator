@@ -9,6 +9,7 @@ develop a new k8s charm using the Operator Framework:
 
 https://discourse.charmhub.io/t/4208
 """
+
 import json
 import logging
 import os
@@ -733,8 +734,12 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "ENABLE_RAISE_FOR_ACCESS_PATCH": self.config[
                 "enable-raise-for-access-patch"
             ],
-            "EXTRA_SEQUENTIAL_COLOR_SCHEMES": self.config["extra-sequential-color-schemes"],
-            "EXTRA_CATEGORICAL_COLOR_SCHEMES": self.config["extra-categorical-color-schemes"],
+            "EXTRA_SEQUENTIAL_COLOR_SCHEMES": self.config[
+                "extra-sequential-color-schemes"
+            ],
+            "EXTRA_CATEGORICAL_COLOR_SCHEMES": self.config[
+                "extra-categorical-color-schemes"
+            ],
         }
         if self.config["feature-flags"]:
             env.update(self.config["feature-flags"])
@@ -849,9 +854,13 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
     def _validate_extra_palettes_config(self) -> Optional[str]:
         """Validates that extra-sequential-color-schemes and extra-categorical-color-schemes,
-         if provided, can be decoded from a JSON string into a list of dictionaries."""
+        if provided, can be decoded from a JSON string into a list of dictionaries.
+        """
 
-        for k in ["extra_sequential_color_schemes", "extra_categorical_color_schemes"]:
+        for k in [
+            "extra_sequential_color_schemes",
+            "extra_categorical_color_schemes",
+        ]:
             if item := self.config[k]:
                 try:
                     parsed = json.loads(item)
@@ -859,7 +868,11 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
                     logger.error("Invalid JSON for config key %s: %s", k, e)
                     return f"Invalid JSON format for config key {k}"
                 if not isinstance(parsed, list):
-                    logger.error("Invalid JSON for config key - list expected %s: %s", k, item)
+                    logger.error(
+                        "Invalid JSON for config key - list expected %s: %s",
+                        k,
+                        item,
+                    )
                     return f"Invalid JSON body for config key {k}: should be a list"
 
     def reconcile(self, force_trino_credentials: bool = False):
