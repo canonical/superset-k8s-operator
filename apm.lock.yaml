@@ -1,16 +1,16 @@
 lockfile_version: '1'
-generated_at: '2026-09-17T10:36:43.526501+00:00'
+generated_at: '2026-09-23T06:49:11.761359+00:00'
 apm_version: 0.29.0
 dependencies:
 - repo_url: canonical/canonical-data-mesh-docs
   name: data-mesh-guidelines
   host: github.com
-  resolved_commit: ed0d2792287d6dd951321386e63570ae5a9f6537
-  version: 0.0.1-rc1
+  resolved_commit: 248197642d47a0c46d57634af5346a7cdbe69491
+  version: 0.0.1-rc3
   virtual_path: resources/development
   is_virtual: true
   package_type: apm_package
-  content_hash: sha256:760ed9f6458b32889620ec143d7d312ca768ab6d9ef1ffb7d2827f33bd129481
+  content_hash: sha256:f7af76a7676f5af45b1e7f87d94a0f3029d279b4f99dc29e907966347d6d2574
 - repo_url: canonical/copilot-collections
   name: copilot-collections-core-directive
   host: github.com
@@ -62,10 +62,103 @@ dependencies:
     .claude/rules/secret-guard.md: sha256:639b21c3544f42d380b96befe6f289e9db925c0dc59939379ff3ba92e6b5045c
     .github/instructions/secret-guard.instructions.md: sha256:b3087590480edc07969ffe00fd0f64a6eb06f1dfc4d2d9f0c44ff464274e342e
   content_hash: sha256:e7bae875010601bee2dc5e4333649ccadaba8559431bc9afba0471a5bc0cb80f
+- repo_url: canonical/copilot-collections
+  name: copilot-collections-documentation
+  host: github.com
+  resolved_commit: 9b23e98d7cb04d81e77cde1140a5700d8eb627bb
+  version: 1.0.0
+  virtual_path: assets/instructions/documentation/documentation.instructions.md
+  is_virtual: true
+  depth: 2
+  resolved_by: canonical/canonical-data-mesh-docs
+  package_type: apm_package
+  deployed_files:
+  - .claude/rules/documentation.md
+  - .github/instructions/documentation.instructions.md
+  deployed_file_hashes:
+    .claude/rules/documentation.md: sha256:38a4d002ed7c82651ad0a4f8fa74f261d02cd9e49060ca243094c3edfec05a42
+    .github/instructions/documentation.instructions.md: sha256:79c0237d41daff73604d91cfc1a73537b7f34f6607c0385ab9a79700643d64b4
+  content_hash: sha256:ffc7142b45b6c5b89f877c7cbb8f6938270b6ad4b47f135893e94b6fac6c6052
+- repo_url: canonical/copilot-collections
+  name: copilot-collections-code-commenting
+  host: github.com
+  resolved_commit: 9b23e98d7cb04d81e77cde1140a5700d8eb627bb
+  version: 1.0.0
+  virtual_path: assets/instructions/python/code-commenting.instructions.md
+  is_virtual: true
+  depth: 2
+  resolved_by: canonical/canonical-data-mesh-docs
+  package_type: apm_package
+  deployed_files:
+  - .claude/rules/code-commenting.md
+  - .github/instructions/code-commenting.instructions.md
+  deployed_file_hashes:
+    .claude/rules/code-commenting.md: sha256:c2e065a38b3dc96e17c29a55f5a10d1f2a9e034904490b4e72ddf6c8f44312f7
+    .github/instructions/code-commenting.instructions.md: sha256:59d57b08259bf1078691e594a73628867d9e2d278bf1ada96582fdac56a55116
+  content_hash: sha256:6d7b9920e0efa8b8141307090a23c722ce38732884ef14b078c3c2bd9da65cc2
+- repo_url: canonical/copilot-collections
+  name: copilot-collections-charm-engineer
+  host: github.com
+  resolved_commit: 9b23e98d7cb04d81e77cde1140a5700d8eb627bb
+  version: 1.0.0
+  virtual_path: groups/platform-engineering/agents/charm-engineer.agent.md
+  is_virtual: true
+  depth: 2
+  resolved_by: canonical/canonical-data-mesh-docs
+  package_type: apm_package
+  deployed_files:
+  - .claude/agents/charm-engineer.md
+  - .github/agents/charm-engineer.agent.md
+  - .opencode/agents/charm-engineer.md
+  deployed_file_hashes:
+    .claude/agents/charm-engineer.md: sha256:dc061846ee1ba04dd8cafdceb1f8aa8268a063e9d90dab27649a75066393fc9a
+    .github/agents/charm-engineer.agent.md: sha256:dc061846ee1ba04dd8cafdceb1f8aa8268a063e9d90dab27649a75066393fc9a
+    .opencode/agents/charm-engineer.md: sha256:dc061846ee1ba04dd8cafdceb1f8aa8268a063e9d90dab27649a75066393fc9a
+  content_hash: sha256:3d7dd67cfe9be2e92a4b083a1beaebcb2928c339894cd6b347ee44da90dd5995
+- repo_url: canonical/copilot-collections
+  name: copilot-collections-lib-updates
+  host: github.com
+  resolved_commit: 9b23e98d7cb04d81e77cde1140a5700d8eb627bb
+  version: 1.0.0
+  virtual_path: groups/platform-engineering/instructions/lib-updates.instructions.md
+  is_virtual: true
+  depth: 2
+  resolved_by: canonical/canonical-data-mesh-docs
+  package_type: apm_package
+  deployed_files:
+  - .claude/rules/lib-updates.md
+  - .github/instructions/lib-updates.instructions.md
+  deployed_file_hashes:
+    .claude/rules/lib-updates.md: sha256:7fa83e620285db460fd6eaedc50c973d2650985a9f5133133e2a7ffdee87c766
+    .github/instructions/lib-updates.instructions.md: sha256:f69948017ce2e33a75e47ad21b7d7ef2f63fae09bd78e492bb8eb87f72b415be
+  content_hash: sha256:f7a1d8b79719157df527da2619ce68f887dd2d975f173a2fd3bf9b611fd3235c
+- repo_url: canonical/copilot-collections
+  name: secret-guard
+  host: github.com
+  resolved_commit: 9b23e98d7cb04d81e77cde1140a5700d8eb627bb
+  version: unknown
+  virtual_path: skills/secret-guard
+  is_virtual: true
+  depth: 2
+  resolved_by: canonical/canonical-data-mesh-docs
+  package_type: claude_skill
+  deployed_files:
+  - .agents/skills/secret-guard
+  - .agents/skills/secret-guard/SKILL.md
+  - .agents/skills/secret-guard/scripts/keyring_broker.py
+  - .claude/skills/secret-guard
+  - .claude/skills/secret-guard/SKILL.md
+  - .claude/skills/secret-guard/scripts/keyring_broker.py
+  deployed_file_hashes:
+    .agents/skills/secret-guard/SKILL.md: sha256:24296f4fa5fc1399bffc9ab4e5927950971715cde1df15d1f64eeae2c8151ca6
+    .agents/skills/secret-guard/scripts/keyring_broker.py: sha256:397edfa9a6ca91add7ed8947d111705a79c15515f1b5bf62941adfa5a83781db
+    .claude/skills/secret-guard/SKILL.md: sha256:24296f4fa5fc1399bffc9ab4e5927950971715cde1df15d1f64eeae2c8151ca6
+    .claude/skills/secret-guard/scripts/keyring_broker.py: sha256:397edfa9a6ca91add7ed8947d111705a79c15515f1b5bf62941adfa5a83781db
+  content_hash: sha256:d7028075a6bb278ed05d57cb1a70c88cf49c779ac34ff845009215ef855e7daa
 - repo_url: microsoft/apm
   name: apm-guide
   host: github.com
-  resolved_commit: e08c2d553585d48a279d5ef6c531b6873df352d7
+  resolved_commit: 0bd8da62d881e82d0be4cb0c7106a7ae9effbfd8
   version: 1.0.0
   virtual_path: packages/apm-guide
   is_virtual: true
@@ -99,26 +192,26 @@ dependencies:
   deployed_file_hashes:
     .agents/skills/apm-usage/SKILL.md: sha256:a76e5e768e5d2257cf910d04063418424a6dc1ff7c02949c69c9824d90e05565
     .agents/skills/apm-usage/authentication.md: sha256:7bc0522150f74e93f5dd11e9a892ab7df91474755f527a8074a596ccf251cd1c
-    .agents/skills/apm-usage/commands.md: sha256:5e40cf98efa3261449d165253ba50aa2da156133829c09477a2277c5a023af85
-    .agents/skills/apm-usage/dependencies.md: sha256:f0b4b61dcfb4c66c08b23366f9f64decee840363bbb1db590f770da33b366b76
+    .agents/skills/apm-usage/commands.md: sha256:a5f48bbec45ea4926f01c841816a1a87c8b3a2aea42ab2f62fa5e35fd0209d54
+    .agents/skills/apm-usage/dependencies.md: sha256:f38d26e7a42fb0d20d445867030a411e46fe6f8eb0f91954a7db795adc534ec4
     .agents/skills/apm-usage/governance.md: sha256:6a75072a9350b444bfef7e985fb4c9baf760b4fe31e661da772b2fb87c67e755
     .agents/skills/apm-usage/installation.md: sha256:c70544c5d1f85102c5e144ac6ae1ca68fcf8ba6a8323cb2ca6adc840d13aa960
-    .agents/skills/apm-usage/package-authoring.md: sha256:8b1c65ee8f99ee3ed96ceb160037919149211919a213c93c06cc8ad45ac58dad
+    .agents/skills/apm-usage/package-authoring.md: sha256:f9e72b4cf76483a49bad2311dfa9eff1397c9182c00aabee2524335ff2e255f6
     .agents/skills/apm-usage/troubleshooting.md: sha256:43676bd88638a042188ef5763fe4a48a245862d60797141088d67f7ce8279e2e
     .agents/skills/apm-usage/workflow.md: sha256:b38359a5bf58a9448be0b4e204a1cf6f3e73c1bd832bcffc792f9f3d245cdf39
     .claude/agents/apm-expert.md: sha256:f6cded3e7eef97ad8fff06208bcfd5a0beafb9cfe810f78e10294c90e16fd8ae
     .claude/skills/apm-usage/SKILL.md: sha256:a76e5e768e5d2257cf910d04063418424a6dc1ff7c02949c69c9824d90e05565
     .claude/skills/apm-usage/authentication.md: sha256:7bc0522150f74e93f5dd11e9a892ab7df91474755f527a8074a596ccf251cd1c
-    .claude/skills/apm-usage/commands.md: sha256:5e40cf98efa3261449d165253ba50aa2da156133829c09477a2277c5a023af85
-    .claude/skills/apm-usage/dependencies.md: sha256:f0b4b61dcfb4c66c08b23366f9f64decee840363bbb1db590f770da33b366b76
+    .claude/skills/apm-usage/commands.md: sha256:a5f48bbec45ea4926f01c841816a1a87c8b3a2aea42ab2f62fa5e35fd0209d54
+    .claude/skills/apm-usage/dependencies.md: sha256:f38d26e7a42fb0d20d445867030a411e46fe6f8eb0f91954a7db795adc534ec4
     .claude/skills/apm-usage/governance.md: sha256:6a75072a9350b444bfef7e985fb4c9baf760b4fe31e661da772b2fb87c67e755
     .claude/skills/apm-usage/installation.md: sha256:c70544c5d1f85102c5e144ac6ae1ca68fcf8ba6a8323cb2ca6adc840d13aa960
-    .claude/skills/apm-usage/package-authoring.md: sha256:8b1c65ee8f99ee3ed96ceb160037919149211919a213c93c06cc8ad45ac58dad
+    .claude/skills/apm-usage/package-authoring.md: sha256:f9e72b4cf76483a49bad2311dfa9eff1397c9182c00aabee2524335ff2e255f6
     .claude/skills/apm-usage/troubleshooting.md: sha256:43676bd88638a042188ef5763fe4a48a245862d60797141088d67f7ce8279e2e
     .claude/skills/apm-usage/workflow.md: sha256:b38359a5bf58a9448be0b4e204a1cf6f3e73c1bd832bcffc792f9f3d245cdf39
     .github/agents/apm-expert.agent.md: sha256:f6cded3e7eef97ad8fff06208bcfd5a0beafb9cfe810f78e10294c90e16fd8ae
     .opencode/agents/apm-expert.md: sha256:f6cded3e7eef97ad8fff06208bcfd5a0beafb9cfe810f78e10294c90e16fd8ae
-  content_hash: sha256:680f10a401d9479d66cc2fd6e83812a235d49f52a4a805053a148f476d773dec
+  content_hash: sha256:399adecef0c704d2302da8ad766ec1d9b4f822d01e2bef6ce043682f73c82e17
   declared_license: MIT
 deployments:
 - kind: project-relative
@@ -132,6 +225,24 @@ deployments:
   content_hash: sha256:f6cded3e7eef97ad8fff06208bcfd5a0beafb9cfe810f78e10294c90e16fd8ae
 - kind: project-relative
   target: claude
+  value: .claude/agents/charm-engineer.md
+  runtime: null
+  scope: project
+  owners:
+  - canonical/copilot-collections/groups/platform-engineering/agents/charm-engineer.agent.md
+  active_owner: canonical/copilot-collections/groups/platform-engineering/agents/charm-engineer.agent.md
+  content_hash: sha256:dc061846ee1ba04dd8cafdceb1f8aa8268a063e9d90dab27649a75066393fc9a
+- kind: project-relative
+  target: claude
+  value: .claude/rules/code-commenting.md
+  runtime: null
+  scope: project
+  owners:
+  - canonical/copilot-collections/assets/instructions/python/code-commenting.instructions.md
+  active_owner: canonical/copilot-collections/assets/instructions/python/code-commenting.instructions.md
+  content_hash: sha256:c2e065a38b3dc96e17c29a55f5a10d1f2a9e034904490b4e72ddf6c8f44312f7
+- kind: project-relative
+  target: claude
   value: .claude/rules/core-directive.md
   runtime: null
   scope: project
@@ -141,6 +252,15 @@ deployments:
   content_hash: sha256:2e72e9758b8742784c49850bd682ed5b94fb2421c4d32b7ffa51867160fac178
 - kind: project-relative
   target: claude
+  value: .claude/rules/documentation.md
+  runtime: null
+  scope: project
+  owners:
+  - canonical/copilot-collections/assets/instructions/documentation/documentation.instructions.md
+  active_owner: canonical/copilot-collections/assets/instructions/documentation/documentation.instructions.md
+  content_hash: sha256:38a4d002ed7c82651ad0a4f8fa74f261d02cd9e49060ca243094c3edfec05a42
+- kind: project-relative
+  target: claude
   value: .claude/rules/instructions.md
   runtime: null
   scope: project
@@ -148,6 +268,15 @@ deployments:
   - canonical/copilot-collections/assets/instructions/common/instructions.instructions.md
   active_owner: canonical/copilot-collections/assets/instructions/common/instructions.instructions.md
   content_hash: sha256:fe1d88831fcb3159298a96c0f40b680a5db10514ef6bd52a69b5468a97ddce01
+- kind: project-relative
+  target: claude
+  value: .claude/rules/lib-updates.md
+  runtime: null
+  scope: project
+  owners:
+  - canonical/copilot-collections/groups/platform-engineering/instructions/lib-updates.instructions.md
+  active_owner: canonical/copilot-collections/groups/platform-engineering/instructions/lib-updates.instructions.md
+  content_hash: sha256:7fa83e620285db460fd6eaedc50c973d2650985a9f5133133e2a7ffdee87c766
 - kind: project-relative
   target: claude
   value: .claude/rules/secret-guard.md
@@ -192,7 +321,7 @@ deployments:
   owners:
   - microsoft/apm/packages/apm-guide
   active_owner: microsoft/apm/packages/apm-guide
-  content_hash: sha256:5e40cf98efa3261449d165253ba50aa2da156133829c09477a2277c5a023af85
+  content_hash: sha256:a5f48bbec45ea4926f01c841816a1a87c8b3a2aea42ab2f62fa5e35fd0209d54
 - kind: project-relative
   target: claude
   value: .claude/skills/apm-usage/dependencies.md
@@ -201,7 +330,7 @@ deployments:
   owners:
   - microsoft/apm/packages/apm-guide
   active_owner: microsoft/apm/packages/apm-guide
-  content_hash: sha256:f0b4b61dcfb4c66c08b23366f9f64decee840363bbb1db590f770da33b366b76
+  content_hash: sha256:f38d26e7a42fb0d20d445867030a411e46fe6f8eb0f91954a7db795adc534ec4
 - kind: project-relative
   target: claude
   value: .claude/skills/apm-usage/governance.md
@@ -228,7 +357,7 @@ deployments:
   owners:
   - microsoft/apm/packages/apm-guide
   active_owner: microsoft/apm/packages/apm-guide
-  content_hash: sha256:8b1c65ee8f99ee3ed96ceb160037919149211919a213c93c06cc8ad45ac58dad
+  content_hash: sha256:f9e72b4cf76483a49bad2311dfa9eff1397c9182c00aabee2524335ff2e255f6
 - kind: project-relative
   target: claude
   value: .claude/skills/apm-usage/troubleshooting.md
@@ -247,6 +376,33 @@ deployments:
   - microsoft/apm/packages/apm-guide
   active_owner: microsoft/apm/packages/apm-guide
   content_hash: sha256:b38359a5bf58a9448be0b4e204a1cf6f3e73c1bd832bcffc792f9f3d245cdf39
+- kind: project-relative
+  target: claude
+  value: .claude/skills/secret-guard
+  runtime: null
+  scope: project
+  owners:
+  - canonical/copilot-collections/skills/secret-guard
+  active_owner: canonical/copilot-collections/skills/secret-guard
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/secret-guard/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - canonical/copilot-collections/skills/secret-guard
+  active_owner: canonical/copilot-collections/skills/secret-guard
+  content_hash: sha256:24296f4fa5fc1399bffc9ab4e5927950971715cde1df15d1f64eeae2c8151ca6
+- kind: project-relative
+  target: claude
+  value: .claude/skills/secret-guard/scripts/keyring_broker.py
+  runtime: null
+  scope: project
+  owners:
+  - canonical/copilot-collections/skills/secret-guard
+  active_owner: canonical/copilot-collections/skills/secret-guard
+  content_hash: sha256:397edfa9a6ca91add7ed8947d111705a79c15515f1b5bf62941adfa5a83781db
 - kind: project-relative
   target: codex
   value: .agents/skills/apm-usage
@@ -282,7 +438,7 @@ deployments:
   owners:
   - microsoft/apm/packages/apm-guide
   active_owner: microsoft/apm/packages/apm-guide
-  content_hash: sha256:5e40cf98efa3261449d165253ba50aa2da156133829c09477a2277c5a023af85
+  content_hash: sha256:a5f48bbec45ea4926f01c841816a1a87c8b3a2aea42ab2f62fa5e35fd0209d54
 - kind: project-relative
   target: codex
   value: .agents/skills/apm-usage/dependencies.md
@@ -291,7 +447,7 @@ deployments:
   owners:
   - microsoft/apm/packages/apm-guide
   active_owner: microsoft/apm/packages/apm-guide
-  content_hash: sha256:f0b4b61dcfb4c66c08b23366f9f64decee840363bbb1db590f770da33b366b76
+  content_hash: sha256:f38d26e7a42fb0d20d445867030a411e46fe6f8eb0f91954a7db795adc534ec4
 - kind: project-relative
   target: codex
   value: .agents/skills/apm-usage/governance.md
@@ -318,7 +474,7 @@ deployments:
   owners:
   - microsoft/apm/packages/apm-guide
   active_owner: microsoft/apm/packages/apm-guide
-  content_hash: sha256:8b1c65ee8f99ee3ed96ceb160037919149211919a213c93c06cc8ad45ac58dad
+  content_hash: sha256:f9e72b4cf76483a49bad2311dfa9eff1397c9182c00aabee2524335ff2e255f6
 - kind: project-relative
   target: codex
   value: .agents/skills/apm-usage/troubleshooting.md
@@ -338,6 +494,33 @@ deployments:
   active_owner: microsoft/apm/packages/apm-guide
   content_hash: sha256:b38359a5bf58a9448be0b4e204a1cf6f3e73c1bd832bcffc792f9f3d245cdf39
 - kind: project-relative
+  target: codex
+  value: .agents/skills/secret-guard
+  runtime: null
+  scope: project
+  owners:
+  - canonical/copilot-collections/skills/secret-guard
+  active_owner: canonical/copilot-collections/skills/secret-guard
+  content_hash: null
+- kind: project-relative
+  target: codex
+  value: .agents/skills/secret-guard/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - canonical/copilot-collections/skills/secret-guard
+  active_owner: canonical/copilot-collections/skills/secret-guard
+  content_hash: sha256:24296f4fa5fc1399bffc9ab4e5927950971715cde1df15d1f64eeae2c8151ca6
+- kind: project-relative
+  target: codex
+  value: .agents/skills/secret-guard/scripts/keyring_broker.py
+  runtime: null
+  scope: project
+  owners:
+  - canonical/copilot-collections/skills/secret-guard
+  active_owner: canonical/copilot-collections/skills/secret-guard
+  content_hash: sha256:397edfa9a6ca91add7ed8947d111705a79c15515f1b5bf62941adfa5a83781db
+- kind: project-relative
   target: copilot
   value: .github/agents/apm-expert.agent.md
   runtime: null
@@ -346,6 +529,24 @@ deployments:
   - microsoft/apm/packages/apm-guide
   active_owner: microsoft/apm/packages/apm-guide
   content_hash: sha256:f6cded3e7eef97ad8fff06208bcfd5a0beafb9cfe810f78e10294c90e16fd8ae
+- kind: project-relative
+  target: copilot
+  value: .github/agents/charm-engineer.agent.md
+  runtime: null
+  scope: project
+  owners:
+  - canonical/copilot-collections/groups/platform-engineering/agents/charm-engineer.agent.md
+  active_owner: canonical/copilot-collections/groups/platform-engineering/agents/charm-engineer.agent.md
+  content_hash: sha256:dc061846ee1ba04dd8cafdceb1f8aa8268a063e9d90dab27649a75066393fc9a
+- kind: project-relative
+  target: copilot
+  value: .github/instructions/code-commenting.instructions.md
+  runtime: null
+  scope: project
+  owners:
+  - canonical/copilot-collections/assets/instructions/python/code-commenting.instructions.md
+  active_owner: canonical/copilot-collections/assets/instructions/python/code-commenting.instructions.md
+  content_hash: sha256:59d57b08259bf1078691e594a73628867d9e2d278bf1ada96582fdac56a55116
 - kind: project-relative
   target: copilot
   value: .github/instructions/core-directive.instructions.md
@@ -357,6 +558,15 @@ deployments:
   content_hash: sha256:72500a4221558125e60ff5d2207dccaa0d486ff8430a4358575874501813e50e
 - kind: project-relative
   target: copilot
+  value: .github/instructions/documentation.instructions.md
+  runtime: null
+  scope: project
+  owners:
+  - canonical/copilot-collections/assets/instructions/documentation/documentation.instructions.md
+  active_owner: canonical/copilot-collections/assets/instructions/documentation/documentation.instructions.md
+  content_hash: sha256:79c0237d41daff73604d91cfc1a73537b7f34f6607c0385ab9a79700643d64b4
+- kind: project-relative
+  target: copilot
   value: .github/instructions/instructions.instructions.md
   runtime: null
   scope: project
@@ -364,6 +574,15 @@ deployments:
   - canonical/copilot-collections/assets/instructions/common/instructions.instructions.md
   active_owner: canonical/copilot-collections/assets/instructions/common/instructions.instructions.md
   content_hash: sha256:0c33b4d185a1f076d403e1f3bd09a30781808423bf81e74820441dcee943c133
+- kind: project-relative
+  target: copilot
+  value: .github/instructions/lib-updates.instructions.md
+  runtime: null
+  scope: project
+  owners:
+  - canonical/copilot-collections/groups/platform-engineering/instructions/lib-updates.instructions.md
+  active_owner: canonical/copilot-collections/groups/platform-engineering/instructions/lib-updates.instructions.md
+  content_hash: sha256:f69948017ce2e33a75e47ad21b7d7ef2f63fae09bd78e492bb8eb87f72b415be
 - kind: project-relative
   target: copilot
   value: .github/instructions/secret-guard.instructions.md
@@ -382,3 +601,12 @@ deployments:
   - microsoft/apm/packages/apm-guide
   active_owner: microsoft/apm/packages/apm-guide
   content_hash: sha256:f6cded3e7eef97ad8fff06208bcfd5a0beafb9cfe810f78e10294c90e16fd8ae
+- kind: project-relative
+  target: opencode
+  value: .opencode/agents/charm-engineer.md
+  runtime: null
+  scope: project
+  owners:
+  - canonical/copilot-collections/groups/platform-engineering/agents/charm-engineer.agent.md
+  active_owner: canonical/copilot-collections/groups/platform-engineering/agents/charm-engineer.agent.md
+  content_hash: sha256:dc061846ee1ba04dd8cafdceb1f8aa8268a063e9d90dab27649a75066393fc9a

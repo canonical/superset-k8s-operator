@@ -24,6 +24,7 @@ apm_modules/
 CLAUDE.md
 .opencode
 AGENTS.md
+GEMINI.md
 .codex
 # .github/instructions and .agents/skills are not ignored
 # as we would like for them to be available in the Web Chat/IDE 
