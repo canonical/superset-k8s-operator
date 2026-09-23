@@ -875,6 +875,8 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
                     )
                     return f"Invalid JSON body for config key {k}: should be a list"
 
+        return None
+
     def reconcile(self, force_trino_credentials: bool = False):
         """Reconcile the charm to its desired state.
 
