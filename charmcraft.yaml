@@ -507,8 +507,8 @@ config:
     extra-sequential-color-schemes:
       description: |
         JSON string representation of EXTRA_SEQUENTIAL_COLOR_SCHEMES array.
-        It allows to add custom color schemas to customise dashboards coloring.
-        
+        It allows to add custom color schemes to customise dashboards coloring.
+
         Applies to: the UI application
       type: string
       default: ""
