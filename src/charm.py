@@ -302,7 +302,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             _ = self.config
 
             if msg := self._validate_extra_palettes_config():
-                return BlockedStatus(e)(msg)
+                return BlockedStatus(msg)
 
             return None
         except ValidationError as e:
