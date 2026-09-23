@@ -306,6 +306,8 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
             return None
         except ValidationError as e:
+            return BlockedStatus(e)
+        except ValidationError as e:
             missing = [
                 str(err["loc"][0]).replace("_", "-")
                 for err in e.errors()
