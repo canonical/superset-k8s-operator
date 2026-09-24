@@ -79,6 +79,8 @@ class CharmConfig(BaseConfigModel):
     max_form_parts: Optional[int]
     data_access_request_url: Optional[str]
     enable_raise_for_access_patch: bool
+    extra_categorical_color_schemes: str
+    extra_sequential_color_schemes: str
 
     @validator("*", pre=True)
     @classmethod
