@@ -1,3 +1,4 @@
+import json
 import os
 from cachelib.redis import RedisCache
 from celery.schedules import crontab
@@ -34,6 +35,13 @@ if all([SENTRY_DSN, SENTRY_ENVIRONMENT, SENTRY_RELEASE]):
         sample_rate=float(SENTRY_SAMPLE_RATE),
         before_send=sentry_before_send,
         )
+
+# Styling overrides
+if extra_sequential := os.getenv("EXTRA_SEQUENTIAL_COLOR_SCHEMES"):
+    EXTRA_SEQUENTIAL_COLOR_SCHEMES = json.loads(extra_sequential)
+
+if extra_categorical := os.getenv("EXTRA_CATEGORICAL_COLOR_SCHEMES"):
+    EXTRA_CATEGORICAL_COLOR_SCHEMES = json.loads(extra_categorical)
 
 # StatsD logging
 STATS_LOGGER = StatsdStatsLogger(host="localhost", port=os.getenv("STATSD_PORT"))
