@@ -9,8 +9,10 @@ MCP_AUTH_* environment the FastMCP JWTVerifier uses to validate access
 tokens, in a namespace of its own so mcp never receives the web UI's OIDC
 credentials. mcp-jwt-secret-id is the alternative for deployments with no
 external identity provider at all: a shared HS256 secret, verified the same
-way. This only wires the plain JWKS/shared-secret verification paths — the
-Google-specific auth proxy is a separate stage.
+way. A Google-backed oauth relation (introspection host
+oauth2.googleapis.com) is detected purely at the workload level and fronted
+with mcp's own OAuth proxy instead, since Google doesn't support Dynamic
+Client Registration.
 """
 
 import logging
@@ -27,7 +29,9 @@ from bdd import and_, given, then, when
 logger = logging.getLogger(__name__)
 
 MCP_PORT = 5008
-JWT_SHARED_SECRET = "test-hs256-shared-secret-at-least-32-bytes-long"  # nosec B105
+JWT_SHARED_SECRET = (
+    "test-hs256-shared-secret-at-least-32-bytes-long"  # nosec B105
+)
 JWT_SECRET_NAME = "mcp-jwt-secret"  # nosec B105
 JWT_MCP_NAME = f"{steps.MCP_NAME}-jwt"
 
@@ -106,7 +110,9 @@ def _deploy_mcp_behind_ingress(
     steps.integrate_dependencies(juju, ui_name)
     steps.wait_for_active(juju, [ui_name], timeout=steps.DEPLOY_TIMEOUT)
 
-    mcp_name = steps.deploy_superset_application(juju, charm, charm_image, "mcp")
+    mcp_name = steps.deploy_superset_application(
+        juju, charm, charm_image, "mcp"
+    )
     steps.integrate_dependencies(juju, mcp_name)
 
     juju.deploy(
@@ -116,7 +122,9 @@ def _deploy_mcp_behind_ingress(
         trust=True,
     )
     juju.integrate(f"{mcp_name}:ingress", f"{steps.TRAEFIK_NAME}:ingress")
-    steps.wait_for_active(juju, [steps.TRAEFIK_NAME], timeout=steps.SETTLE_TIMEOUT)
+    steps.wait_for_active(
+        juju, [steps.TRAEFIK_NAME], timeout=steps.SETTLE_TIMEOUT
+    )
 
 
 @pytest.fixture(scope="module")
@@ -235,7 +243,9 @@ def test_mcp_auth_config_populates_once_https_is_added(
     """
     juju = mcp_with_oauth_over_https
 
-    with given("mcp behind an HTTPS ingress with an identity provider related"):
+    with given(
+        "mcp behind an HTTPS ingress with an identity provider related"
+    ):
         pass
 
     with then("mcp is active"):
@@ -255,6 +265,58 @@ def test_mcp_auth_config_populates_once_https_is_added(
         assert environment["MCP_AUTH_CLIENT_SECRET"] == (
             steps.OAUTH_STUB_CONFIG["client_secret"]
         )
+
+
+def test_mcp_fronts_a_google_provider_with_its_own_oauth_proxy(
+    mcp_with_oauth_over_https: jubilant.Juju,
+):
+    """Scenario: the related provider's introspection endpoint is Google's.
+
+    OAUTH_STUB_CONFIG's introspection_endpoint is Google's real tokeninfo
+    URL, deliberately — Google is CS387's actual target IdP. A plain
+    JWTVerifier (the default JWKS path) mounts no discovery routes of its
+    own; only an OAuthProvider-derived proxy does.
+
+    Given mcp behind an HTTPS ingress with a Google-shaped oauth relation
+    Then mcp exposes its own OAuth authorization server metadata
+    """
+    juju = mcp_with_oauth_over_https
+    url = steps.get_unit_url(juju, steps.MCP_NAME, port=MCP_PORT)
+
+    with given(
+        "mcp behind an HTTPS ingress with a Google-shaped oauth relation"
+    ):
+        steps.assert_active(juju, [steps.MCP_NAME])
+
+    with then("mcp exposes its own OAuth authorization server metadata"):
+        response = requests.get(
+            f"{url}/.well-known/oauth-authorization-server", timeout=10
+        )
+        assert response.status_code == 200, response.text
+
+
+def test_mcp_rejects_an_unverifiable_token_under_a_google_provider(
+    mcp_with_oauth_over_https: jubilant.Juju,
+):
+    """Scenario: a call carries no token the proxy or Google can vouch for.
+
+    Given mcp fronting a Google-shaped oauth relation with its own proxy
+    When a tool is called with no bearer token
+    Then the call is rejected before it reaches any tool
+    """
+    juju = mcp_with_oauth_over_https
+    url = f"{steps.get_unit_url(juju, steps.MCP_NAME, port=MCP_PORT)}/mcp"
+
+    with given(
+        "mcp fronting a Google-shaped oauth relation with its own proxy"
+    ):
+        steps.assert_active(juju, [steps.MCP_NAME])
+
+    with when("a tool is called with no bearer token"):
+        response = _call_tool(url, None)
+
+    with then("the call is rejected before it reaches any tool"):
+        assert response.status_code == 401, response.text
 
 
 def _add_mcp_with_jwt_secret(
@@ -311,11 +373,17 @@ def mcp_with_jwt_secret(
         directly (no ingress).
     """
     return steps.adopt_or_build(
-        request, mcp_behind_ingress, _add_mcp_with_jwt_secret, charm, charm_image
+        request,
+        mcp_behind_ingress,
+        _add_mcp_with_jwt_secret,
+        charm,
+        charm_image,
     )
 
 
-def test_a_valid_token_resolves_a_real_user(mcp_with_jwt_secret: jubilant.Juju):
+def test_a_valid_token_resolves_a_real_user(
+    mcp_with_jwt_secret: jubilant.Juju,
+):
     """Scenario: a token signed with the shared secret authenticates a call.
 
     Given mcp authenticating off a shared secret
@@ -328,7 +396,9 @@ def test_a_valid_token_resolves_a_real_user(mcp_with_jwt_secret: jubilant.Juju):
     with given("mcp authenticating off a shared secret"):
         steps.assert_active(juju, [JWT_MCP_NAME])
 
-    with when("a tool is called with a token naming an existing Superset user"):
+    with when(
+        "a tool is called with a token naming an existing Superset user"
+    ):
         response = _call_tool(url, _sign_token("admin"))
 
     with then("the call succeeds"):
@@ -356,7 +426,9 @@ def test_an_unverifiable_token_is_rejected(
     with given("mcp authenticating off a shared secret"):
         steps.assert_active(juju, [JWT_MCP_NAME])
 
-    with when("a tool is called with no bearer token or one that fails verification"):
+    with when(
+        "a tool is called with no bearer token or one that fails verification"
+    ):
         response = _call_tool(url, token)
 
     with then("the call is rejected before it reaches any tool"):

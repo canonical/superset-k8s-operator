@@ -18,6 +18,7 @@ from tests.unit.helpers import (
     ingress_relation,
     mcp_jwt_secret,
     oauth_relation,
+    oauth_secret,
     superset_container,
 )
 from utils import query_metadata_database
@@ -434,6 +435,28 @@ def test_mcp_waits_for_oauth_registration(ctx, probe):
 
     assert state_out.unit_status == WaitingStatus(
         "waiting for the oauth relation to be ready"
+    )
+
+
+def test_mcp_waits_for_the_oauth_client_secret(ctx, probe):
+    """A registered client with no resolvable secret still waits.
+
+    is_client_created() only checks that client_id/client_secret_id are
+    present as keys, not that they resolve to anything usable — an empty
+    client_secret would otherwise reach mcp_google_auth.py's _required(),
+    which Superset's own auth-provider selection silently swallows.
+    """
+    secret = oauth_secret(secret_value="")  # nosec B106
+    state_in = build_state(
+        config={"charm-function": "mcp"},
+        extra_relations=(oauth_relation(secret.id), ingress_relation()),
+        secrets=(secret,),
+    )
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    assert state_out.unit_status == WaitingStatus(
+        "waiting for the oauth client to be registered"
     )
 
 

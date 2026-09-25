@@ -9,24 +9,47 @@ auth is configured — see superset_config.py.
 """
 
 
-def _identity_candidates(claims, client_id=None):
+def _identity_candidates(claims, client_id=None, prefer_email=False):
     """Identities worth trying as a Superset username, in priority order.
 
-    Hydra's client_credentials tokens set sub to the client_id itself, which
-    is the Superset username directly, so sub is tried before email.
+    Hydra's client_credentials tokens set sub to the client_id itself, so
+    sub is tried before email by default. prefer_email flips that for
+    providers (currently only Google, reaching mcp) whose sub is an opaque
+    account id rather than a usable username.
 
     Args:
         claims: The verified JWT's claims.
         client_id: The token's client_id claim, tried last.
+        prefer_email: Whether to try email before sub.
 
     Returns:
         Candidate usernames, most likely first, with duplicates dropped.
     """
+    ordered = (
+        (claims.get("email"), claims.get("sub"))
+        if prefer_email
+        else (claims.get("sub"), claims.get("email"))
+    )
     result = []
-    for value in (claims.get("sub"), claims.get("email"), client_id):
+    for value in (*ordered, client_id):
         if value and value not in result:
             result.append(value)
     return result
+
+
+def _should_prefer_email():
+    """Whether the related provider's sub is untrustworthy as a username.
+
+    Returns:
+        True if identity resolution should try email before sub.
+    """
+    import os
+    from urllib.parse import urlparse
+
+    from mcp_google_auth import GOOGLE_TOKENINFO_HOST
+
+    introspection_url = os.getenv("MCP_AUTH_INTROSPECTION_URL") or ""
+    return urlparse(introspection_url).hostname == GOOGLE_TOKENINFO_HOST
 
 
 def get_user_from_request_with_jwt():
@@ -54,7 +77,9 @@ def get_user_from_request_with_jwt():
     if access_token is not None:
         claims = getattr(access_token, "claims", None) or {}
         candidates = _identity_candidates(
-            claims, getattr(access_token, "client_id", None)
+            claims,
+            getattr(access_token, "client_id", None),
+            prefer_email=_should_prefer_email(),
         )
         for identity in candidates:
             user = load_user_with_relationships(identity)

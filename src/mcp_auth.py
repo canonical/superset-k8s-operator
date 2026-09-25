@@ -97,6 +97,9 @@ def auth_status(config, model, oauth, https_ingress_url):
         return None
     if https_ingress_url is None:
         return BlockedStatus("OAuth requires an HTTPS ingress URL")
-    if oauth.provider_info() is None:
+    provider = oauth.provider_info()
+    if provider is None:
         return WaitingStatus("waiting for the oauth relation to be ready")
+    if not provider.client_id or not provider.client_secret:
+        return WaitingStatus("waiting for the oauth client to be registered")
     return None
