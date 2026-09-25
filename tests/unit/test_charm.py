@@ -90,6 +90,13 @@ WANT_ENVIRONMENT = {
     "ENABLE_RAISE_FOR_ACCESS_PATCH": False,
     "EXTRA_SEQUENTIAL_COLOR_SCHEMES": "",
     "EXTRA_CATEGORICAL_COLOR_SCHEMES": "",
+    "MCP_SERVICE_HOST": "0.0.0.0",  # nosec B104
+    "MCP_SERVICE_PORT": 5008,
+    "MCP_SERVICE_URL": None,
+    "MCP_DEBUG": False,
+    "MCP_DISABLED_TOOLS": None,
+    "MCP_DEV_USERNAME": None,
+    "MCP_RBAC_ENABLED": True,
 }
 
 
@@ -529,6 +536,45 @@ def test_worker_deployment(ctx):
 
     assert superset_environment(state_out)["CHARM_FUNCTION"] == "worker"
     assert state_out.unit_status == ActiveStatus("Status check: UP")
+
+
+def test_mcp_deployment(ctx):
+    """The pebble plan reflects the mcp function."""
+    state_in = build_state(
+        config={"charm-function": "mcp", "mcp-dev-username": "admin"}
+    )
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    environment = superset_environment(state_out)
+    assert environment["CHARM_FUNCTION"] == "mcp"
+    assert environment["MCP_SERVICE_HOST"] == "0.0.0.0"  # nosec B104
+    assert environment["MCP_SERVICE_PORT"] == 5008
+    assert environment["MCP_SERVICE_URL"] is None
+    assert environment["MCP_DEBUG"] is False
+    assert environment["MCP_DISABLED_TOOLS"] is None
+    assert environment["MCP_DEV_USERNAME"] == "admin"
+    # mcp-dev-username forces mcp-rbac-enabled off, see structured_config.py.
+    assert environment["MCP_RBAC_ENABLED"] is False
+    assert state_out.unit_status == ActiveStatus("Status check: UP")
+
+
+def test_mcp_pebble_check_uses_configured_port(ctx):
+    """The mcp function's pebble health check targets its own configured port."""
+    state_in = build_state(
+        config={
+            "charm-function": "mcp",
+            "mcp-dev-username": "admin",
+            "mcp-service-port": 6000,
+        }
+    )
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    plan = state_out.get_container("superset").plan.to_dict()
+    assert (
+        plan["checks"]["up"]["http"]["url"] == "http://localhost:6000/health"
+    )
 
 
 def test_invalid_default_role(ctx):

@@ -1,0 +1,53 @@
+Not an upstream patch: this is a Charmed Superset addition, not a backport
+of an upstream Superset fix (unlike the 41001/39835 patches alongside it).
+
+Why: `superset mcp run` serves the MCP protocol over streamable-HTTP, which
+only answers POST at `/mcp` (confirmed live: GET / -> 404, GET /mcp -> 405,
+GET /health -> 404 — there is no HTTP route anywhere in the mcp_service app
+that a plain GET can hit). Pebble's `http` check type only ever issues a
+GET and expects a 2xx, so `charm.py::_mcp_health_url()`'s
+`http://localhost:{port}/health` had nothing to probe: the check stayed
+`down` on every attempt, and the mcp application never left
+`MaintenanceStatus("Status check: DOWN")` once its auth config allowed it to
+start, confirmed via a manually-deployed unit's `pebble checks`/`pebble
+logs`.
+
+What it adds: a `/health` route on the same FastMCP ASGI app, registered via
+`FastMCP.custom_route()` — the framework's own documented mechanism for
+attaching plain HTTP routes alongside the MCP protocol mount (confirmed
+present on the exact `fastmcp==3.4.4` pinned in `rock-requirements.txt`).
+Returns a bare 200 `PlainTextResponse("OK")`; carries no auth requirement
+and no application-level checks (e.g. database connectivity), since
+`_metadata_database_status()` on the charm side already gates startup on
+the metadata database being reachable and migrated — this route only needs
+to prove the ASGI server process itself is alive and serving.
+
+--- a/superset/mcp_service/app.py
++++ b/superset/mcp_service/app.py
+@@ -418,6 +418,26 @@ def create_mcp_app(
+ # Create default MCP instance for backward compatibility
+ mcp = create_mcp_app()
+
++# Charmed Superset addition: the MCP protocol itself only answers POST at
++# /mcp, so a plain HTTP liveness probe (Pebble's `http` check, a GET
++# expecting 2xx) has nothing to hit. This route gives it one.
++from starlette.requests import Request  # noqa: E402
++from starlette.responses import PlainTextResponse  # noqa: E402
++
++
++@mcp.custom_route("/health", methods=["GET"], include_in_schema=False)
++async def _pebble_health_check(request: Request) -> PlainTextResponse:
++    """Report liveness for Pebble's HTTP check.
++
++    Args:
++        request: The incoming HTTP request.
++
++    Returns:
++        A plain 200 response.
++    """
++    return PlainTextResponse("OK")
++
++
+ # Initialize MCP dependency injection BEFORE importing tools/prompts
+ # This replaces the abstract @tool and @prompt decorators in superset_core.api.mcp
+ # with concrete implementations that can register with the mcp instance

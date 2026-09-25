@@ -23,12 +23,17 @@ from bdd import and_, given, then, when
 logger = logging.getLogger(__name__)
 
 CELERY_APPS = (steps.WORKER_NAME, steps.BEAT_NAME)
+# Applications that migrate nothing themselves and so wait on the UI's
+# migration through `_metadata_database_status()` — the worker and the beat
+# scheduler because they run Celery straight away, and mcp because it serves
+# tool calls against the same metadata database.
+NON_UI_APPS = CELERY_APPS + (steps.MCP_NAME,)
 
 
-def _deploy_celery_applications(
+def _deploy_non_ui_applications(
     juju: jubilant.Juju, charm: Path, charm_image: str
 ) -> None:
-    """Deploy the worker and the beat scheduler and relate them.
+    """Deploy the worker, the beat scheduler and mcp, and relate them.
 
     Args:
         juju: Jubilant object.
@@ -42,15 +47,20 @@ def _deploy_celery_applications(
         )
         steps.integrate_dependencies(juju, name)
 
+    mcp_name = steps.deploy_superset_application(
+        juju, charm, charm_image, "mcp", config={"mcp-dev-username": "admin"}
+    )
+    steps.integrate_dependencies(juju, mcp_name)
+
 
 @pytest.fixture(scope="module")
-def celery_applications_ahead_of_the_ui(
+def non_ui_applications_ahead_of_the_ui(
     request: pytest.FixtureRequest,
     model: jubilant.Juju,
     charm: Path,
     charm_image: str,
 ) -> jubilant.Juju:
-    """Deploy the worker and the beat scheduler with no UI in the model.
+    """Deploy the worker, the beat scheduler and mcp with no UI in the model.
 
     Args:
         request: Pytest request object.
@@ -59,37 +69,38 @@ def celery_applications_ahead_of_the_ui(
         charm_image: The workload OCI image reference.
 
     Returns:
-        The model, holding a worker and a beat scheduler on an unmigrated
-        metadata database.
+        The model, holding a worker, a beat scheduler and mcp on an
+        unmigrated metadata database.
     """
-    logger.info("Deploying the worker and beat scheduler before any UI")
+    logger.info("Deploying the worker, beat scheduler and mcp before any UI")
     return steps.adopt_or_build(
-        request, model, _deploy_celery_applications, charm, charm_image
+        request, model, _deploy_non_ui_applications, charm, charm_image
     )
 
 
 def test_a_worker_waits_for_the_ui_to_migrate_the_database(
-    celery_applications_ahead_of_the_ui: jubilant.Juju,
+    non_ui_applications_ahead_of_the_ui: jubilant.Juju,
     charm: Path,
     charm_image: str,
 ):
-    """Scenario: the Celery applications are related before the UI exists.
+    """Scenario: applications that do not migrate are related before the UI.
 
-    Given a worker and a beat scheduler on a metadata database no UI has
-      migrated
+    Given a worker, a beat scheduler and mcp on a metadata database no UI
+      has migrated
     When the UI is deployed and related to the same database
     Then the UI migrates the database and becomes active
-    And the worker and the beat scheduler stop waiting and become active
+    And the worker, the beat scheduler and mcp stop waiting and become active
     And the worker's Celery daemon answers on the broker
     """
-    juju = celery_applications_ahead_of_the_ui
+    juju = non_ui_applications_ahead_of_the_ui
 
     with given(
-        "a worker and a beat scheduler on a metadata database no UI has migrated"
+        "a worker, a beat scheduler and mcp on a metadata database no UI "
+        "has migrated"
     ):
         steps.assert_waiting_with(
             juju,
-            CELERY_APPS,
+            NON_UI_APPS,
             "waiting for the UI to initialise the database",
         )
 
@@ -108,9 +119,9 @@ def test_a_worker_waits_for_the_ui_to_migrate_the_database(
     # Juju has no signal from one application to another here, so the gate is
     # released by `update-status`, whose interval the test model shortens.
     with and_(
-        "the worker and the beat scheduler stop waiting and become active"
+        "the worker, the beat scheduler and mcp stop waiting and become active"
     ):
-        steps.wait_for_active(juju, CELERY_APPS, timeout=steps.DEPLOY_TIMEOUT)
+        steps.wait_for_active(juju, NON_UI_APPS, timeout=steps.DEPLOY_TIMEOUT)
 
     with and_("the worker's Celery daemon answers on the broker"):
         steps.wait_for_celery_workers(juju, 1)

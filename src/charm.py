@@ -49,6 +49,7 @@ from literals import (
     HEALTH_URL,
     INGRESS_RELATION_NAME,
     LOG_FILE,
+    MCP_FUNCTION,
     REDIS_RELATION_NAME,
     SIGNING_KEYS_SECRET_KEYS,
     SQL_AB_ROLE,
@@ -407,6 +408,30 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         secret = self.app.add_secret(content, label=ADMIN_SECRET_LABEL)
         peer.data[self.app][ADMIN_SECRET_ID_FIELD] = secret.id
 
+    def _mcp_health_url(self):
+        """Return the MCP service's health endpoint URL.
+
+        Unlike HEALTH_URL, the port is a config knob rather than a fixed
+        literal, so this cannot be a static `literals.py` constant.
+
+        Returns:
+            The URL to probe for the mcp function.
+        """
+        return f"http://localhost:{self.config['mcp-service-port']}/health"
+
+    def _health_url(self):
+        """Return the health-check URL for the configured charm function.
+
+        Returns:
+            The URL to probe, or None for a function with nothing to probe.
+        """
+        function = self.config["charm-function"]
+        if function == UI_FUNCTION:
+            return HEALTH_URL
+        if function == MCP_FUNCTION:
+            return self._mcp_health_url()
+        return None
+
     def _workload_status(self):
         """Return the status the workload presents right now.
 
@@ -420,24 +445,28 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             ActiveStatus when Superset answers, MaintenanceStatus when it
             does not.
         """
-        if self.config["charm-function"] != UI_FUNCTION:
+        health_url = self._health_url()
+        if health_url is None:
             return ActiveStatus("Status check: UP")
 
-        if self._workload_is_serving():
+        if self._workload_is_serving(health_url):
             return ActiveStatus("Status check: UP")
 
         return MaintenanceStatus("Status check: DOWN")
 
-    def _workload_is_serving(self):
+    def _workload_is_serving(self, health_url):
         """Ask the workload whether it is serving.
 
+        Args:
+            health_url: the health-check URL to probe.
+
         Returns:
-            True if Superset answered its health endpoint.
+            True if the workload answered its health endpoint.
         """
         try:
             return (
                 requests.get(
-                    HEALTH_URL, timeout=HEALTH_PROBE_TIMEOUT
+                    health_url, timeout=HEALTH_PROBE_TIMEOUT
                 ).status_code
                 == 200
             )
@@ -544,6 +573,43 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         return None
 
+    def _mcp_auth_status(self):
+        """Report on the mcp application's auth configuration.
+
+        Returns None outright for any charm function other than mcp.
+        Otherwise, four branches: blocks if neither the oauth relation nor
+        mcp-dev-username is set, blocks if both are set (they are mutually
+        exclusive identity sources), proceeds if only mcp-dev-username is
+        set, and — if the oauth relation alone is set — blocks until it has
+        an HTTPS ingress URL to register a client with, then waits until
+        that registration completes.
+
+        Returns:
+            The status to report, or None when mcp's auth is usable.
+        """
+        if self.config["charm-function"] != MCP_FUNCTION:
+            return None
+
+        related = self.oauth.is_related()
+        dev_username = self.config["mcp-dev-username"]
+
+        if not related and not dev_username:
+            return BlockedStatus(
+                "mcp requires either the oauth relation or mcp-dev-username"
+            )
+        if related and dev_username:
+            return BlockedStatus(
+                "conflicting mcp auth configuration: both the oauth relation "
+                "and mcp-dev-username are set — remove one"
+            )
+        if dev_username:
+            return None
+        if self.https_ingress_url is None:
+            return BlockedStatus("OAuth requires an HTTPS ingress URL")
+        if self.oauth.provider_info() is None:
+            return WaitingStatus("waiting for the oauth relation to be ready")
+        return None
+
     def _not_ready_status(self):
         """Report on whatever keeps the application from being started.
 
@@ -563,6 +629,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             self._relation_status()
             or self._metadata_database_status()
             or self._smtp_status()
+            or self._mcp_auth_status()
         )
         if dependency_status is not None:
             return dependency_status
@@ -740,6 +807,13 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "EXTRA_CATEGORICAL_COLOR_SCHEMES": self.config[
                 "extra-categorical-color-schemes"
             ],
+            "MCP_SERVICE_HOST": self.config["mcp-service-host"],
+            "MCP_SERVICE_PORT": self.config["mcp-service-port"],
+            "MCP_SERVICE_URL": self.config["mcp-service-url"],
+            "MCP_DEBUG": self.config["mcp-debug"],
+            "MCP_DISABLED_TOOLS": self.config["mcp-disabled-tools"],
+            "MCP_DEV_USERNAME": self.config["mcp-dev-username"],
+            "MCP_RBAC_ENABLED": self.config["mcp-rbac-enabled"],
         }
         if self.config["feature-flags"]:
             env.update(self.config["feature-flags"])
@@ -791,6 +865,9 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             # Port for cache warm-up.
             ports.append(Port("tcp", APPLICATION_PORT))
 
+        if function == MCP_FUNCTION:
+            ports.append(Port("tcp", self.config["mcp-service-port"]))
+
         self.model.unit.set_ports(*ports)
 
     def _sync_trino_catalogs(self, force_update_credentials):
@@ -836,7 +913,8 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             },
         }
 
-        if self.config["charm-function"] == UI_FUNCTION:
+        health_url = self._health_url()
+        if health_url is not None:
             pebble_layer.update(
                 {
                     "checks": {
@@ -844,7 +922,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
                             "override": "replace",
                             "period": "10s",
                             "threshold": 1,
-                            "http": {"url": HEALTH_URL},
+                            "http": {"url": health_url},
                         }
                     }
                 },
