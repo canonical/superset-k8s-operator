@@ -162,7 +162,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         self.ingress = IngressPerAppRequirer(
             self,
             relation_name=INGRESS_RELATION_NAME,
-            port=APPLICATION_PORT,
+            port=self._ingress_port(),
             scheme="http",
             strip_prefix=True,
             redirect_https=True,
@@ -223,6 +223,21 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         self._refresh_ingress_address()
         self.reconcile()
 
+    def _ingress_port(self):
+        """Return the port to advertise on the ingress relation.
+
+        Reads the raw model config rather than the parsed `self.config`:
+        this runs from `__init__` and from `_on_update_status()` before
+        `_config_status()` has had a chance to report invalid config
+        cleanly, so it must not raise `ValidationError` itself.
+
+        Returns:
+            MCP_PORT for the mcp function, APPLICATION_PORT otherwise.
+        """
+        if self.model.config.get("charm-function") == MCP_FUNCTION:
+            return MCP_PORT
+        return APPLICATION_PORT
+
     def _refresh_ingress_address(self):
         """Republish the unit's address on the ingress relation.
 
@@ -231,7 +246,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         routes the ingress at a dead IP indefinitely. It is a no-op when
         the value has not changed.
         """
-        self.ingress.provide_ingress_requirements(port=APPLICATION_PORT)
+        self.ingress.provide_ingress_requirements(port=self._ingress_port())
 
     def reconcile_certificates(self, relation_broken: bool = False):
         """Sync the workload CA trust store with the certificates relation.
