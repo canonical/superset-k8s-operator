@@ -1259,7 +1259,8 @@ def proxied_url(juju: jubilant.Juju, requirer: str = UI_NAME) -> str:
 
     In `subdomain` routing mode this is the per-application hostname Traefik
     routes on, and it is what the charm derives its external URL and its OAuth
-    callback from.
+    callback from. Traefik can still be settling the relation after both ends
+    report active, so this polls rather than reading the databag once.
 
     Args:
         juju: Jubilant object.
@@ -1268,8 +1269,25 @@ def proxied_url(juju: jubilant.Juju, requirer: str = UI_NAME) -> str:
     Returns:
         The URL published to that requirer.
     """
-    data = published_relation_data(juju, f"{requirer}/0", "ingress", "ingress")
-    return json.loads(data["ingress"])["url"]
+    url = ""
+
+    def _published() -> bool:
+        """Return True once Traefik has published an ingress URL."""
+        nonlocal url
+        data = published_relation_data(
+            juju, f"{requirer}/0", "ingress", "ingress"
+        )
+        url = json.loads(data["ingress"])["url"]
+        return True
+
+    poll_until(
+        juju,
+        _published,
+        f"Traefik never published an ingress URL to {requirer}",
+        timeout=API_READY_TIMEOUT,
+        delay=API_READY_INTERVAL,
+    )
+    return url
 
 
 def assert_ingress_serves(
