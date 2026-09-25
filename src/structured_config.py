@@ -34,6 +34,7 @@ class FunctionType(str, Enum):
     app_gunicorn = "app-gunicorn"
     worker = "worker"
     beat = "beat"
+    mcp = "mcp"
 
 
 class CharmConfig(BaseConfigModel):
@@ -81,6 +82,9 @@ class CharmConfig(BaseConfigModel):
     enable_raise_for_access_patch: bool
     extra_categorical_color_schemes: str
     extra_sequential_color_schemes: str
+    mcp_debug: bool
+    mcp_disabled_tools: Optional[str]
+    mcp_dev_username: Optional[str]
 
     @validator("*", pre=True)
     @classmethod
