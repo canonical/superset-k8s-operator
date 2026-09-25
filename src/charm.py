@@ -881,6 +881,12 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             ),
             "MCP_AUTH_CLIENT_ID": provider.client_id or "",
             "MCP_AUTH_CLIENT_SECRET": provider.client_secret or "",
+            # Only consumed by mcp_google_auth.py's OAuth-proxy path; ignored
+            # by the plain JWKS verifier a non-Google provider gets instead.
+            "MCP_AUTH_BASE_URL": self.https_ingress_url or "",
+            "MCP_AUTH_CLIENT_REGISTRATION": self.config[
+                "mcp-auth-client-registration"
+            ],
         }
 
     def _get_mcp_static_secret_config(self):

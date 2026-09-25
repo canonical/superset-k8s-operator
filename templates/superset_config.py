@@ -436,6 +436,18 @@ if os.getenv("CHARM_FUNCTION") == "mcp":
             MCP_JWKS_URI = mcp_auth_jwks_url
             MCP_JWT_ISSUER = os.getenv("MCP_AUTH_ISSUER", "")
             MCP_JWT_ALGORITHM = "RS256"  # Hydra issues RS256 tokens
+
+            # _create_auth_provider() in superset/mcp_service/server.py
+            # checks MCP_AUTH_FACTORY (a callable (flask_app) -> AuthProvider)
+            # before falling back to create_default_mcp_auth_factory above.
+            # Only set when the oauth relation is actually Google-backed
+            # (introspection host is oauth2.googleapis.com) — otherwise
+            # leave it unset so the JWKS path built above runs unchanged.
+            from mcp_google_auth import build_google_mcp_auth_factory
+
+            google_mcp_auth_factory = build_google_mcp_auth_factory()
+            if google_mcp_auth_factory is not None:
+                MCP_AUTH_FACTORY = google_mcp_auth_factory
         else:
             MCP_JWT_SECRET = mcp_jwt_secret
             MCP_JWT_ALGORITHM = "HS256"  # shared-secret path, no external IdP

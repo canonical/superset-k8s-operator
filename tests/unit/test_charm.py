@@ -621,6 +621,29 @@ def test_mcp_auth_config_populates_environment(ctx):
     assert environment["MCP_AUTH_JWT_ACCESS_TOKEN"] == "false"
     assert environment["MCP_AUTH_CLIENT_ID"] == "superset-client"
     assert environment["MCP_AUTH_CLIENT_SECRET"] == "secret-value"
+    assert environment["MCP_AUTH_BASE_URL"] == "https://mcp.example"
+    assert environment["MCP_AUTH_CLIENT_REGISTRATION"] is True
+
+
+def test_mcp_auth_client_registration_populates_environment(ctx):
+    """mcp-auth-client-registration reaches the workload as configured."""
+    secret = oauth_secret()
+    state_in = build_state(
+        config={
+            "charm-function": "mcp",
+            "mcp-auth-client-registration": False,
+        },
+        extra_relations=(
+            oauth_relation(secret.id),
+            ingress_relation("https://mcp.example"),
+        ),
+        secrets=(secret,),
+    )
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    environment = superset_environment(state_out)
+    assert environment["MCP_AUTH_CLIENT_REGISTRATION"] is False
 
 
 def test_mcp_jwt_secret_populates_environment(ctx):

@@ -556,6 +556,22 @@ config:
         Applies to: the mcp application.
       type: string
 
+    mcp-auth-client-registration:
+      description: |
+        Whether a caller may register itself as an OAuth client through
+        Dynamic Client Registration, instead of using a client an operator
+        registered by hand outside of it (e.g. Gemini Enterprise). Only
+        meaningful when the oauth relation's provider is Google-backed
+        (detected from the introspection endpoint's hostname): Google does
+        not support DCR, so the MCP service fronts it with its own OAuth
+        proxy, and this toggles whether that proxy accepts callers it has
+        not seen before. No-op for a non-Google provider or any other auth
+        source.
+
+        Applies to: the mcp application.
+      default: true
+      type: boolean
+
     mcp-debug:
       description: |
         Whether to run the MCP service with debug logging enabled.

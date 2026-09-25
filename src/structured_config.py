@@ -85,6 +85,7 @@ class CharmConfig(BaseConfigModel):
     mcp_service_host: str
     mcp_service_port: int
     mcp_service_url: Optional[str]
+    mcp_auth_client_registration: bool
     mcp_debug: bool
     mcp_disabled_tools: Optional[str]
     mcp_dev_username: Optional[str]
