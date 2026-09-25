@@ -116,6 +116,20 @@ def signing_keys_secret(content=None):
     )
 
 
+def mcp_jwt_secret(value="test-jwt-secret"):  # nosec B107
+    """Build the user secret holding mcp's shared HS256 bearer-auth secret.
+
+    Args:
+        value: the secret's value, or None to build a malformed secret
+            missing the `secret` key (for negative-path tests).
+
+    Returns:
+        A Scenario `Secret` owned by the user.
+    """
+    content = {"wrong-key": "irrelevant"} if value is None else {"secret": value}
+    return Secret(tracked_content=content, owner=None)
+
+
 def build_state(
     *,
     leader=True,

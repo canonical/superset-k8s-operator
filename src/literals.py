@@ -37,6 +37,7 @@ SIGNING_KEYS_SECRET_KEYS = ("secret-key", "async-queries-jwt")
 ADMIN_SECRET_LABEL = "superset-admin-password"  # nosec B105
 ADMIN_SECRET_ID_FIELD = "admin-password-secret-id"  # nosec B105
 ADMIN_SECRET_KEY = "password"  # nosec B105
+MCP_JWT_SECRET_KEY = "secret"  # nosec B105
 REDIS_KEY_PREFIX = "superset_results"
 APP_NAME = "superset"
 CONFIG_FILES = [
@@ -44,6 +45,7 @@ CONFIG_FILES = [
     "custom_security_manager.py",
     "sentry_interceptor.py",
     "permission_error_messages.py",
+    "mcp_jwt_identity.py",
 ]
 CONFIG_PATH = "/app/pythonpath"
 UI_FUNCTION = "app-gunicorn"

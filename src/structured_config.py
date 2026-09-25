@@ -88,6 +88,7 @@ class CharmConfig(BaseConfigModel):
     mcp_debug: bool
     mcp_disabled_tools: Optional[str]
     mcp_dev_username: Optional[str]
+    mcp_jwt_secret_id: Optional[str]
     mcp_rbac_enabled: bool
 
     @validator("*", pre=True)

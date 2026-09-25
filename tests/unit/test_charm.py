@@ -32,6 +32,7 @@ from tests.unit.helpers import (
     TRINO_CREDENTIALS_NEW,
     build_state,
     ingress_relation,
+    mcp_jwt_secret,
     oauth_relation,
     oauth_secret,
     signing_keys_secret,
@@ -593,6 +594,47 @@ def test_mcp_pebble_check_uses_configured_port(ctx):
     assert (
         plan["checks"]["up"]["http"]["url"] == "http://localhost:6000/health"
     )
+
+
+def test_mcp_auth_config_populates_environment(ctx):
+    """The oauth provider's data configures mcp's own bearer-auth namespace."""
+    secret = oauth_secret()
+    state_in = build_state(
+        config={"charm-function": "mcp"},
+        extra_relations=(
+            oauth_relation(secret.id),
+            ingress_relation("https://mcp.example"),
+        ),
+        secrets=(secret,),
+    )
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    environment = superset_environment(state_out)
+    assert environment["MCP_AUTH_ISSUER"] == "https://idp.example"
+    assert environment["MCP_AUTH_JWKS_URL"] == (
+        "https://idp.example:4444/.well-known/jwks.json"
+    )
+    assert environment["MCP_AUTH_INTROSPECTION_URL"] == (
+        "https://idp.example/introspect"
+    )
+    assert environment["MCP_AUTH_JWT_ACCESS_TOKEN"] == "false"
+    assert environment["MCP_AUTH_CLIENT_ID"] == "superset-client"
+    assert environment["MCP_AUTH_CLIENT_SECRET"] == "secret-value"
+
+
+def test_mcp_jwt_secret_populates_environment(ctx):
+    """mcp-jwt-secret-id configures mcp's shared-secret bearer-auth path."""
+    secret = mcp_jwt_secret("shared-hs256-secret")
+    state_in = build_state(
+        config={"charm-function": "mcp", "mcp-jwt-secret-id": secret.id},
+        secrets=(secret,),
+    )
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    environment = superset_environment(state_out)
+    assert environment["MCP_JWT_SECRET"] == "shared-hs256-secret"
 
 
 def test_invalid_default_role(ctx):
