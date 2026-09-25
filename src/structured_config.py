@@ -34,6 +34,7 @@ class FunctionType(str, Enum):
     app_gunicorn = "app-gunicorn"
     worker = "worker"
     beat = "beat"
+    mcp = "mcp"
 
 
 class CharmConfig(BaseConfigModel):
@@ -81,6 +82,13 @@ class CharmConfig(BaseConfigModel):
     enable_raise_for_access_patch: bool
     extra_categorical_color_schemes: str
     extra_sequential_color_schemes: str
+    mcp_service_host: str
+    mcp_service_port: int
+    mcp_service_url: Optional[str]
+    mcp_debug: bool
+    mcp_disabled_tools: Optional[str]
+    mcp_dev_username: Optional[str]
+    mcp_rbac_enabled: bool
 
     @validator("*", pre=True)
     @classmethod
@@ -346,3 +354,23 @@ class CharmConfig(BaseConfigModel):
         if int_value >= 0:
             return int_value
         raise ValueError("Value must be non-negative.")
+
+    @validator("mcp_rbac_enabled")
+    @classmethod
+    def mcp_rbac_enabled_validator(cls, value: bool, values: dict) -> bool:
+        """Force `mcp-rbac-enabled` off when `mcp-dev-username` is set.
+
+        The two are mutually exclusive identity sources for the MCP service,
+        and `mcp-dev-username` is the fail-open path, so it always wins.
+
+        Args:
+            value: the configured mcp-rbac-enabled value.
+            values: previously validated fields, must already contain
+                `mcp_dev_username` (declared earlier in the model).
+
+        Returns:
+            False when mcp-dev-username is set, the configured value otherwise.
+        """
+        if values.get("mcp_dev_username"):
+            return False
+        return value

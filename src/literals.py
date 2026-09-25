@@ -48,6 +48,7 @@ CONFIG_FILES = [
 CONFIG_PATH = "/app/pythonpath"
 UI_FUNCTION = "app-gunicorn"
 WORKER_FUNCTION = "worker"
+MCP_FUNCTION = "mcp"
 SQL_AB_ROLE = "SELECT name FROM ab_role;"
 HEALTH_URL = f"http://localhost:{APPLICATION_PORT}/health"
 HEALTH_PROBE_TIMEOUT = 5

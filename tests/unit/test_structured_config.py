@@ -113,7 +113,7 @@ def test_product_related_values(ctx, state) -> None:
 
     # charm-function
     check_invalid_values(ctx, state, "charm-function", erroneus_values)
-    accepted_values = ["app-gunicorn", "worker", "beat"]
+    accepted_values = ["app-gunicorn", "worker", "beat", "mcp"]
     check_valid_values(ctx, state, "charm-function", accepted_values)
 
 
@@ -157,3 +157,18 @@ def test_config_feature_flags(ctx, state) -> None:
             "feature-flags",
         )
     assert "UNKNOWN" in str(va.value)
+
+@pytest.mark.parametrize("configured", [True, False])
+def test_mcp_rbac_enabled_left_alone_without_dev_username(
+    ctx, state, configured
+) -> None:
+    """mcp-rbac-enabled keeps its configured value when dev-username is unset."""
+    assert (
+        read_config(
+            ctx,
+            state,
+            {"mcp-rbac-enabled": configured, "mcp-dev-username": ""},
+            "mcp-rbac-enabled",
+        )
+        is configured
+    )

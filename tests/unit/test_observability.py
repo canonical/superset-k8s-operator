@@ -92,6 +92,25 @@ def test_each_function_opens_the_ports_it_serves_on(ctx):
     assert beat.opened_ports == set()
 
 
+def test_mcp_opens_its_configured_port(ctx):
+    """The mcp function opens its own configured port, not the fixed UI one.
+
+    mcp is not in METRICS_FUNCTIONS, so its only port is the one it actually
+    serves MCP calls on.
+    """
+    state_in = build_state(
+        config={
+            "charm-function": "mcp",
+            "mcp-dev-username": "admin",
+            "mcp-service-port": 6000,
+        }
+    )
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    assert state_out.opened_ports == {TCPPort(6000)}
+
+
 def test_a_reconfigured_function_stops_advertising_its_old_ports(ctx):
     """The port set is replaced, not added to.
 

@@ -13,7 +13,12 @@ from ops.testing import CheckInfo
 from sqlalchemy.exc import OperationalError, ProgrammingError
 
 from literals import SQL_AB_ROLE
-from tests.unit.helpers import build_state, superset_container
+from tests.unit.helpers import (
+    build_state,
+    ingress_relation,
+    oauth_relation,
+    superset_container,
+)
 from utils import query_metadata_database
 
 WAITING_ON_THE_UI = WaitingStatus(
@@ -152,7 +157,7 @@ def test_the_health_check_trips_on_a_single_failure(ctx, probe):
 
 
 def test_a_worker_is_active_without_being_asked(ctx, probe):
-    """Only the UI function serves HTTP, so only it is probed."""
+    """A worker serves no HTTP, so it is never probed."""
     state_in = build_state(config={"charm-function": "worker"})
 
     state_out = ctx.run(ctx.on.config_changed(), state_in)
@@ -286,6 +291,101 @@ def test_an_unreachable_database_is_not_reported_as_an_unmigrated_one(
     assert state_out.unit_status == WaitingStatus(
         "waiting for the metadata database to answer"
     )
+
+
+def test_mcp_blocks_without_oauth_or_dev_username(ctx, probe):
+    """The mcp function with neither auth source configured blocks."""
+    state_in = build_state(config={"charm-function": "mcp"})
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    assert state_out.unit_status == BlockedStatus(
+        "mcp requires either the oauth relation or mcp-dev-username"
+    )
+
+
+def test_mcp_blocks_with_both_oauth_and_dev_username(ctx, probe):
+    """The mcp function with both auth sources configured blocks, naming the conflict."""
+    state_in = build_state(
+        config={"charm-function": "mcp", "mcp-dev-username": "admin"},
+        extra_relations=(oauth_relation(),),
+    )
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    assert state_out.unit_status == BlockedStatus(
+        "conflicting mcp auth configuration: both the oauth relation "
+        "and mcp-dev-username are set — remove one"
+    )
+
+
+def test_mcp_proceeds_with_dev_username_only(ctx, probe):
+    """Setting mcp-dev-username alone is enough for mcp to start."""
+    state_in = build_state(
+        config={"charm-function": "mcp", "mcp-dev-username": "admin"}
+    )
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    assert state_out.unit_status == ActiveStatus("Status check: UP")
+
+
+def test_mcp_blocks_on_oauth_without_an_https_ingress(ctx, probe):
+    """An oauth relation with no HTTPS ingress URL blocks, not waits.
+
+    Without one, the requirer never has a redirect_uri to register a client
+    with, so the provider never replies — leaving provider_info() stuck at
+    None forever rather than a transient one it will grow out of.
+    """
+    state_in = build_state(
+        config={"charm-function": "mcp"},
+        extra_relations=(oauth_relation(),),
+    )
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    assert state_out.unit_status == BlockedStatus(
+        "OAuth requires an HTTPS ingress URL"
+    )
+
+
+def test_mcp_waits_for_oauth_registration(ctx, probe):
+    """An oauth relation whose client registration is not complete waits."""
+    state_in = build_state(
+        config={"charm-function": "mcp"},
+        extra_relations=(oauth_relation(), ingress_relation()),
+    )
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    assert state_out.unit_status == WaitingStatus(
+        "waiting for the oauth relation to be ready"
+    )
+
+
+def test_non_mcp_ignores_mcp_auth_status(ctx, probe):
+    """`_mcp_auth_status()` does not affect any other charm function."""
+    state_in = build_state(config={"charm-function": "worker"})
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    assert state_out.unit_status == ActiveStatus("Status check: UP")
+
+
+def test_mcp_is_probed_on_its_configured_port(ctx, probe):
+    """The mcp function's health check is probed like the UI's, not skipped like a worker's."""
+    state_in = build_state(
+        config={
+            "charm-function": "mcp",
+            "mcp-dev-username": "admin",
+            "mcp-service-port": 6000,
+        }
+    )
+
+    ctx.run(ctx.on.config_changed(), state_in)
+
+    probe.assert_called_once()
+    assert probe.call_args.args[0] == "http://localhost:6000/health"
 
 
 @pytest.mark.parametrize(

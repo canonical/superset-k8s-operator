@@ -139,9 +139,10 @@ config:
           The Superset function this application fulfills. A complete deployment
           runs one application of each: 'app-gunicorn' serves the web UI and is
           the only one that migrates the metadata database, 'worker' executes
-          Celery tasks, and 'beat' schedules them.
+          Celery tasks, 'beat' schedules them, and 'mcp' serves MCP tool calls
+          against the shared metadata database.
 
-          Allowed options are: 'app-gunicorn', 'worker', 'beat'
+          Allowed options are: 'app-gunicorn', 'worker', 'beat', 'mcp'
 
           Applies to: every application. It is what makes them differ.
       default: app-gunicorn
@@ -448,8 +449,10 @@ config:
         Applies to: the worker application, which writes the link into the
         email. The UI application also reads it, as one of the hosts its
         `/redirect` page treats as internal, but every link a report email
-        sends there is external by construction. Only takes effect when
-        `ALERT_REPORTS` is set.
+        sends there is external by construction — this only takes effect
+        when `ALERT_REPORTS` is set. The mcp application reads it too, as
+        the fallback base for the URLs it generates when mcp-service-url is
+        unset, regardless of `ALERT_REPORTS`.
       type: string
 
     email-subject-prefix:
@@ -525,6 +528,69 @@ config:
         Applies to: the UI application
       type: string
       default: ""
+
+    # MCP configs
+
+    mcp-service-host:
+      description: |
+        The interface the MCP service binds to.
+
+        Applies to: the mcp application.
+      default: "0.0.0.0"
+      type: string
+
+    mcp-service-port:
+      description: |
+        The port the MCP service listens on.
+
+        Applies to: the mcp application.
+      default: 5008
+      type: int
+
+    mcp-service-url:
+      description: |
+        The public-facing URL the MCP service uses in generated links, e.g.
+        chart and dashboard screenshot/preview URLs. When unset, Superset
+        derives it from external-url instead.
+
+        Applies to: the mcp application.
+      type: string
+
+    mcp-debug:
+      description: |
+        Whether to run the MCP service with debug logging enabled.
+
+        Applies to: the mcp application.
+      default: false
+      type: boolean
+
+    mcp-disabled-tools:
+      description: |
+        Comma-separated list of MCP tool names to disable. Unknown names are
+        logged and otherwise ignored, matching upstream's own behaviour.
+
+        Applies to: the mcp application.
+      type: string
+
+    mcp-dev-username:
+      description: |
+        Superset username the MCP service authenticates every call as,
+        bypassing the oauth relation. Intended for development; setting it
+        forces mcp-rbac-enabled off, since there is no authenticated identity
+        left to check a role against.
+
+        Applies to: the mcp application. Mutually exclusive with the oauth
+        relation: the application blocks if neither is set, and if both are.
+      type: string
+
+    mcp-rbac-enabled:
+      description: |
+        Whether the MCP service checks the caller's Superset role before
+        running a tool. Forced off automatically when mcp-dev-username is set.
+
+        Applies to: the mcp application.
+      default: true
+      type: boolean
 
 actions:
   restart:
