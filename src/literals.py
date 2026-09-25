@@ -48,8 +48,12 @@ CONFIG_FILES = [
 CONFIG_PATH = "/app/pythonpath"
 UI_FUNCTION = "app-gunicorn"
 WORKER_FUNCTION = "worker"
+MCP_FUNCTION = "mcp"
+MCP_HOST = "0.0.0.0"  # nosec B104
+MCP_PORT = 5008
 SQL_AB_ROLE = "SELECT name FROM ab_role;"
 HEALTH_URL = f"http://localhost:{APPLICATION_PORT}/health"
+MCP_HEALTH_URL = f"http://localhost:{MCP_PORT}/health"
 HEALTH_PROBE_TIMEOUT = 5
 
 # Observability literals

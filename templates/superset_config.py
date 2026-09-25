@@ -395,6 +395,24 @@ MAX_FORM_PARTS = int(v) if (v := os.getenv("MAX_FORM_PARTS")) else 1000
 # URL users are directed to when they hit a Trino/Ranger permission-denied error.
 DATA_ACCESS_REQUEST_URL = os.getenv("DATA_ACCESS_REQUEST_URL")
 
+# MCP service
+MCP_SERVICE_HOST = os.getenv("MCP_SERVICE_HOST")
+MCP_SERVICE_PORT = int(os.getenv("MCP_SERVICE_PORT", 5008))
+MCP_DEBUG = os.getenv("MCP_DEBUG", "").lower() == "true"
+MCP_RBAC_ENABLED = os.getenv("MCP_RBAC_ENABLED", "").lower() != "false"
+MCP_DEV_USERNAME = os.getenv("MCP_DEV_USERNAME")
+
+if os.getenv("CHARM_FUNCTION") == "mcp":
+    # MCP_DISABLED_TOOLS is a set[str] of exact tool names; the charm config
+    # carries it as a comma-separated string, same convention as feature-flags.
+    mcp_disabled_tools = os.getenv("MCP_DISABLED_TOOLS")
+    if mcp_disabled_tools:
+        MCP_DISABLED_TOOLS = {
+            name.strip()
+            for name in mcp_disabled_tools.split(",")
+            if name.strip()
+        }
+
 def FLASK_APP_MUTATOR(app):
     """Override the Flask app dynamically."""
 

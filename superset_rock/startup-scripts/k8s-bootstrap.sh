@@ -53,6 +53,13 @@ elif [[ "${CHARM_FUNCTION}" == "app-gunicorn" ]]; then
   echo "Starting web app..."
   /app/k8s/k8s-init.sh
   /app/k8s/run-server.sh
+elif [[ "${CHARM_FUNCTION}" == "mcp" ]]; then
+  echo "Starting MCP service..."
+  mcp_args=(--host "${MCP_SERVICE_HOST:-0.0.0.0}" --port "${MCP_SERVICE_PORT:-5008}")
+  if [[ "${MCP_DEBUG:-false}" == "true" ]]; then
+    mcp_args+=(--debug)
+  fi
+  superset mcp run "${mcp_args[@]}"
 else
   echo "Unknown CHARM_FUNCTION '${CHARM_FUNCTION}'" >&2
   exit 1
