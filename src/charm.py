@@ -795,7 +795,13 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         if self.config["feature-flags"]:
             env.update(self.config["feature-flags"])
         env.update(self._get_oauth_config())
-        env.update(mcp_auth.get_mcp_auth_config(self.oauth))
+        env.update(
+            mcp_auth.get_mcp_auth_config(
+                self.oauth,
+                self.https_ingress_url,
+                self.config["mcp-auth-client-registration"],
+            )
+        )
         env.update(
             mcp_auth.get_mcp_static_secret_config(
                 self.model, self.config["mcp-jwt-secret-id"]

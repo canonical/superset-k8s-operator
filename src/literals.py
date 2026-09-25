@@ -46,6 +46,7 @@ CONFIG_FILES = [
     "sentry_interceptor.py",
     "permission_error_messages.py",
     "mcp_jwt_identity.py",
+    "mcp_google_auth.py",
 ]
 CONFIG_PATH = "/app/pythonpath"
 UI_FUNCTION = "app-gunicorn"
