@@ -2,7 +2,9 @@
 jmespath==1.0.1
 
 # Optional dependencies for Database connectors
-psycopg2-binary==2.9.10
+# Built from source against Ubuntu's libpq: psycopg2-binary bundles its own
+# OpenSSL, PCRE and Cyrus SASL builds from CentOS 7.
+psycopg2==2.9.13
 Authlib==1.6.12
 elasticsearch-dbapi>=0.2.7,<0.3.0
 trino==0.327.0
@@ -21,4 +23,4 @@ statsd==4.0.1
 gevent==24.2.1
 
 # Alerts and reports screenshots (Playwright + Chromium)
-playwright==1.52.0
+playwright==1.63.0
