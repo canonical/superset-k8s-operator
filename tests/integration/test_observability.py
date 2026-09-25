@@ -4,14 +4,15 @@
 
 """Feature: what a Superset deployment reports to the observability stack.
 
-Each charm function exports what it has to export and nothing else: the UI
-and the worker run exporters and advertise scrape targets, and a beat
+Each charm function exports what it has to export and nothing else: the UI,
+the worker and mcp run exporters and advertise scrape targets, and a beat
 scheduler reports nothing at all rather than exporting an exporter's own
 runtime.
 """
 
 import logging
 import time
+from pathlib import Path
 from typing import Any
 
 import jubilant
@@ -25,15 +26,27 @@ logger = logging.getLogger(__name__)
 ALERT_RULES = ("SupersetDown", "SupersetHalfOrMoreDown", "WorkersDown")
 DASHBOARD_TITLE = "Superset Metrics"
 LOG_LOOKBACK_SECONDS = 60 * 60
-EXPORTING_APPS = (steps.UI_NAME, steps.WORKER_NAME)
+EXPORTING_APPS = (steps.UI_NAME, steps.WORKER_NAME, steps.MCP_NAME)
 
 
-def _observe(juju: jubilant.Juju) -> None:
-    """Deploy COS and relate every observability endpoint to it.
+def _observe(juju: jubilant.Juju, charm: Path, charm_image: str) -> None:
+    """Deploy mcp and COS, and relate every observability endpoint to it.
+
+    mcp is not part of `superset_deployment` (UI/worker/beat only), so it is
+    deployed here, against the deployment's already-migrated database.
 
     Args:
         juju: Jubilant object.
+        charm: Path to the packed charm.
+        charm_image: The workload OCI image reference.
     """
+    logger.info("Deploying mcp")
+    mcp_name = steps.deploy_superset_application(
+        juju, charm, charm_image, "mcp", config={"mcp-dev-username": "admin"}
+    )
+    steps.integrate_dependencies(juju, mcp_name)
+    steps.wait_for_active(juju, [mcp_name], timeout=steps.DEPLOY_TIMEOUT)
+
     logger.info("Deploying Prometheus, Loki and Grafana")
     steps.deploy_cos(juju)
 
@@ -53,25 +66,32 @@ def _observe(juju: jubilant.Juju) -> None:
 
     steps.wait_for_active(
         juju,
-        [*steps.SUPERSET_APPS, *steps.COS_APPS],
+        [*steps.SUPERSET_APPS, mcp_name, *steps.COS_APPS],
         timeout=steps.DEPLOY_TIMEOUT,
     )
 
 
 @pytest.fixture(scope="module")
 def an_observed_deployment(
-    request: pytest.FixtureRequest, superset_deployment: jubilant.Juju
+    request: pytest.FixtureRequest,
+    superset_deployment: jubilant.Juju,
+    charm: Path,
+    charm_image: str,
 ) -> jubilant.Juju:
-    """Relate the deployment's three observability endpoints to COS.
+    """Relate the deployment's observability endpoints to COS.
 
     Args:
         request: Pytest request object.
         superset_deployment: The active deployment.
+        charm: Path to the packed charm.
+        charm_image: The workload OCI image reference.
 
     Returns:
         The model, with Prometheus, Loki and Grafana related.
     """
-    return steps.adopt_or_build(request, superset_deployment, _observe)
+    return steps.adopt_or_build(
+        request, superset_deployment, _observe, charm, charm_image
+    )
 
 
 def _prometheus(juju: jubilant.Juju, path: str, **params: str) -> Any:
@@ -114,10 +134,10 @@ def _up_by_application(juju: jubilant.Juju, app: str) -> list[str]:
 def test_prometheus_scrapes_the_functions_that_export_metrics(
     an_observed_deployment: jubilant.Juju,
 ):
-    """Scenario: the UI and the worker are scraped and the beat scheduler is not.
+    """Scenario: the UI, the worker and mcp are scraped, the beat scheduler is not.
 
     Given a Superset deployment related to Prometheus
-    Then Prometheus scrapes the UI and the worker
+    Then Prometheus scrapes the UI, the worker and mcp
     And it holds no scrape target for the beat scheduler
     """
     juju = an_observed_deployment
@@ -125,7 +145,7 @@ def test_prometheus_scrapes_the_functions_that_export_metrics(
     with given("a Superset deployment related to Prometheus"):
         steps.assert_active(juju, [steps.PROMETHEUS_NAME])
 
-    with then("Prometheus scrapes the UI and the worker"):
+    with then("Prometheus scrapes the UI, the worker and mcp"):
         for app in EXPORTING_APPS:
             steps.poll_until(
                 juju,

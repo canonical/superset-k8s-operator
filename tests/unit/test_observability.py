@@ -96,8 +96,8 @@ def test_each_function_opens_the_ports_it_serves_on(ctx):
 def test_mcp_opens_its_own_port(ctx):
     """The mcp function opens its own port, not the fixed UI one.
 
-    mcp is not in METRICS_FUNCTIONS, so its only port is the one it actually
-    serves MCP calls on.
+    mcp is in METRICS_FUNCTIONS like the UI, so it also opens the Prometheus
+    scrape port.
     """
     state_in = build_state(
         config={"charm-function": "mcp", "mcp-dev-username": "admin"}
@@ -105,7 +105,22 @@ def test_mcp_opens_its_own_port(ctx):
 
     state_out = ctx.run(ctx.on.config_changed(), state_in)
 
-    assert state_out.opened_ports == {TCPPort(MCP_PORT)}
+    assert state_out.opened_ports == {TCPPort(MCP_PORT), TCPPort(9102)}
+
+
+def test_mcp_keeps_its_statsd_sink(ctx):
+    """MCP is treated exactly like the UI: statsd_exporter, no celery-exporter."""
+    state_in = build_state(
+        config={"charm-function": "mcp", "mcp-dev-username": "admin"}
+    )
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    services = state_out.get_container("superset").plan.to_dict()["services"]
+    assert (
+        services["metrics-exporter"]["command"] == "/usr/bin/statsd_exporter"
+    )
+    assert "celery-exporter" not in services
 
 
 def test_a_reconfigured_function_stops_advertising_its_old_ports(ctx):
