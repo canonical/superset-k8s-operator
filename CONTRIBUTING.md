@@ -30,6 +30,23 @@ make venv
 source venv/bin/activate
 ```
 
+### Setting up the environment for agents
+
+This repository uses [apm](https://github.com/microsoft/apm) for managing dependencies for agentic resources. 
+
+```sh
+apm install # places skill and agent files for the harnesses configured in this repo's apm.yml `targets:` (or auto-detected). See apm docs for full list of supported harnesses and how to override with --target
+```
+
+The agent `apm-expert` and `apm-usage` skills are available for FAQ and assistance with the tool.
+
+Harnesses that support scoped, native instruction directories (Claude's `.claude/rules/`, Copilot's `.github/instructions/`) get instructions deployed there directly by `apm install`, and only load the ones relevant to the files being touched. Some harnesses (Codex, OpenCode, Gemini today) only read a single root entrypoint and have no such scoping. Any `.instructions.md` content whose `applyTo` pattern matches gets fully inlined into that file (`AGENTS.md`/`GEMINI.md`) wherever it's placed. If you would like to avoid an overpopulated single instruction file, consider adding a global manual directive to look for instruction files in `apm_modules`.  
+
+You can use `apm.local.yml` for specifying additional personal resources.
+
+
+> Please note, that generated artifacts for Copilot are still tracked in the repository. This ensures that agents launched in web applications (chat, IDE) of GitHub have the necessary instructions.
+
 ## Environment for building
 
 You can install the dependencies for building with:

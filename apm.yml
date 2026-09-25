@@ -1,0 +1,20 @@
+# Copyright 2026 Canonical Ltd.
+# See LICENSE file for licensing details.
+name: superset-k8s-operator
+version: 0.0.1-rc1
+description: APM project for superset-k8s-operator
+# Which agent platforms to deploy to.
+# Resolution order: --target flag > this field > auto-detect from filesystem.
+# Accepted values: agent-skills, antigravity, claude, codex, copilot, cursor, gemini, grok-build, kiro, opencode, windsurf
+targets:
+- claude
+- codex
+- copilot
+- opencode
+dependencies:
+  apm:
+  - git: canonical/canonical-data-mesh-docs
+    path: resources/development
+  mcp: []
+includes: auto
+scripts: {}
