@@ -86,7 +86,13 @@ class _AccessToken:
 
 
 def _stub_dependencies(
-    *, access_token=None, dev_username="", g_user=None, users=None, emails=None
+    *,
+    access_token=None,
+    dev_username="",
+    g_user=None,
+    users=None,
+    emails=None,
+    prefer_email=False,
 ):
     """Install stub fastmcp/flask/superset modules the patch imports.
 
@@ -99,6 +105,7 @@ def _stub_dependencies(
             should resolve for it.
         emails: Mapping of email to the user load_user_with_relationships
             should resolve for it when called with email=.
+        prefer_email: What _should_prefer_email() should report.
     """
     users = users or {}
     emails = emails or {}
@@ -140,6 +147,8 @@ def _stub_dependencies(
         "superset.mcp_service", types.ModuleType("superset.mcp_service")
     )
     sys.modules["superset.mcp_service.auth"] = auth_module
+
+    _P["_should_prefer_email"] = lambda: prefer_email
 
 
 # ---------------------------------------------------------------------------
@@ -183,6 +192,14 @@ class TestIdentityCandidates(unittest.TestCase):
     def test_empty_claims_produce_no_candidates(self):
         """No sub, email or client_id leaves nothing to try."""
         self.assertEqual(_identity_candidates({}), [])
+
+    def test_google_tries_email_before_sub(self):
+        """Google's sub is a numeric account id, never a Superset username."""
+        candidates = _identity_candidates(
+            {"sub": "108247694", "email": "alice@example.com"},
+            prefer_email=True,
+        )
+        self.assertEqual(candidates, ["alice@example.com", "108247694"])
 
 
 # ---------------------------------------------------------------------------
@@ -258,3 +275,22 @@ class TestGetUserFromRequestWithJwt(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             _get_user_from_request_with_jwt()
+
+    def test_google_prefers_the_email_matched_user_over_sub(self):
+        """Proves get_user_from_request_with_jwt() wires prefer_email through.
+
+        Unlike test_google_tries_email_before_sub, which only checks
+        _identity_candidates in isolation, this checks the caller actually
+        passes _should_prefer_email()'s result into it.
+        """
+        by_sub = _StubUser("108247694")
+        by_email = _StubUser("alice@example.com")
+        _stub_dependencies(
+            access_token=_AccessToken(
+                claims={"sub": "108247694", "email": "alice@example.com"}
+            ),
+            users={"108247694": by_sub, "alice@example.com": by_email},
+            prefer_email=True,
+        )
+
+        self.assertIs(_get_user_from_request_with_jwt(), by_email)

@@ -57,12 +57,15 @@ def _oauth_status(oauth, https_ingress_url):
     """
     if https_ingress_url is None:
         return BlockedStatus("OAuth requires an HTTPS ingress URL")
-    if oauth.provider_info() is None:
+    provider = oauth.provider_info()
+    if provider is None:
         return WaitingStatus("waiting for the oauth relation to be ready")
+    if not provider.client_id or not provider.client_secret:
+        return WaitingStatus("waiting for the oauth client to be registered")
     return None
 
 
-def get_mcp_auth_config(oauth):
+def get_mcp_auth_config(oauth, https_ingress_url, auth_client_registration):
     """Return MCP_AUTH_* environment values for mcp's own auth provider.
 
     Reuses the same oauth relation and the same client_id/client_secret as
@@ -74,6 +77,9 @@ def get_mcp_auth_config(oauth):
 
     Args:
         oauth: The charm's OAuthRelation instance.
+        https_ingress_url: The charm's current HTTPS ingress URL, or None.
+        auth_client_registration: The mcp-auth-client-registration config
+            value.
 
     Returns:
         The MCP_AUTH_* environment values, empty when OAuth is not
@@ -96,4 +102,8 @@ def get_mcp_auth_config(oauth):
         ),
         "MCP_AUTH_CLIENT_ID": provider.client_id or "",
         "MCP_AUTH_CLIENT_SECRET": provider.client_secret or "",
+        # Only consumed by mcp_google_auth.py's OAuth-proxy path; ignored
+        # by the plain JWKS verifier a non-Google provider gets instead.
+        "MCP_AUTH_BASE_URL": https_ingress_url or "",
+        "MCP_AUTH_CLIENT_REGISTRATION": auth_client_registration,
     }
