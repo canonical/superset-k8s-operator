@@ -861,19 +861,20 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "extra_sequential_color_schemes",
             "extra_categorical_color_schemes",
         ]:
-            if item := self.config[k]:
-                try:
-                    parsed = json.loads(item)
-                except (json.JSONDecodeError, TypeError) as e:
-                    logger.error("Invalid JSON for config key %s: %s", k, e)
-                    return f"Invalid JSON format for config key {k}"
-                if not isinstance(parsed, list):
-                    logger.error(
-                        "Invalid JSON for config key - list expected %s: %s",
-                        k,
-                        item,
-                    )
-                    return f"Invalid JSON body for config key {k}: should be a list"
+            if not (item := self.config[k]):
+                continue
+            try:
+                parsed = json.loads(item)
+            except (json.JSONDecodeError, TypeError) as e:
+                logger.error("Invalid JSON for config key %s: %s", k, e)
+                return f"Invalid JSON format for config key {k}"
+            if not isinstance(parsed, list):
+                logger.error(
+                    "Invalid JSON for config key - list expected %s: %s",
+                    k,
+                    item,
+                )
+                return f"Invalid JSON body for config key {k}: should be a list"
 
         return None
 
