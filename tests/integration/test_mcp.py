@@ -255,7 +255,8 @@ def test_mcp_blocks_without_any_auth_configured(
         steps.assert_blocked_with(
             juju,
             [steps.MCP_NAME],
-            "mcp requires either the oauth relation or mcp-dev-username",
+            "mcp requires the oauth relation, mcp-dev-username, or "
+            "mcp-jwt-secret-id",
         )
 
 
@@ -275,7 +276,8 @@ def test_mcp_serves_tool_calls_once_dev_username_is_set(
         steps.assert_blocked_with(
             juju,
             [steps.MCP_NAME],
-            "mcp requires either the oauth relation or mcp-dev-username",
+            "mcp requires the oauth relation, mcp-dev-username, or "
+            "mcp-jwt-secret-id",
         )
 
     with when("mcp-dev-username is set"):

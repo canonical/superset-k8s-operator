@@ -15,6 +15,7 @@ import logging
 import os
 import secrets
 from typing import Optional
+from urllib.parse import urlparse, urlunparse
 
 import ops
 import requests
@@ -36,6 +37,7 @@ from ops import (
 )
 from pydantic import ValidationError
 
+import mcp_auth
 from literals import (
     ADMIN_SECRET_ID_FIELD,
     ADMIN_SECRET_KEY,
@@ -227,7 +229,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             otherwise.
         """
         if self.model.config.get("charm-function") == MCP_FUNCTION:
-            return self.model.config.get("mcp-service-port", APPLICATION_PORT)
+            return self.model.config["mcp-service-port"]
         return APPLICATION_PORT
 
     def _refresh_ingress_address(self):
@@ -425,13 +427,10 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         peer.data[self.app][ADMIN_SECRET_ID_FIELD] = secret.id
 
     def _mcp_health_url(self):
-        """Return the MCP service's health endpoint URL.
-
-        Unlike HEALTH_URL, the port is a config knob rather than a fixed
-        literal, so this cannot be a static `literals.py` constant.
+        """Return the mcp function's health endpoint URL.
 
         Returns:
-            The URL to probe for the mcp function.
+            The URL to probe.
         """
         return f"http://localhost:{self.config['mcp-service-port']}/health"
 
@@ -589,43 +588,6 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
 
         return None
 
-    def _mcp_auth_status(self):
-        """Report on the mcp application's auth configuration.
-
-        Returns None outright for any charm function other than mcp.
-        Otherwise, four branches: blocks if neither the oauth relation nor
-        mcp-dev-username is set, blocks if both are set (they are mutually
-        exclusive identity sources), proceeds if only mcp-dev-username is
-        set, and — if the oauth relation alone is set — blocks until it has
-        an HTTPS ingress URL to register a client with, then waits until
-        that registration completes.
-
-        Returns:
-            The status to report, or None when mcp's auth is usable.
-        """
-        if self.config["charm-function"] != MCP_FUNCTION:
-            return None
-
-        related = self.oauth.is_related()
-        dev_username = self.config["mcp-dev-username"]
-
-        if not related and not dev_username:
-            return BlockedStatus(
-                "mcp requires either the oauth relation or mcp-dev-username"
-            )
-        if related and dev_username:
-            return BlockedStatus(
-                "conflicting mcp auth configuration: both the oauth relation "
-                "and mcp-dev-username are set — remove one"
-            )
-        if dev_username:
-            return None
-        if self.https_ingress_url is None:
-            return BlockedStatus("OAuth requires an HTTPS ingress URL")
-        if self.oauth.provider_info() is None:
-            return WaitingStatus("waiting for the oauth relation to be ready")
-        return None
-
     def _not_ready_status(self):
         """Report on whatever keeps the application from being started.
 
@@ -645,7 +607,9 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             self._relation_status()
             or self._metadata_database_status()
             or self._smtp_status()
-            or self._mcp_auth_status()
+            or mcp_auth.auth_status(
+                self.config, self.model, self.oauth, self.https_ingress_url
+            )
         )
         if dependency_status is not None:
             return dependency_status
@@ -834,6 +798,8 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         if self.config["feature-flags"]:
             env.update(self.config["feature-flags"])
         env.update(self._get_oauth_config())
+        env.update(self._get_mcp_auth_config())
+        env.update(self._get_mcp_static_secret_config())
         env.update(self.smtp.environment())
 
         http_proxy = os.environ.get("JUJU_CHARM_HTTP_PROXY")
@@ -871,6 +837,69 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "OAUTH_CLIENT_ID": provider.client_id,
             "OAUTH_CLIENT_SECRET": provider.client_secret,
         }
+
+    def _get_mcp_auth_config(self):
+        """Return MCP_AUTH_* environment values for mcp's own auth provider.
+
+        A distinct namespace from OAUTH_* (the web UI's own login), built
+        from the same oauth relation, so mcp never receives the web UI's
+        OIDC credentials.
+
+        Returns:
+            The MCP_AUTH_* environment values, empty when OAuth is not
+            configured.
+        """
+        provider = self.oauth.provider_info()
+        if provider is None:
+            return {}
+
+        # The oauth relation publishes the introspection endpoint as an
+        # internal k8s service URL on Hydra's admin port (4445); the
+        # workload cannot resolve the ingress-published public hostname the
+        # JWKS endpoint uses, so the JWKS URL is derived from that same host
+        # on the public port (4444) instead.
+        introspection = provider.introspection_endpoint or ""
+        if introspection:
+            parsed = urlparse(introspection)
+            jwks_url = urlunparse(
+                parsed._replace(
+                    netloc=f"{parsed.hostname}:4444",
+                    path="/.well-known/jwks.json",
+                    query="",
+                    fragment="",
+                )
+            )
+        else:
+            jwks_url = provider.jwks_endpoint
+
+        return {
+            "MCP_AUTH_ISSUER": provider.issuer_url,
+            "MCP_AUTH_JWKS_URL": jwks_url,
+            "MCP_AUTH_INTROSPECTION_URL": provider.introspection_endpoint,
+            "MCP_AUTH_JWT_ACCESS_TOKEN": (
+                "true" if provider.jwt_access_token else "false"
+            ),
+            "MCP_AUTH_CLIENT_ID": provider.client_id or "",
+            "MCP_AUTH_CLIENT_SECRET": provider.client_secret or "",
+        }
+
+    def _get_mcp_static_secret_config(self):
+        """Return MCP_JWT_SECRET for mcp's shared-secret auth path.
+
+        The alternative to the oauth relation for deployments with no
+        external identity provider — see `mcp_auth.auth_status()` for how
+        the auth sources are kept mutually exclusive.
+
+        Returns:
+            The MCP_JWT_SECRET environment value, empty when
+            mcp-jwt-secret-id is unset.
+        """
+        secret = mcp_auth.jwt_secret(
+            self.model, self.config["mcp-jwt-secret-id"]
+        )
+        if secret is None:
+            return {}
+        return {"MCP_JWT_SECRET": secret}
 
     def _open_workload_ports(self):
         """Open exactly the ports the configured charm function serves on."""

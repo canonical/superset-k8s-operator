@@ -5,6 +5,7 @@ from celery.schedules import crontab
 from celery.signals import import_modules
 from flask_appbuilder.security.manager import AUTH_OAUTH
 from custom_security_manager import CustomSecurityManager
+from mcp_jwt_identity import get_user_from_request_with_jwt
 from permission_error_messages import attach_error_rewriter
 from sentry_interceptor import redact_params
 from superset.stats_logger import StatsdStatsLogger
@@ -422,6 +423,27 @@ if os.getenv("CHARM_FUNCTION") == "mcp":
             for name in mcp_disabled_tools.split(",")
             if name.strip()
         }
+
+    # create_default_mcp_auth_factory only builds the JWTVerifier when
+    # MCP_AUTH_ENABLED is true — MCP_JWKS_URI/MCP_JWT_SECRET alone are not
+    # enough. Derived from whichever bearer-auth source the charm actually
+    # configured, not a separate charm config of its own.
+    mcp_auth_jwks_url = os.getenv("MCP_AUTH_JWKS_URL")
+    mcp_jwt_secret = os.getenv("MCP_JWT_SECRET")
+    if mcp_auth_jwks_url or mcp_jwt_secret:
+        MCP_AUTH_ENABLED = True
+        if mcp_auth_jwks_url:
+            MCP_JWKS_URI = mcp_auth_jwks_url
+            MCP_JWT_ISSUER = os.getenv("MCP_AUTH_ISSUER", "")
+            MCP_JWT_ALGORITHM = "RS256"  # Hydra issues RS256 tokens
+        else:
+            MCP_JWT_SECRET = mcp_jwt_secret
+            MCP_JWT_ALGORITHM = "HS256"  # shared-secret path, no external IdP
+
+        import superset.mcp_service.auth as _mcp_auth_module
+
+        _mcp_auth_module.get_user_from_request = get_user_from_request_with_jwt
+
 
 def FLASK_APP_MUTATOR(app):
     """Override the Flask app dynamically."""
