@@ -180,6 +180,24 @@ def test_ingress_requirer_publishes_databag(ctx):
     assert json.loads(databag["name"]) == "superset-k8s"
 
 
+def test_mcp_ingress_requirer_advertises_its_own_port(ctx):
+    """The mcp function advertises mcp-service-port, not the UI's port."""
+    ingress = ingress_relation(url=None)
+    state_in = build_state(
+        config={
+            "charm-function": "mcp",
+            "mcp-dev-username": "admin",
+            "mcp-service-port": 6000,
+        },
+        extra_relations=(ingress,),
+    )
+
+    state_out = ctx.run(ctx.on.relation_changed(ingress), state_in)
+
+    databag = state_out.get_relation(ingress.id).local_app_data
+    assert databag["port"] == "6000"
+
+
 def test_ingress_url_is_available_to_the_charm(ctx):
     """A URL published by the provider is readable as the external URL."""
     state_in = build_state(
