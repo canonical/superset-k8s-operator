@@ -41,4 +41,6 @@ header:
     - 'templates/*'
     - 'uv.lock'
     - 'superset_rock/startup-scripts/**'
+    - 'apm.lock.yaml'
+    - '**/keyring_broker.py'
   comment: on-failure
