@@ -22,12 +22,13 @@ import requests
 import steps
 from bdd import and_, given, then, when
 
+from literals import LOG_FILE
+
 logger = logging.getLogger(__name__)
 
 REPORT_APPS = steps.SUPERSET_APPS
 POLL_INTERVAL = 5
 REPORT_TIMEOUT = 300
-LOG_FILE = "/var/log/superset.log"
 
 
 def worker_ssh(
