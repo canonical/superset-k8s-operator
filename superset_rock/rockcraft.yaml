@@ -47,6 +47,9 @@ parts:
     source-type: tar
     build-packages:
       - build-essential
+    build-environment:
+      # Apply the security overrides to this part's own dependency resolution
+      - PIP_CONSTRAINT: ${CRAFT_STAGE}/requirements/constraints.txt
     stage-packages:
       # we must explicitly use python3, otherwise the symlink won't be created and superset binary shebang cannot start
       - python3-venv
@@ -71,11 +74,13 @@ parts:
       k8s-init.sh: app/k8s/k8s-init.sh
       k8s-bootstrap.sh: app/k8s/k8s-bootstrap.sh
       rock-requirements.txt: requirements/rock.txt
+      rock-constraints.txt: requirements/constraints.txt
     stage:
       - app/k8s/run-server.sh
       - app/k8s/k8s-init.sh
       - app/k8s/k8s-bootstrap.sh
       - requirements/rock.txt
+      - requirements/constraints.txt
     permissions:
       - path: app/k8s
         owner: 584792
@@ -158,15 +163,25 @@ parts:
       - build-essential
       - pkg-config
       - libmysqlclient-dev
+      # Needed to build psycopg2 from source against Ubuntu's libpq
+      - libpq-dev
     stage-packages:
       - python3-venv
     override-build: |
+      # Replace upstream pins with the security overrides. base.txt uses exact
+      # pins, so they are rewritten instead of being passed as constraints.
+      grep -E '^[A-Za-z]' ${CRAFT_STAGE}/requirements/constraints.txt | while read -r pin; do
+        name="${pin%%==*}"
+        sed -i -E "s/^${name}==.*/${pin}/I" requirements/base.txt
+      done
+
       # Install Superset requirements
       pip install --upgrade setuptools pip \
         -r requirements/base.txt \
           --target=${CRAFT_PART_INSTALL}/dist \
         -r ${CRAFT_STAGE}/requirements/rock.txt \
-          --target=${CRAFT_PART_INSTALL}/dist
+          --target=${CRAFT_PART_INSTALL}/dist \
+        -c ${CRAFT_STAGE}/requirements/constraints.txt
 
       # Install the Chromium build Playwright uses to render alerts and reports
       # screenshots, bundled at a fixed path that the workload reads at runtime.
@@ -200,17 +215,14 @@ parts:
   prometheus-statsd-exporter:
     plugin: go
     source: https://github.com/prometheus/statsd_exporter.git
-    source-tag: v0.28.0
+    source-tag: v0.31.0
     build-snaps:
-      - go/latest/stable   # or whichever you standardize on
+      # Must provide Go >= 1.26.6 (stdlib CVE fixes)
+      - go/latest/stable
     override-build: |
       set -eux
 
       cd "${CRAFT_PART_SRC}"
-
-      # Force the fixed dependency (CVE-2024-45337 fixed in v0.31.0)
-      go mod edit -require=golang.org/x/crypto@v0.31.0
-      go mod tidy
 
       export CGO_ENABLED=0
       go build -trimpath -ldflags="-s -w" -o "${CRAFT_PART_INSTALL}/bin/statsd_exporter" .
