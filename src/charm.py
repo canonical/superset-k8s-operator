@@ -613,7 +613,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             or self._metadata_database_status()
             or self._smtp_status()
             or mcp_auth.auth_status(
-                self.config, self.oauth, self.https_ingress_url
+                self.config, self.model, self.oauth, self.https_ingress_url
             )
         )
         if dependency_status is not None:
@@ -802,6 +802,12 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         if self.config["feature-flags"]:
             env.update(self.config["feature-flags"])
         env.update(self._get_oauth_config())
+        env.update(mcp_auth.get_mcp_auth_config(self.oauth))
+        env.update(
+            mcp_auth.get_mcp_static_secret_config(
+                self.model, self.config["mcp-jwt-secret-id"]
+            )
+        )
         env.update(self.smtp.environment())
 
         http_proxy = os.environ.get("JUJU_CHARM_HTTP_PROXY")

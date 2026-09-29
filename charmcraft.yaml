@@ -554,7 +554,21 @@ config:
         authenticated identity left to check a role against.
 
         Applies to: the mcp application. Mutually exclusive with the oauth
-        relation: the application blocks if neither is set, and if both are.
+        relation and mcp-jwt-secret-id: the application blocks if none of
+        the three is set, and if more than one is.
+      type: string
+
+    mcp-jwt-secret-id:
+      description: |
+        ID of the Juju secret holding the shared secret the MCP service
+        verifies HS256 bearer tokens against, carrying a single `secret`
+        key. The token's `sub` or `email` claim (falling back to
+        `client_id`) must match the username of an existing Superset user;
+        mcp does not create users.
+
+        Applies to: the mcp application. Mutually exclusive with the oauth
+        relation and mcp-dev-username: the application blocks if none of
+        the three is set, and if more than one is.
       type: string
 
 actions:
