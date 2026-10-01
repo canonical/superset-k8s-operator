@@ -37,5 +37,6 @@ jobs:
         "test_smtp.py",
         "test_reports.py",
         "test_trino_catalog.py",
-        "test_observability.py"]
+        "test_observability.py",
+        "test_mcp.py"]
       with-uv: true
