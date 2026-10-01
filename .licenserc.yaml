@@ -43,4 +43,5 @@ header:
     - 'superset_rock/startup-scripts/**'
     - 'apm.lock.yaml'
     - '**/keyring_broker.py'
+    - 'superset_rock/patches/**'
   comment: on-failure

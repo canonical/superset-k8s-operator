@@ -1,0 +1,230 @@
+Upstream PR:     apache/superset#39835 "feat: Allow specific mcp tools to be
+                 disabled", commit 70419e9d8f81477026eba57fb1fc32e7abbc0e65,
+                 merged 2026-05-18.
+Affects:         Apache Superset 6.1.0 (this commit landed 17 days after the
+                 6.1.0 tag, 2026-05-01 — not present in the version this
+                 charm tracks).
+
+What it adds: MCP_DISABLED_TOOLS, a Flask-config set of exact tool names.
+  init_fastmcp_server() removes each one from the live FastMCP instance at
+  startup via mcp.local_provider.remove_tool(name) (unknown names log a
+  warning, not an error) before generating the server's instructions text.
+  get_default_instructions() also gained a disabled_tools parameter that
+  strips any instruction line mentioning a disabled tool, so the LLM is
+  never told to call a tool it can't reach. This is the mechanism intended
+  for suppressing a built-in tool superseded by a custom extension tool of
+  the same purpose.
+
+diff --git a/superset/mcp_service/app.py b/superset/mcp_service/app.py
+index 7ab6a7a774..0a68d168a0 100644
+--- a/superset/mcp_service/app.py
++++ b/superset/mcp_service/app.py
+@@ -30,18 +30,68 @@ from fastmcp.server.middleware import Middleware
+ 
+ logger = logging.getLogger(__name__)
+ 
++# ---------------------------------------------------------------------------
++# Prose snippets that reference get_instance_info.
++# These are included in the generated instructions only when that tool is
++# enabled; each snippet is a plain string constant so they can be read
++# independently of the filtering logic in get_default_instructions().
++# ---------------------------------------------------------------------------
++_SNIPPET_FEATURE_AVAILABILITY = (
++    "Feature Availability:\n"
++    "- Call get_instance_info to discover accessible menus for the current user.\n"
++    "- Do NOT assume features exist; always check get_instance_info first.\n"
++    "\n"
++)
++_SNIPPET_INSTANCE_INFO_ROLE_BULLET = (
++    "- get_instance_info returns current_user.roles"
++    ' (e.g., ["Admin"], ["Alpha"], ["Viewer"]).\n'
++)
++_SNIPPET_ACCESSIBLE_MENUS_BULLET = (
++    "- If you are unsure about a user's capabilities,"
++    " check their accessible_menus in\n"
++    "  feature_availability from get_instance_info.\n"
++)
++_SNIPPET_UNSURE_GUIDANCE = (
++    "\nIf you are unsure which tool to use, start with get_instance_info\n"
++    "or use the quickstart prompt for an interactive guide.\n"
++)
++_SNIPPET_CONNECT_GUIDANCE = (
++    "\nWhen you first connect, call get_instance_info to learn the user's identity.\n"
++    "Greet them by their first name (from current_user) and offer to help.\n"
++)
+ 
+-def get_default_instructions(branding: str = "Apache Superset") -> str:
++
++def get_default_instructions(
++    branding: str = "Apache Superset",
++    disabled_tools: set[str] | None = None,
++) -> str:
+     """Get default instructions with configurable branding.
+ 
++    Tool bullet-point lines for any tool name in ``disabled_tools`` are
++    omitted so that LLM clients are never told to call a tool that has been
++    suppressed via ``MCP_DISABLED_TOOLS``.
++
+     Args:
+         branding: Product name to use in instructions
+             (e.g., "ACME Analytics", "Apache Superset")
++        disabled_tools: Set of tool names to omit from the tool listing.
++            When ``None`` (default) all tools are included.
+ 
+     Returns:
+         Formatted instructions string with branding applied
+     """
+-    return f"""
++    _disabled = disabled_tools or set()
++
++    # Prose sections that reference get_instance_info are omitted when that
++    # tool is disabled so the LLM is never directed to call a removed tool.
++    _show = "get_instance_info" not in _disabled
++    _feature_availability = _SNIPPET_FEATURE_AVAILABILITY if _show else ""
++    _instance_info_role_bullet = _SNIPPET_INSTANCE_INFO_ROLE_BULLET if _show else ""
++    _accessible_menus_bullet = _SNIPPET_ACCESSIBLE_MENUS_BULLET if _show else ""
++    _unsure_guidance = _SNIPPET_UNSURE_GUIDANCE if _show else ""
++    _connect_guidance = _SNIPPET_CONNECT_GUIDANCE if _show else ""
++
++    instructions = f"""
+ You are connected to the {branding} MCP (Model Context Protocol) service.
+ This service provides programmatic access to {branding} dashboards, charts, datasets,
+ SQL Lab, and instance metadata via a comprehensive set of tools.
+@@ -302,13 +352,8 @@ Input format:
+ - Tool request parameters accept structured objects (dicts/JSON)
+ - FastMCP 3.1+ handles Pydantic BaseModel parameters natively
+ 
+-Feature Availability:
+-- Call get_instance_info to discover accessible menus for the current user.
+-- Do NOT assume features exist; always check get_instance_info first.
+-
+-Permission Awareness:
+-- get_instance_info returns current_user.roles (e.g., ["Admin"], ["Alpha"], ["Viewer"]).
+-- ALWAYS check the user's roles BEFORE suggesting write operations (creating datasets,
++{_feature_availability}Permission Awareness:
++{_instance_info_role_bullet}- ALWAYS check the user's roles BEFORE suggesting write operations (creating datasets,
+   charts, dashboards, or running SQL).
+ - Do NOT disclose dashboard access lists, dashboard owners, chart owners, dataset
+   owners, workspace admins, or other users' names, usernames, email addresses,
+@@ -332,15 +377,38 @@ Permission Awareness:
+   1. Explain that they may not have access to the requested resources
+   2. Suggest they ask a workspace admin to grant them access or share content with them
+   3. Offer to help with what they CAN do (e.g., viewing dashboards they have access to)
+-- If you are unsure about a user's capabilities, check their accessible_menus in
+-  feature_availability from get_instance_info.
+-
+-If you are unsure which tool to use, start with get_instance_info
+-or use the quickstart prompt for an interactive guide.
+-
+-When you first connect, call get_instance_info to learn the user's identity.
+-Greet them by their first name (from current_user) and offer to help.
+-"""
++{_accessible_menus_bullet}{_unsure_guidance}{_connect_guidance}"""
++    if not _disabled:
++        return instructions
++
++    # Strip any line that mentions a disabled tool — this covers both the
++    # "- tool_name: ..." bullet entries and all prose/workflow references
++    # (request wrapper examples, workflow steps, CRITICAL RULES, etc.).
++    # Tool names are specific enough (e.g. execute_sql, generate_chart) that
++    # false positives are not a practical concern.
++    #
++    # Bullet continuation lines (indented lines belonging to a disabled bullet)
++    # are also dropped via the skip_continuation flag.
++    filtered_lines = []
++    skip_continuation = False
++    for line in instructions.splitlines(keepends=True):
++        stripped = line.lstrip()
++        if stripped.startswith("- "):
++            tool_part = stripped[2:].split(":")[0].strip()
++            if tool_part in _disabled:
++                skip_continuation = True
++                continue
++            skip_continuation = False
++        elif skip_continuation and stripped and not stripped.startswith("- "):
++            # Indented continuation line of the previous disabled bullet — skip
++            continue
++        else:
++            skip_continuation = False
++        # Drop any prose line that names a disabled tool
++        if any(tool in line for tool in _disabled):
++            continue
++        filtered_lines.append(line)
++    return "".join(filtered_lines)
+ 
+ 
+ # For backwards compatibility, keep DEFAULT_INSTRUCTIONS pointing to default branding
+@@ -569,6 +637,25 @@ from superset.mcp_service.system.tool import (  # noqa: F401, E402
+ )
+ 
+ 
++def _remove_disabled_tools(disabled_tools: set[str]) -> None:
++    """Remove tools listed in MCP_DISABLED_TOOLS from the global MCP instance.
++
++    Disabled tools are removed before the server starts serving requests so they
++    are never advertised to AI clients during tool discovery.  Users configure
++    this via MCP_DISABLED_TOOLS in superset_config.py.
++    """
++    for tool_name in disabled_tools:
++        try:
++            mcp.local_provider.remove_tool(tool_name)
++            logger.info("Disabled MCP tool: %s (MCP_DISABLED_TOOLS)", tool_name)
++        except KeyError:
++            logger.warning(
++                "MCP_DISABLED_TOOLS: tool %r not found — "
++                "check the tool name is correct",
++                tool_name,
++            )
++
++
+ def init_fastmcp_server(
+     name: str | None = None,
+     instructions: str | None = None,
+@@ -608,8 +695,14 @@ def init_fastmcp_server(
+     # Apply branding defaults if not explicitly provided
+     if name is None:
+         name = default_name
++
++    # Remove disabled tools BEFORE generating instructions so that the
++    # instructions never advertise tools that clients cannot actually call.
++    disabled_tools: set[str] = flask_app.config.get("MCP_DISABLED_TOOLS", set())
++    _remove_disabled_tools(disabled_tools)
++
+     if instructions is None:
+-        instructions = get_default_instructions(branding)
++        instructions = get_default_instructions(branding, disabled_tools)
+ 
+     # Configure the global mcp instance with provided settings.
+     # Tools are already registered on this instance via @tool decorator imports above.
+diff --git a/superset/mcp_service/mcp_config.py b/superset/mcp_service/mcp_config.py
+index 65fdeba095..d12b44bbc8 100644
+--- a/superset/mcp_service/mcp_config.py
++++ b/superset/mcp_service/mcp_config.py
+@@ -56,6 +56,19 @@ MCP_DEBUG = False
+ # against the FAB security_manager before execution.
+ MCP_RBAC_ENABLED = True
+ 
++# MCP Disabled Tools - a set of tool names to remove from the MCP server at
++# startup. Disabled tools are silently omitted from tool discovery, so AI
++# clients never see them. Use this when a Superset-provided tool conflicts with
++# a custom tool added via an extension and you want to suppress the built-in
++# version.
++#
++# Example:
++#   MCP_DISABLED_TOOLS = {"execute_sql", "health_check"}
++#
++# Extension-prefixed tools can also be disabled using their full name:
++#   MCP_DISABLED_TOOLS = {"extensions.myorg.myext.some_tool"}
++MCP_DISABLED_TOOLS: set[str] = set()
++
+ # MCP JWT Debug Errors - controls server-side JWT debug logging.
+ # When False (default), uses the default JWTVerifier with minimal logging.
+ # When True, uses DetailedJWTVerifier with tiered logging:
+@@ -402,6 +415,7 @@ def get_mcp_config(app_config: Dict[str, Any] | None = None) -> Dict[str, Any]:
+         "MCP_SERVICE_PORT": MCP_SERVICE_PORT,
+         "MCP_DEBUG": MCP_DEBUG,
+         "MCP_RBAC_ENABLED": MCP_RBAC_ENABLED,
++        "MCP_DISABLED_TOOLS": set(MCP_DISABLED_TOOLS),
+         **MCP_SESSION_CONFIG,
+         **MCP_CSRF_CONFIG,
+     }
