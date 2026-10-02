@@ -433,6 +433,17 @@ if os.getenv("CHARM_FUNCTION") == "mcp":
         MCP_JWKS_URI = mcp_auth_jwks_url
         MCP_JWT_ISSUER = os.getenv("MCP_AUTH_ISSUER", "")
         MCP_JWT_ALGORITHM = "RS256"  # Hydra issues RS256 tokens
+        # Without this, any valid token from the same issuer - for any other
+        # application - that happens to resolve to a Superset username is
+        # accepted.
+        MCP_JWT_AUDIENCE = [
+            v
+            for v in (
+                os.getenv("MCP_AUTH_CLIENT_ID"),
+                os.getenv("MCP_AUTH_BASE_URL"),
+            )
+            if v
+        ]
 
         import superset.mcp_service.auth as _mcp_auth_module
 
