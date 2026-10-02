@@ -86,7 +86,7 @@ class _AccessToken:
 
 
 def _stub_dependencies(
-    *, access_token=None, dev_username="", g_user=None, users=None
+    *, access_token=None, dev_username="", g_user=None, users=None, emails=None
 ):
     """Install stub fastmcp/flask/superset modules the patch imports.
 
@@ -97,8 +97,11 @@ def _stub_dependencies(
         g_user: The value g.user should carry, or None.
         users: Mapping of username to the user load_user_with_relationships
             should resolve for it.
+        emails: Mapping of email to the user load_user_with_relationships
+            should resolve for it when called with email=.
     """
     users = users or {}
+    emails = emails or {}
 
     fastmcp_deps = types.ModuleType("fastmcp.server.dependencies")
     fastmcp_deps.get_access_token = lambda: access_token
@@ -115,8 +118,13 @@ def _stub_dependencies(
     flask_module.g = types.SimpleNamespace(user=g_user)
     sys.modules["flask"] = flask_module
 
+    def load_user_with_relationships(username=None, email=None):
+        if email is not None:
+            return emails.get(email)
+        return users.get(username)
+
     auth_module = types.ModuleType("superset.mcp_service.auth")
-    auth_module.load_user_with_relationships = users.get
+    auth_module.load_user_with_relationships = load_user_with_relationships
     sys.modules.setdefault("superset", types.ModuleType("superset"))
     sys.modules.setdefault(
         "superset.mcp_service", types.ModuleType("superset.mcp_service")
@@ -144,6 +152,19 @@ class TestIdentityCandidates(unittest.TestCase):
         candidates = _identity_candidates({}, client_id="my-client")
         self.assertEqual(candidates, ["my-client"])
 
+    def test_client_id_not_tried_when_sub_and_email_resolve_no_user(self):
+        """client_id is not a fallback for an unregistered caller.
+
+        If it were, a caller presenting any valid token for the shared OAuth
+        client would inherit that client's own Superset account whenever its
+        sub/email happened to match no one.
+        """
+        candidates = _identity_candidates(
+            {"sub": "ghost", "email": "ghost@example.com"},
+            client_id="shared-client",
+        )
+        self.assertEqual(candidates, ["ghost", "ghost@example.com"])
+
     def test_duplicates_are_dropped(self):
         """The same value appearing twice is only tried once."""
         candidates = _identity_candidates({"sub": "alice"}, client_id="alice")
@@ -168,6 +189,16 @@ class TestGetUserFromRequestWithJwt(unittest.TestCase):
         _stub_dependencies(
             access_token=_AccessToken(claims={"sub": "alice"}),
             users={"alice": alice},
+        )
+
+        self.assertIs(_get_user_from_request_with_jwt(), alice)
+
+    def test_email_claim_checked_against_user_email_not_username(self):
+        """An email claim is retried against User.email, not User.username."""
+        alice = _StubUser("alice_user")
+        _stub_dependencies(
+            access_token=_AccessToken(claims={"email": "alice@example.com"}),
+            emails={"alice@example.com": alice},
         )
 
         self.assertIs(_get_user_from_request_with_jwt(), alice)
