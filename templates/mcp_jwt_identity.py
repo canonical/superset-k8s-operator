@@ -14,16 +14,23 @@ def _identity_candidates(claims, client_id=None):
 
     Hydra's client_credentials tokens set sub to the client_id itself, which
     is the Superset username directly, so sub is tried before email.
+    client_id is only tried when the token carries neither claim — not as a
+    blanket fallback — since the shared OAuth client may itself have a
+    Superset account, which an unregistered caller would otherwise inherit.
 
     Args:
         claims: The verified JWT's claims.
-        client_id: The token's client_id claim, tried last.
+        client_id: The token's client_id claim, tried only when sub and
+            email are both absent.
 
     Returns:
         Candidate usernames, most likely first, with duplicates dropped.
     """
+    identities = (claims.get("sub"), claims.get("email"))
+    if not any(identities):
+        identities = (client_id,)
     result = []
-    for value in (claims.get("sub"), claims.get("email"), client_id):
+    for value in identities:
         if value and value not in result:
             result.append(value)
     return result
@@ -65,6 +72,8 @@ def get_user_from_request_with_jwt():
         )
         for identity in candidates:
             user = load_user_with_relationships(identity)
+            if not user and identity == claims.get("email"):
+                user = load_user_with_relationships(email=identity)
             if user:
                 return user
         if candidates:
