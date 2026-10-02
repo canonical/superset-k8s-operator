@@ -3,10 +3,9 @@
 
 """Unit tests for templates/mcp_google_auth.py.
 
-Run against the real fastmcp it ships with rather than a stubbed-out
-substitute — GoogleAuthProxy inherits real behavior from fastmcp's own
-GoogleProvider/OAuthProxy that would otherwise have to be reimplemented as
-a fake to test around it.
+These run against the real fastmcp dependency rather than a stub.
+GoogleAuthProxy inherits real behavior from fastmcp's GoogleProvider and
+OAuthProxy, and faking that behavior would mean reimplementing it.
 """
 
 import asyncio
@@ -196,13 +195,16 @@ class TestGoogleAuthProxy:
 
         assert proxy.client_registration_options.enabled is False
 
-    def test_resolves_its_own_client_when_restricted(self):
-        """The one client an operator was given must keep working."""
+    def test_refuses_its_own_client_when_restricted(self):
+        """The id isn't secret, so its own public client is refused too.
+
+        An operator-registered client like Gemini Enterprise doesn't need
+        this path — it's registered with Google directly, not through
+        this proxy.
+        """
         proxy = self._proxy(registration_enabled=False)
 
-        client = asyncio.run(proxy.get_client(CLIENT_ID))
-
-        assert client is not None
+        assert asyncio.run(proxy.get_client(CLIENT_ID)) is None
 
     def test_refuses_any_other_client_when_restricted(self):
         """Otherwise the registration switch would only be half-enforced."""
