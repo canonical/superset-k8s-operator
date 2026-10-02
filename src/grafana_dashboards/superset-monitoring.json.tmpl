@@ -1,7 +1,7 @@
 {
   "id": null,
-  "uid": "superset-observability",
-  "title": "Superset / Health, Availability & Performance",
+  "uid": "tmp-superset-observability",
+  "title": "tmp Superset / Health, Availability & Performance",
   "description": "Juju-compatible dashboard; related comparable measures share charts. Activity and server timings are distinct from active checks and browser rendering.",
   "tags": [
     "superset",
@@ -224,10 +224,10 @@
       "collapsed": false,
       "panels": []
     },
-    {
+   {
       "id": 3,
       "title": "Selected scrape targets — NOT process liveness",
-      "type": "stat",
+      "type": "timeseries",
       "gridPos": {
         "x": 0,
         "y": 1,
@@ -247,32 +247,49 @@
           },
           "editorMode": "code",
           "expr": "up{juju_application=~\"$juju_application\",juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_unit=~\"$juju_unit\"}",
-          "legendFormat": "{{juju_unit}} · {{job}} · {{instance}}",
+          "legendFormat": "{{juju_unit}}",
           "refId": "A",
           "format": "time_series",
-          "instant": true,
-          "range": false
+          "instant": false,
+          "range": true
         }
       ],
       "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "vertical",
-        "reduceOptions": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        },
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
           "calcs": [
             "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "value_and_name"
+          ]
+        }
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
-          "min": 0,
-          "noValue": "No telemetry",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "stepAfter",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "gradientMode": "none",
+            "spanNulls": false,
+            "showPoints": "never",
+            "pointSize": 5,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisPlacement": "auto",
+            "axisSoftMin": 0,
+            "axisSoftMax": 1
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
           "mappings": [
             {
               "type": "value",
@@ -288,9 +305,6 @@
               }
             }
           ],
-          "color": {
-            "mode": "thresholds"
-          },
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -303,7 +317,11 @@
                 "value": 1
               }
             ]
-          }
+          },
+          "min": 0,
+          "max": 1,
+          "unit": "short",
+          "noValue": "No telemetry"
         },
         "overrides": []
       },
@@ -413,121 +431,13 @@
       "pluginVersion": "9.5.3"
     },
     {
-      "id": 6,
-      "title": "Scrape target status over time",
-      "type": "timeseries",
-      "gridPos": {
-        "x": 0,
-        "y": 8,
-        "w": 12,
-        "h": 7
-      },
-      "description": "Selected targets only; not a direct process check.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${prometheusds}"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${prometheusds}"
-          },
-          "editorMode": "code",
-          "expr": "up{juju_application=~\"$juju_application\",juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_unit=~\"$juju_unit\"}",
-          "legendFormat": "{{juju_application}} · {{juju_unit}} · {{job}} · {{instance}}",
-          "refId": "A",
-          "format": "time_series",
-          "instant": false,
-          "range": true
-        }
-      ],
-      "options": {
-        "legend": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "min": 0,
-          "noValue": "No telemetry",
-          "mappings": [
-            {
-              "type": "value",
-              "options": {
-                "0": {
-                  "text": "DOWN",
-                  "color": "red"
-                },
-                "1": {
-                  "text": "UP",
-                  "color": "green"
-                }
-              }
-            }
-          ],
-          "color": {
-            "mode": "palette-classic"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "red",
-                "value": null
-              },
-              {
-                "color": "green",
-                "value": 1
-              }
-            ]
-          },
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 1,
-            "fillOpacity": 8,
-            "showPoints": "auto",
-            "spanNulls": false,
-            "axisPlacement": "auto",
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "stacking": {
-              "mode": "none",
-              "group": "A"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          }
-        },
-        "overrides": []
-      },
-      "pluginVersion": "9.5.3"
-    },
-    {
       "id": 7,
       "title": "Celery worker status by hostname — datasource-wide",
       "type": "timeseries",
       "gridPos": {
         "x": 12,
         "y": 8,
-        "w": 12,
+        "w": 24,
         "h": 7
       },
       "description": "Individual observed worker status; independent of Juju filters.",
