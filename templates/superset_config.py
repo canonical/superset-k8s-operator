@@ -424,23 +424,15 @@ if os.getenv("CHARM_FUNCTION") == "mcp":
     # charm, a different process.
     #
     # charm.py's auth_status() only lets mcp reach Active with exactly one
-    # of {oauth relation, mcp-dev-username, mcp-jwt-secret-id} set. So at
-    # most one of MCP_AUTH_JWKS_URL / MCP_JWT_SECRET below is ever set.
-    #
-    # Setting one of those two is not enough on its own:
-    # create_default_mcp_auth_factory also needs MCP_AUTH_ENABLED set to
-    # actually build the JWTVerifier.
+    # of {oauth relation, mcp-dev-username} set. Setting MCP_AUTH_JWKS_URL
+    # is not enough on its own: create_default_mcp_auth_factory also needs
+    # MCP_AUTH_ENABLED set to actually build the JWTVerifier.
     mcp_auth_jwks_url = os.getenv("MCP_AUTH_JWKS_URL")
-    mcp_jwt_secret = os.getenv("MCP_JWT_SECRET")
-    if mcp_auth_jwks_url or mcp_jwt_secret:
+    if mcp_auth_jwks_url:
         MCP_AUTH_ENABLED = True
-        if mcp_auth_jwks_url:
-            MCP_JWKS_URI = mcp_auth_jwks_url
-            MCP_JWT_ISSUER = os.getenv("MCP_AUTH_ISSUER", "")
-            MCP_JWT_ALGORITHM = "RS256"  # Hydra issues RS256 tokens
-        else:
-            MCP_JWT_SECRET = mcp_jwt_secret
-            MCP_JWT_ALGORITHM = "HS256"  # shared-secret path, no external IdP
+        MCP_JWKS_URI = mcp_auth_jwks_url
+        MCP_JWT_ISSUER = os.getenv("MCP_AUTH_ISSUER", "")
+        MCP_JWT_ALGORITHM = "RS256"  # Hydra issues RS256 tokens
 
         import superset.mcp_service.auth as _mcp_auth_module
 

@@ -7,82 +7,18 @@
 mcp's own oauth relation is independent of the web UI's: it carries the
 MCP_AUTH_* environment the FastMCP JWTVerifier uses to validate access
 tokens, in a namespace of its own so mcp never receives the web UI's OIDC
-credentials. mcp-jwt-secret-id is the alternative for deployments with no
-external identity provider at all: a shared HS256 secret, verified the same
-way. This covers the plain JWKS and shared-secret verification paths only.
+credentials. This covers the plain JWKS verification path only.
 """
 
 import logging
-import time
 from pathlib import Path
 
 import jubilant
-import jwt
 import pytest
-import requests
 import steps
 from bdd import and_, given, then, when
 
 logger = logging.getLogger(__name__)
-
-MCP_PORT = 5008
-JWT_SHARED_SECRET = (
-    "test-hs256-shared-secret-at-least-32-bytes-long"  # nosec B105
-)
-JWT_SECRET_NAME = "mcp-jwt-secret"  # nosec B105
-JWT_MCP_NAME = f"{steps.MCP_NAME}-jwt"
-
-
-def _sign_token(subject: str) -> str:
-    """Sign an HS256 token against JWT_SHARED_SECRET.
-
-    Args:
-        subject: The `sub` claim — the Superset username to authenticate as.
-
-    Returns:
-        The encoded JWT.
-    """
-    now = int(time.time())
-    return jwt.encode(
-        {"sub": subject, "iat": now, "exp": now + 300},
-        JWT_SHARED_SECRET,
-        algorithm="HS256",
-    )
-
-
-def _call_tool(url: str, token: str | None) -> requests.Response:
-    """Call the list_dashboards tool once over the streamable-HTTP transport.
-
-    Args:
-        url: The mcp endpoint URL.
-        token: Bearer token to authenticate with, or None to send none.
-
-    Returns:
-        The raw HTTP response.
-    """
-    headers = {
-        "Content-Type": "application/json",
-        "Accept": "application/json, text/event-stream",
-    }
-    if token is not None:
-        headers["Authorization"] = f"Bearer {token}"
-    return requests.post(
-        url,
-        json={
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "tools/call",
-            "params": {
-                "name": "call_tool",
-                "arguments": {
-                    "name": "list_dashboards",
-                    "arguments": {"request": {}},
-                },
-            },
-        },
-        headers=headers,
-        timeout=30,
-    )
 
 
 def _deploy_mcp_behind_ingress(
@@ -262,119 +198,3 @@ def test_mcp_auth_config_populates_once_https_is_added(
         assert environment["MCP_AUTH_CLIENT_SECRET"] == (
             steps.OAUTH_STUB_CONFIG["client_secret"]
         )
-
-
-def _add_mcp_with_jwt_secret(
-    juju: jubilant.Juju, charm: Path, charm_image: str
-) -> None:
-    """Deploy a second mcp instance authenticating off a shared secret.
-
-    Reuses the UI and dependencies mcp_behind_ingress already deployed in
-    this module's shared model — deploying them again would fail, since they
-    already exist — and gives this instance its own app name so it cannot
-    collide with the oauth-relation mcp instance the other scenarios build.
-
-    Args:
-        juju: Jubilant object.
-        charm: Path to the packed charm.
-        charm_image: The workload OCI image reference.
-    """
-    secret_uri = juju.add_secret(
-        name=JWT_SECRET_NAME, content={"secret": JWT_SHARED_SECRET}
-    )
-    secret_id = str(secret_uri).rsplit(":", maxsplit=1)[-1]
-
-    mcp_name = steps.deploy_superset_application(
-        juju,
-        charm,
-        charm_image,
-        "mcp",
-        app_name=JWT_MCP_NAME,
-        config={"mcp-jwt-secret-id": secret_id},
-    )
-    juju.grant_secret(JWT_SECRET_NAME, mcp_name)
-    steps.integrate_dependencies(juju, mcp_name)
-    steps.wait_for_active(juju, [mcp_name], timeout=steps.DEPLOY_TIMEOUT)
-
-
-@pytest.fixture(scope="module")
-def mcp_with_jwt_secret(
-    request: pytest.FixtureRequest,
-    mcp_behind_ingress: jubilant.Juju,
-    charm: Path,
-    charm_image: str,
-) -> jubilant.Juju:
-    """A second mcp instance, authenticating bearer tokens off a shared secret.
-
-    Args:
-        request: Pytest request object.
-        mcp_behind_ingress: The deployment mcp's own dependencies are already
-            in, with an unrelated first mcp instance sitting blocked.
-        charm: Path to the packed charm.
-        charm_image: The workload OCI image reference.
-
-    Returns:
-        The model, with a second mcp application active and reachable
-        directly (no ingress).
-    """
-    return steps.adopt_or_build(
-        request,
-        mcp_behind_ingress,
-        _add_mcp_with_jwt_secret,
-        charm,
-        charm_image,
-    )
-
-
-def test_a_valid_token_resolves_a_real_user(
-    mcp_with_jwt_secret: jubilant.Juju,
-):
-    """Scenario: a token signed with the shared secret authenticates a call.
-
-    Given mcp authenticating off a shared secret
-    When a tool is called with a token naming an existing Superset user
-    Then the call succeeds
-    """
-    juju = mcp_with_jwt_secret
-    url = f"{steps.get_unit_url(juju, JWT_MCP_NAME, port=MCP_PORT)}/mcp"
-
-    with given("mcp authenticating off a shared secret"):
-        steps.assert_active(juju, [JWT_MCP_NAME])
-
-    with when(
-        "a tool is called with a token naming an existing Superset user"
-    ):
-        response = _call_tool(url, _sign_token("admin"))
-
-    with then("the call succeeds"):
-        assert response.status_code == 200, response.text
-        assert '"isError":false' in response.text, response.text
-
-
-@pytest.mark.parametrize(
-    "token",
-    [None, "garbage.not.a.jwt"],
-    ids=["no token", "garbage token"],
-)
-def test_an_unverifiable_token_is_rejected(
-    mcp_with_jwt_secret: jubilant.Juju, token: str | None
-):
-    """Scenario: a call with no token, or one the shared secret can't verify.
-
-    Given mcp authenticating off a shared secret
-    When a tool is called with no bearer token or one that fails verification
-    Then the call is rejected before it reaches any tool
-    """
-    juju = mcp_with_jwt_secret
-    url = f"{steps.get_unit_url(juju, JWT_MCP_NAME, port=MCP_PORT)}/mcp"
-
-    with given("mcp authenticating off a shared secret"):
-        steps.assert_active(juju, [JWT_MCP_NAME])
-
-    with when(
-        "a tool is called with no bearer token or one that fails verification"
-    ):
-        response = _call_tool(url, token)
-
-    with then("the call is rejected before it reaches any tool"):
-        assert response.status_code == 401, response.text

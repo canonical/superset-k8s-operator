@@ -32,7 +32,6 @@ from tests.unit.helpers import (
     TRINO_CREDENTIALS_NEW,
     build_state,
     ingress_relation,
-    mcp_jwt_secret,
     oauth_relation,
     oauth_secret,
     signing_keys_secret,
@@ -610,20 +609,6 @@ def test_mcp_auth_config_populates_environment(ctx):
     assert environment["MCP_AUTH_JWT_ACCESS_TOKEN"] == "false"
     assert environment["MCP_AUTH_CLIENT_ID"] == "superset-client"
     assert environment["MCP_AUTH_CLIENT_SECRET"] == "secret-value"
-
-
-def test_mcp_jwt_secret_populates_environment(ctx):
-    """mcp-jwt-secret-id configures mcp's shared-secret bearer-auth path."""
-    secret = mcp_jwt_secret("shared-hs256-secret")
-    state_in = build_state(
-        config={"charm-function": "mcp", "mcp-jwt-secret-id": secret.id},
-        secrets=(secret,),
-    )
-
-    state_out = ctx.run(ctx.on.config_changed(), state_in)
-
-    environment = superset_environment(state_out)
-    assert environment["MCP_JWT_SECRET"] == "shared-hs256-secret"
 
 
 def test_invalid_default_role(ctx):
