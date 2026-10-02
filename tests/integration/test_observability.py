@@ -20,6 +20,9 @@ import pytest
 import requests
 import steps
 from bdd import and_, given, then, when
+from test_mcp import _call_tool
+
+from literals import MCP_PORT
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +30,7 @@ ALERT_RULES = ("SupersetDown", "SupersetHalfOrMoreDown", "WorkersDown")
 DASHBOARD_TITLE = "Superset Metrics"
 LOG_LOOKBACK_SECONDS = 60 * 60
 EXPORTING_APPS = (steps.UI_NAME, steps.WORKER_NAME, steps.MCP_NAME)
+OBSERVED_APPS = (*steps.SUPERSET_APPS, steps.MCP_NAME)
 
 
 def _observe(juju: jubilant.Juju, charm: Path, charm_image: str) -> None:
@@ -51,7 +55,7 @@ def _observe(juju: jubilant.Juju, charm: Path, charm_image: str) -> None:
     steps.deploy_cos(juju)
 
     logger.info("Integrating the observability endpoints")
-    for app in steps.SUPERSET_APPS:
+    for app in OBSERVED_APPS:
         juju.integrate(
             f"{app}:grafana-dashboard",
             f"{steps.GRAFANA_NAME}:grafana-dashboard",
@@ -139,6 +143,8 @@ def test_prometheus_scrapes_the_functions_that_export_metrics(
     Given a Superset deployment related to Prometheus
     Then Prometheus scrapes the UI, the worker and mcp
     And it holds no scrape target for the beat scheduler
+    And an mcp tool call's metric reaches Prometheus through the full
+      workload-to-exporter path, not just the scrape target
     """
     juju = an_observed_deployment
 
@@ -157,6 +163,22 @@ def test_prometheus_scrapes_the_functions_that_export_metrics(
     # gets a MetricsEndpointProvider and advertises no target at all.
     with and_("it holds no scrape target for the beat scheduler"):
         assert not _up_by_application(juju, steps.BEAT_NAME)
+
+    with and_(
+        "an mcp tool call's metric reaches Prometheus through the full "
+        "workload-to-exporter path"
+    ):
+        url = f"{steps.get_unit_url(juju, steps.MCP_NAME, port=MCP_PORT)}/mcp"
+        _call_tool(url, "health_check", {})
+        steps.poll_until(
+            juju,
+            lambda: bool(
+                _prometheus(
+                    juju, "query", query='{__name__=~".*health_check.*"}'
+                )["result"]
+            ),
+            "mcp's health_check tool call never reached Prometheus",
+        )
 
 
 def test_the_charms_alert_rules_are_loaded(
