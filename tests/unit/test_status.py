@@ -16,7 +16,6 @@ from literals import MCP_PORT, SQL_AB_ROLE
 from tests.unit.helpers import (
     build_state,
     ingress_relation,
-    mcp_jwt_secret,
     oauth_relation,
     superset_container,
 )
@@ -301,22 +300,14 @@ def test_mcp_blocks_without_any_auth_source(ctx, probe):
     state_out = ctx.run(ctx.on.config_changed(), state_in)
 
     assert state_out.unit_status == BlockedStatus(
-        "mcp requires the oauth relation, mcp-dev-username, or "
-        "mcp-jwt-secret-id"
+        "mcp requires either the oauth relation or mcp-dev-username"
     )
 
 
-@pytest.mark.parametrize(
-    "extra_config",
-    [
-        {"mcp-dev-username": "admin"},
-        {"mcp-jwt-secret-id": "secret-id-placeholder"},
-    ],
-)
-def test_mcp_blocks_with_oauth_and_another_source(ctx, probe, extra_config):
+def test_mcp_blocks_with_oauth_and_dev_username(ctx, probe):
     """The mcp function blocks, naming the conflict, when oauth is also set."""
     state_in = build_state(
-        config={"charm-function": "mcp", **extra_config},
+        config={"charm-function": "mcp", "mcp-dev-username": "admin"},
         extra_relations=(oauth_relation(),),
     )
 
@@ -324,27 +315,7 @@ def test_mcp_blocks_with_oauth_and_another_source(ctx, probe, extra_config):
 
     assert state_out.unit_status == BlockedStatus(
         "conflicting mcp auth configuration: only one of the oauth "
-        "relation, mcp-dev-username and mcp-jwt-secret-id may be set"
-    )
-
-
-def test_mcp_blocks_with_dev_username_and_jwt_secret(ctx, probe):
-    """The mcp function blocks when both non-relation sources are set."""
-    secret = mcp_jwt_secret()
-    state_in = build_state(
-        config={
-            "charm-function": "mcp",
-            "mcp-dev-username": "admin",
-            "mcp-jwt-secret-id": secret.id,
-        },
-        secrets=(secret,),
-    )
-
-    state_out = ctx.run(ctx.on.config_changed(), state_in)
-
-    assert state_out.unit_status == BlockedStatus(
-        "conflicting mcp auth configuration: only one of the oauth "
-        "relation, mcp-dev-username and mcp-jwt-secret-id may be set"
+        "relation and mcp-dev-username may be set"
     )
 
 
@@ -357,51 +328,6 @@ def test_mcp_proceeds_with_dev_username_only(ctx, probe):
     state_out = ctx.run(ctx.on.config_changed(), state_in)
 
     assert state_out.unit_status == ActiveStatus("Status check: UP")
-
-
-def test_mcp_proceeds_with_jwt_secret_only(ctx, probe):
-    """Setting mcp-jwt-secret-id alone is enough for mcp to start."""
-    secret = mcp_jwt_secret()
-    state_in = build_state(
-        config={"charm-function": "mcp", "mcp-jwt-secret-id": secret.id},
-        secrets=(secret,),
-    )
-
-    state_out = ctx.run(ctx.on.config_changed(), state_in)
-
-    assert state_out.unit_status == ActiveStatus("Status check: UP")
-
-
-def test_mcp_blocks_on_an_unreadable_jwt_secret(ctx, probe):
-    """An mcp-jwt-secret-id that cannot be read blocks with a clear reason."""
-    state_in = build_state(
-        config={
-            "charm-function": "mcp",
-            "mcp-jwt-secret-id": "secret:does-not-exist",
-        }
-    )
-
-    state_out = ctx.run(ctx.on.config_changed(), state_in)
-
-    assert state_out.unit_status == BlockedStatus(
-        "mcp-jwt-secret-id 'secret:does-not-exist' cannot be found."
-    )
-
-
-def test_mcp_blocks_on_a_malformed_jwt_secret(ctx, probe):
-    """An mcp-jwt-secret-id missing its `secret` key blocks with a clear reason."""
-    secret = mcp_jwt_secret(value=None)
-    state_in = build_state(
-        config={"charm-function": "mcp", "mcp-jwt-secret-id": secret.id},
-        secrets=(secret,),
-    )
-
-    state_out = ctx.run(ctx.on.config_changed(), state_in)
-
-    assert state_out.unit_status == BlockedStatus(
-        f"mcp-jwt-secret-id '{secret.id}' has improper schema. "
-        "Missing: secret"
-    )
 
 
 def test_mcp_blocks_on_oauth_without_an_https_ingress(ctx, probe):
