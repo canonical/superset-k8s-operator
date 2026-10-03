@@ -23,7 +23,7 @@ from bdd import and_, given, then, when
 logger = logging.getLogger(__name__)
 
 ALERT_RULES = ("SupersetDown", "SupersetHalfOrMoreDown", "WorkersDown")
-DASHBOARD_TITLE = "Superset Metrics"
+DASHBOARD_TITLE = "Superset / Health, Availability & Performance"
 LOG_LOOKBACK_SECONDS = 60 * 60
 EXPORTING_APPS = (steps.UI_NAME, steps.WORKER_NAME)
 
