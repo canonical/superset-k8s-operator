@@ -7,6 +7,7 @@ import dataclasses
 
 from ops.testing import Relation, TCPPort, UDPPort
 
+from literals import MCP_PORT
 from tests.unit.helpers import build_state
 
 
@@ -90,6 +91,21 @@ def test_each_function_opens_the_ports_it_serves_on(ctx):
     }
     assert worker.opened_ports == {TCPPort(9102), TCPPort(9103)}
     assert beat.opened_ports == set()
+
+
+def test_mcp_opens_its_own_port(ctx):
+    """The mcp function opens its own port, not the fixed UI one.
+
+    mcp is not in METRICS_FUNCTIONS, so its only port is the one it actually
+    serves MCP calls on.
+    """
+    state_in = build_state(
+        config={"charm-function": "mcp", "mcp-dev-username": "admin"}
+    )
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    assert state_out.opened_ports == {TCPPort(MCP_PORT)}
 
 
 def test_a_reconfigured_function_stops_advertising_its_old_ports(ctx):
