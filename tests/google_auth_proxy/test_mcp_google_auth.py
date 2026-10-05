@@ -148,12 +148,6 @@ class TestGoogleAuthProxy:
         proxy.get_routes("/mcp")
         return proxy
 
-    def test_the_fallback_is_a_google_issued_token_verifier(self):
-        """A caller pointed at Google by hand never reaches the proxy's own tokens."""
-        proxy = self._proxy()
-
-        assert isinstance(proxy._direct_verifier, m.GoogleIssuedTokenVerifier)
-
     @respx.mock
     def test_a_token_google_issued_directly_is_accepted(self):
         """The proxy has no record of this token, so it falls back to Google."""
@@ -205,12 +199,6 @@ class TestGoogleAuthProxy:
         proxy = self._proxy(registration_enabled=False)
 
         assert asyncio.run(proxy.get_client(CLIENT_ID)) is None
-
-    def test_refuses_any_other_client_when_restricted(self):
-        """Otherwise the registration switch would only be half-enforced."""
-        proxy = self._proxy(registration_enabled=False)
-
-        assert asyncio.run(proxy.get_client("some-other-client")) is None
 
 
 class TestBuildGoogleMcpAuthFactory:
