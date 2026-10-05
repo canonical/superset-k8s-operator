@@ -87,6 +87,10 @@ def get_mcp_auth_config(oauth):
         "MCP_AUTH_ISSUER": provider.issuer_url,
         "MCP_AUTH_JWKS_URL": provider.jwks_endpoint,
         "MCP_AUTH_INTROSPECTION_URL": provider.introspection_endpoint,
+        # Not read by superset's create_default_mcp_auth_factory (6.1) —
+        # it has no RFC 7662 introspection path, only JWT verification.
+        # Kept here for operator visibility (`juju ssh ... env`) only;
+        # nothing in the charm or workload currently acts on this value.
         "MCP_AUTH_JWT_ACCESS_TOKEN": (
             "true" if provider.jwt_access_token else "false"
         ),
