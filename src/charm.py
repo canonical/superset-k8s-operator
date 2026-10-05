@@ -937,7 +937,9 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
                     k,
                     item,
                 )
-                return f"Invalid JSON body for config key {k}: should be a list"
+                return (
+                    f"Invalid JSON body for config key {k}: should be a list"
+                )
 
         return None
 

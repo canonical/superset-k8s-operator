@@ -119,6 +119,16 @@ def _stub_dependencies(
     sys.modules["flask"] = flask_module
 
     def load_user_with_relationships(username=None, email=None):
+        """Resolve a stub user the way the real lookup would.
+
+        Args:
+            username: Username to resolve against `users`.
+            email: Email to resolve against `emails`, tried instead of
+                username when given.
+
+        Returns:
+            The matching stub user, or None.
+        """
         if email is not None:
             return emails.get(email)
         return users.get(username)
