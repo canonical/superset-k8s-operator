@@ -149,13 +149,8 @@ class GoogleAuthProxy(GoogleProvider):  # pylint: disable=too-many-ancestors
     otherwise confirm about its own tokens — that the caller went through
     the client this deployment owns.
 
-    When `registration_enabled` is False, `get_client()` refuses every
-    client, including this deployment's own, because its client_id isn't
-    secret: GoogleProvider hands out a public client for that id, with no
-    secret or redirect-URI check. An operator-registered client like
-    Gemini Enterprise is unaffected — it's registered with Google
-    directly, not through this proxy, so it never calls `get_client()` at
-    all.
+    `get_client()` refuses every client, including this deployment's
+    own, once `registration_enabled` is False — see that method.
     """
 
     def __init__(
