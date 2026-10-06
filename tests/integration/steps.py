@@ -30,10 +30,16 @@ logger = logging.getLogger(__name__)
 METADATA = yaml.safe_load(Path("./charmcraft.yaml").read_text())
 CHARM_NAME = METADATA["name"]
 
-CHARM_FUNCTIONS = {"app-gunicorn": "ui", "worker": "worker", "beat": "beat"}
+CHARM_FUNCTIONS = {
+    "app-gunicorn": "ui",
+    "worker": "worker",
+    "beat": "beat",
+    "mcp": "mcp",
+}
 UI_NAME = f"{CHARM_NAME}-ui"
 WORKER_NAME = f"{CHARM_NAME}-worker"
 BEAT_NAME = f"{CHARM_NAME}-beat"
+MCP_NAME = f"{CHARM_NAME}-mcp"
 SUPERSET_APPS = (UI_NAME, WORKER_NAME, BEAT_NAME)
 SCALABLE_APPS = (UI_NAME, WORKER_NAME)
 
@@ -423,10 +429,15 @@ def deploy_superset(
     charm: Path,
     image: str,
     *,
-    functions: Iterable[str] = tuple(CHARM_FUNCTIONS),
+    functions: Iterable[str] = ("app-gunicorn", "worker", "beat"),
     config: Optional[dict] = None,
 ) -> Tuple[str, ...]:
     """Deploy a complete Superset deployment on its dependencies, active.
+
+    mcp is not among the default functions: unlike the other three, it
+    cannot become active without either mcp-dev-username or an oauth
+    relation, so a scenario that needs it deploys it explicitly (see
+    test_mcp.py, test_observability.py).
 
     Every application is deployed with the charm's own defaults unless a
     scenario asks for more.

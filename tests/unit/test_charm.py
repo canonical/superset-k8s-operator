@@ -19,7 +19,7 @@ from ops.pebble import ConnectionError as PebbleConnectionError
 from ops.pebble import Layer
 from ops.testing import Relation, Secret, State
 
-from literals import CA_CERT_LOCAL_PATH, CA_CERT_PATH
+from literals import CA_CERT_LOCAL_PATH, CA_CERT_PATH, MCP_PORT
 from relations.tls import Certificates
 from tests.unit.helpers import (
     ASYNC_QUERIES_JWT,
@@ -90,6 +90,12 @@ WANT_ENVIRONMENT = {
     "ENABLE_RAISE_FOR_ACCESS_PATCH": False,
     "EXTRA_SEQUENTIAL_COLOR_SCHEMES": "",
     "EXTRA_CATEGORICAL_COLOR_SCHEMES": "",
+    "MCP_SERVICE_HOST": "0.0.0.0",  # nosec B104
+    "MCP_SERVICE_PORT": 5008,
+    "MCP_DEBUG": False,
+    "MCP_DISABLED_TOOLS": None,
+    "MCP_DEV_USERNAME": None,
+    "MCP_RBAC_ENABLED": True,
 }
 
 
@@ -171,6 +177,20 @@ def test_ingress_requirer_publishes_databag(ctx):
     assert databag["redirect-https"] == "true"
     assert json.loads(databag["model"]) == MODEL_NAME
     assert json.loads(databag["name"]) == "superset-k8s"
+
+
+def test_mcp_ingress_requirer_advertises_its_own_port(ctx):
+    """The mcp function advertises its own port, not the UI's."""
+    ingress = ingress_relation(url=None)
+    state_in = build_state(
+        config={"charm-function": "mcp", "mcp-dev-username": "admin"},
+        extra_relations=(ingress,),
+    )
+
+    state_out = ctx.run(ctx.on.relation_changed(ingress), state_in)
+
+    databag = state_out.get_relation(ingress.id).local_app_data
+    assert databag["port"] == str(MCP_PORT)
 
 
 def test_ingress_url_is_available_to_the_charm(ctx):
@@ -529,6 +549,41 @@ def test_worker_deployment(ctx):
 
     assert superset_environment(state_out)["CHARM_FUNCTION"] == "worker"
     assert state_out.unit_status == ActiveStatus("Status check: UP")
+
+
+def test_mcp_deployment(ctx):
+    """The pebble plan reflects the mcp function."""
+    state_in = build_state(
+        config={"charm-function": "mcp", "mcp-dev-username": "admin"}
+    )
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    environment = superset_environment(state_out)
+    assert environment["CHARM_FUNCTION"] == "mcp"
+    assert environment["MCP_SERVICE_HOST"] == "0.0.0.0"  # nosec B104
+    assert environment["MCP_SERVICE_PORT"] == 5008
+    assert environment["MCP_DEBUG"] is False
+    assert environment["MCP_DISABLED_TOOLS"] is None
+    assert environment["MCP_DEV_USERNAME"] == "admin"
+    # mcp-dev-username forces MCP_RBAC_ENABLED off, see _create_env.
+    assert environment["MCP_RBAC_ENABLED"] is False
+    assert state_out.unit_status == ActiveStatus("Status check: UP")
+
+
+def test_mcp_pebble_check_uses_its_own_port(ctx):
+    """The mcp function's pebble health check targets its own port."""
+    state_in = build_state(
+        config={"charm-function": "mcp", "mcp-dev-username": "admin"}
+    )
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    plan = state_out.get_container("superset").plan.to_dict()
+    assert (
+        plan["checks"]["up"]["http"]["url"]
+        == f"http://localhost:{MCP_PORT}/health"
+    )
 
 
 def test_invalid_default_role(ctx):

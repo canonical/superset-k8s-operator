@@ -113,7 +113,7 @@ def test_product_related_values(ctx, state) -> None:
 
     # charm-function
     check_invalid_values(ctx, state, "charm-function", erroneus_values)
-    accepted_values = ["app-gunicorn", "worker", "beat"]
+    accepted_values = ["app-gunicorn", "worker", "beat", "mcp"]
     check_valid_values(ctx, state, "charm-function", accepted_values)
 
 

@@ -10,6 +10,11 @@ develop a new k8s charm using the Operator Framework:
 https://discourse.charmhub.io/t/4208
 """
 
+# pylint: disable=too-many-lines
+# charm.py crosses pylint's default 1000-line module limit with the mcp
+# charm-function work. Suppressed for now rather than splitting the module;
+# revisit before relying on this permanently.
+
 import json
 import logging
 import os
@@ -36,6 +41,7 @@ from ops import (
 )
 from pydantic import ValidationError
 
+import mcp_auth
 from literals import (
     ADMIN_SECRET_ID_FIELD,
     ADMIN_SECRET_KEY,
@@ -49,6 +55,10 @@ from literals import (
     HEALTH_URL,
     INGRESS_RELATION_NAME,
     LOG_FILE,
+    MCP_FUNCTION,
+    MCP_HEALTH_URL,
+    MCP_HOST,
+    MCP_PORT,
     REDIS_RELATION_NAME,
     SIGNING_KEYS_SECRET_KEYS,
     SQL_AB_ROLE,
@@ -152,7 +162,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         self.ingress = IngressPerAppRequirer(
             self,
             relation_name=INGRESS_RELATION_NAME,
-            port=APPLICATION_PORT,
+            port=self._ingress_port(),
             scheme="http",
             strip_prefix=True,
             redirect_https=True,
@@ -181,9 +191,16 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
     def _on_reconcile(self, event):
         """Re-apply the desired state.
 
+        Also refreshes the ingress address: config-changed is one of the
+        events that lands here, and switching an already-related unit's
+        charm-function between ui and mcp changes _ingress_port()'s
+        result, which IngressPerAppRequirer does not republish on its own
+        for a plain config-changed event.
+
         Args:
             event: The event that triggered the reconciliation.
         """
+        self._refresh_ingress_address()
         self.reconcile()
 
     def _on_secret_changed(self, event):
@@ -213,6 +230,21 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         self._refresh_ingress_address()
         self.reconcile()
 
+    def _ingress_port(self):
+        """Return the port to advertise on the ingress relation.
+
+        Reads the raw model config rather than the parsed `self.config`:
+        this runs from `__init__` and from `_on_update_status()` before
+        `_config_status()` has had a chance to report invalid config
+        cleanly, so it must not raise `ValidationError` itself.
+
+        Returns:
+            MCP_PORT for the mcp function, APPLICATION_PORT otherwise.
+        """
+        if self.model.config.get("charm-function") == MCP_FUNCTION:
+            return MCP_PORT
+        return APPLICATION_PORT
+
     def _refresh_ingress_address(self):
         """Republish the unit's address on the ingress relation.
 
@@ -221,7 +253,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         routes the ingress at a dead IP indefinitely. It is a no-op when
         the value has not changed.
         """
-        self.ingress.provide_ingress_requirements(port=APPLICATION_PORT)
+        self.ingress.provide_ingress_requirements(port=self._ingress_port())
 
     def reconcile_certificates(self, relation_broken: bool = False):
         """Sync the workload CA trust store with the certificates relation.
@@ -407,6 +439,19 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         secret = self.app.add_secret(content, label=ADMIN_SECRET_LABEL)
         peer.data[self.app][ADMIN_SECRET_ID_FIELD] = secret.id
 
+    def _health_url(self):
+        """Return the health-check URL for the configured charm function.
+
+        Returns:
+            The URL to probe, or None for a function with nothing to probe.
+        """
+        function = self.config["charm-function"]
+        if function == UI_FUNCTION:
+            return HEALTH_URL
+        if function == MCP_FUNCTION:
+            return MCP_HEALTH_URL
+        return None
+
     def _workload_status(self):
         """Return the status the workload presents right now.
 
@@ -420,24 +465,28 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             ActiveStatus when Superset answers, MaintenanceStatus when it
             does not.
         """
-        if self.config["charm-function"] != UI_FUNCTION:
+        health_url = self._health_url()
+        if health_url is None:
             return ActiveStatus("Status check: UP")
 
-        if self._workload_is_serving():
+        if self._workload_is_serving(health_url):
             return ActiveStatus("Status check: UP")
 
         return MaintenanceStatus("Status check: DOWN")
 
-    def _workload_is_serving(self):
+    def _workload_is_serving(self, health_url):
         """Ask the workload whether it is serving.
 
+        Args:
+            health_url: the health-check URL to probe.
+
         Returns:
-            True if Superset answered its health endpoint.
+            True if the workload answered its health endpoint.
         """
         try:
             return (
                 requests.get(
-                    HEALTH_URL, timeout=HEALTH_PROBE_TIMEOUT
+                    health_url, timeout=HEALTH_PROBE_TIMEOUT
                 ).status_code
                 == 200
             )
@@ -563,6 +612,9 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             self._relation_status()
             or self._metadata_database_status()
             or self._smtp_status()
+            or mcp_auth.auth_status(
+                self.config, self.oauth, self.https_ingress_url
+            )
         )
         if dependency_status is not None:
             return dependency_status
@@ -740,6 +792,12 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "EXTRA_CATEGORICAL_COLOR_SCHEMES": self.config[
                 "extra-categorical-color-schemes"
             ],
+            "MCP_SERVICE_HOST": MCP_HOST,
+            "MCP_SERVICE_PORT": MCP_PORT,
+            "MCP_DEBUG": self.config["mcp-debug"],
+            "MCP_DISABLED_TOOLS": self.config["mcp-disabled-tools"],
+            "MCP_DEV_USERNAME": self.config["mcp-dev-username"],
+            "MCP_RBAC_ENABLED": not self.config["mcp-dev-username"],
         }
         if self.config["feature-flags"]:
             env.update(self.config["feature-flags"])
@@ -791,6 +849,9 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             # Port for cache warm-up.
             ports.append(Port("tcp", APPLICATION_PORT))
 
+        if function == MCP_FUNCTION:
+            ports.append(Port("tcp", MCP_PORT))
+
         self.model.unit.set_ports(*ports)
 
     def _sync_trino_catalogs(self, force_update_credentials):
@@ -836,7 +897,8 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             },
         }
 
-        if self.config["charm-function"] == UI_FUNCTION:
+        health_url = self._health_url()
+        if health_url is not None:
             pebble_layer.update(
                 {
                     "checks": {
@@ -844,7 +906,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
                             "override": "replace",
                             "period": "10s",
                             "threshold": 1,
-                            "http": {"url": HEALTH_URL},
+                            "http": {"url": health_url},
                         }
                     }
                 },
