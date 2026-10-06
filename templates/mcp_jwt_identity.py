@@ -54,6 +54,10 @@ def get_user_from_request_with_jwt():
 
     Never creates a user — only resolves one that already exists.
 
+    Needs an active Flask app/request context (reads current_app and g),
+    so it can't be called from a thread or other context separated from
+    the request that's being served.
+
     Returns:
         The resolved Superset user.
 
