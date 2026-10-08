@@ -11,7 +11,7 @@
   ],
   "timezone": "",
   "schemaVersion": 38,
-  "version": 3,
+  "version": 4,
   "editable": true,
   "graphTooltip": 1,
   "refresh": "30s",
@@ -1692,7 +1692,7 @@
                 "uid": "${lokids}"
               },
               "editorMode": "code",
-              "expr": "{juju_application=~\".*superset-k8s-ui.*\",juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_unit=~\"$juju_unit\"} |~ \"(?i)error\"",
+              "expr": "{juju_application=~\".*superset-ui.*\",juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_unit=~\"$juju_unit\"} |~ \"(?i)error\"",
               "queryType": "range",
               "refId": "A"
             }
@@ -1730,7 +1730,7 @@
                 "uid": "${lokids}"
               },
               "editorMode": "code",
-              "expr": "{juju_application=~\".*superset-k8s-worker.*\",juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_unit=~\"$juju_unit\"} |~ \"(?i)error\"",
+              "expr": "{juju_application=~\".*superset-worker.*\",juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_unit=~\"$juju_unit\"} |~ \"(?i)error\"",
               "queryType": "range",
               "refId": "A"
             }

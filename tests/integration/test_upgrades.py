@@ -28,7 +28,7 @@ BASELINES = ["5/stable", "6/stable"]
 # charm being built no longer declares. Drop a channel from here once a
 # revision carrying the secret is promoted into it, and delete the constant
 # and the branch that reads it once it is empty.
-LEGACY_SECRET_KEY_BASELINES = frozenset({"5/stable", "6/stable"})
+LEGACY_SECRET_KEY_BASELINES = frozenset({"5/stable"})
 
 
 def configure_signing_keys(juju: jubilant.Juju, app: str) -> None:
