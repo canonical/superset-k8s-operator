@@ -423,6 +423,11 @@ if os.getenv("CHARM_FUNCTION") == "mcp":
     # workload container. mcp_auth.py can't do it — that code runs in the
     # charm, a different process.
     #
+    # Every MCP_AUTH_* variable read below (JWKS_URL, ISSUER, CLIENT_ID,
+    # BASE_URL) comes from mcp_auth.py's get_mcp_auth_config(), merged into
+    # this workload's environment by charm.py's _create_env() — not set
+    # anywhere in this file or this process.
+    #
     # charm.py's auth_status() only lets mcp reach Active with exactly one
     # of {oauth relation, mcp-dev-username} set. Setting MCP_AUTH_JWKS_URL
     # is not enough on its own: create_default_mcp_auth_factory also needs
