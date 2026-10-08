@@ -134,7 +134,7 @@ class TestSslContext(unittest.TestCase):
 
     def test_verifies_and_checks_hostname_by_default(self):
         """With no overrides, the context verifies and checks hostnames."""
-        context = hive_tls.build_ssl_context(
+        context = hive_tls.HiveTLSDialect.build_ssl_context(
             ca_bundle=None, check_hostname=True, verify=True
         )
         self.assertTrue(context.check_hostname)
@@ -142,7 +142,7 @@ class TestSslContext(unittest.TestCase):
 
     def test_hostname_check_can_be_disabled_while_still_verifying(self):
         """Hostname checking can be turned off without disabling verify."""
-        context = hive_tls.build_ssl_context(
+        context = hive_tls.HiveTLSDialect.build_ssl_context(
             ca_bundle=None, check_hostname=False, verify=True
         )
         self.assertFalse(context.check_hostname)
@@ -150,7 +150,7 @@ class TestSslContext(unittest.TestCase):
 
     def test_verification_can_be_disabled(self):
         """Disabling verify also disables the hostname check."""
-        context = hive_tls.build_ssl_context(
+        context = hive_tls.HiveTLSDialect.build_ssl_context(
             ca_bundle=None, check_hostname=True, verify=False
         )
         self.assertFalse(context.check_hostname)
@@ -159,7 +159,7 @@ class TestSslContext(unittest.TestCase):
     def test_unrecognized_boolean_value_raises(self):
         """A misspelled boolean must not silently disable verification."""
         with self.assertRaises(ValueError):
-            hive_tls._as_bool("trueeeee", default=True)
+            hive_tls.HiveTLSDialect.as_bool("trueeeee", default=True)
 
 
 class TestConnectArgs(unittest.TestCase):
@@ -223,7 +223,7 @@ class TestConnectArgs(unittest.TestCase):
         self.assertEqual(socket_kwargs["server_hostname"], "kyuubi-0")
         self.assertIs(
             socket_kwargs["validate_callback"],
-            hive_tls._skip_thrift_hostname_check,
+            hive_tls.HiveTLSDialect.skip_thrift_hostname_check,
         )
 
     def test_query_parameters_configure_verification(self):

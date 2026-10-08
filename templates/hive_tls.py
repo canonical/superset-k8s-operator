@@ -30,87 +30,13 @@ overrides the same-named URI query parameter.
 """
 
 import ssl
-from typing import Any, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from pyhive import hive
 from pyhive.sqlalchemy_hive import HiveDialect
+from sqlalchemy.engine.url import URL
 from thrift.transport.TSSLSocket import TSSLSocket
 from thrift_sasl import TSaslClientTransport
-
-KYUUBI_THRIFT_BINARY_PORT = 10009
-
-_TRUTHY = frozenset({"1", "true", "yes", "on"})
-_FALSY = frozenset({"0", "false", "no", "off"})
-
-
-def _as_bool(value: Any, default: bool) -> bool:
-    """Interpret a URI query parameter as a boolean.
-
-    Args:
-        value: Raw query parameter value, or None if absent.
-        default: Value to return when the parameter is absent.
-
-    Returns:
-        The parsed boolean.
-
-    Raises:
-        ValueError: value is present but is not a recognized boolean. A
-            misspelled value (e.g. ``ssl_verify=trueeeee``) must not be
-            silently treated as false, since that would disable certificate
-            verification without any indication to the user.
-    """
-    if value is None:
-        return default
-    normalized = str(value).strip().lower()
-    if normalized in _TRUTHY:
-        return True
-    if normalized in _FALSY:
-        return False
-    raise ValueError(
-        "Invalid boolean value {!r} for a hive+tls query parameter; "
-        "expected one of {}.".format(value, sorted(_TRUTHY | _FALSY))
-    )
-
-
-def build_ssl_context(
-    ca_bundle: Optional[str], check_hostname: bool, verify: bool
-) -> ssl.SSLContext:
-    """Build the client SSL context used for the Thrift socket.
-
-    Args:
-        ca_bundle: PEM bundle to verify the server against, or None to use the
-            system trust store.
-        check_hostname: Whether the server name must match the certificate.
-        verify: Whether the server certificate is verified at all.
-
-    Returns:
-        The configured SSL context.
-    """
-    context = ssl.create_default_context(cafile=ca_bundle)
-    if not verify:
-        # check_hostname must be cleared before CERT_NONE, the setter rejects
-        # the opposite order.
-        context.check_hostname = False
-        context.verify_mode = ssl.CERT_NONE
-        return context
-
-    context.check_hostname = check_hostname
-    return context
-
-
-def _skip_thrift_hostname_check(cert: Any, hostname: Any) -> None:
-    """Accept the peer certificate without re-checking its hostname.
-
-    Thrift runs its own post-handshake hostname check, but on Python 3.12 and
-    later it silently degrades to a common-name-only comparison because
-    ``ssl.match_hostname`` was removed. That rejects certificates carrying the
-    name in a SAN only, which is what Kyuubi requests. The SSL context above
-    already performs the real, SAN-aware check.
-
-    Args:
-        cert: Peer certificate, unused.
-        hostname: Server name, unused.
-    """
 
 
 class HiveTLSDialect(HiveDialect):
@@ -120,7 +46,87 @@ class HiveTLSDialect(HiveDialect):
     driver = "tls"
     supports_statement_cache = False
 
-    def create_connect_args(self, url):
+    KYUUBI_THRIFT_BINARY_PORT = 10009
+
+    _TRUTHY = frozenset({"1", "true", "yes", "on"})
+    _FALSY = frozenset({"0", "false", "no", "off"})
+
+    @classmethod
+    def as_bool(cls, value: Any, default: bool) -> bool:
+        """Interpret a URI query parameter as a boolean.
+
+        Args:
+            value: Raw query parameter value, or None if absent.
+            default: Value to return when the parameter is absent.
+
+        Returns:
+            The parsed boolean.
+
+        Raises:
+            ValueError: value is present but is not a recognized boolean. A
+                misspelled value (e.g. ``ssl_verify=trueeeee``) must not be
+                silently treated as false, since that would disable
+                certificate verification without any indication to the user.
+        """
+        if value is None:
+            return default
+        normalized = str(value).strip().lower()
+        if normalized in cls._TRUTHY:
+            return True
+        if normalized in cls._FALSY:
+            return False
+        raise ValueError(
+            "Invalid boolean value {!r} for a hive+tls query parameter; "
+            "expected one of {}.".format(
+                value, sorted(cls._TRUTHY | cls._FALSY)
+            )
+        )
+
+    @staticmethod
+    def build_ssl_context(
+        ca_bundle: Optional[str], check_hostname: bool, verify: bool
+    ) -> ssl.SSLContext:
+        """Build the client SSL context used for the Thrift socket.
+
+        Args:
+            ca_bundle: PEM bundle to verify the server against, or None to
+                use the system trust store.
+            check_hostname: Whether the server name must match the certificate.
+            verify: Whether the server certificate is verified at all.
+
+        Returns:
+            The configured SSL context.
+        """
+        context = ssl.create_default_context(cafile=ca_bundle)
+        if not verify:
+            # check_hostname must be cleared before CERT_NONE, the setter
+            # rejects the opposite order.
+            context.check_hostname = False
+            context.verify_mode = ssl.CERT_NONE
+            return context
+
+        context.check_hostname = check_hostname
+        return context
+
+    @staticmethod
+    def skip_thrift_hostname_check(cert: Any, hostname: Any) -> None:
+        """Accept the peer certificate without re-checking its hostname.
+
+        Thrift runs its own post-handshake hostname check, but on Python 3.12
+        and later it silently degrades to a common-name-only comparison
+        because ``ssl.match_hostname`` was removed. That rejects certificates
+        carrying the name in a SAN only, which is what Kyuubi requests. The
+        SSL context from ``build_ssl_context`` already performs the real,
+        SAN-aware check.
+
+        Args:
+            cert: Peer certificate, unused.
+            hostname: Server name, unused.
+        """
+
+    def create_connect_args(
+        self, url: URL
+    ) -> Tuple[List[Any], Dict[str, Any]]:
         """Extract raw connection settings from a ``hive+tls`` URL.
 
         The TLS socket and SASL transport are *not* built here: SQLAlchemy
@@ -142,7 +148,7 @@ class HiveTLSDialect(HiveDialect):
         query = dict(url.query)
         return [], {
             "host": url.host,
-            "port": url.port or KYUUBI_THRIFT_BINARY_PORT,
+            "port": url.port or self.KYUUBI_THRIFT_BINARY_PORT,
             "username": url.username,
             # SASL PLAIN rejects an empty password; PyHive substitutes the
             # same placeholder when authentication is not password based.
@@ -153,7 +159,7 @@ class HiveTLSDialect(HiveDialect):
             "ssl_verify": query.get("ssl_verify"),
         }
 
-    def connect(self, *cargs, **cparams):
+    def connect(self, *cargs: Any, **cparams: Any) -> Any:
         """Build the TLS transport and connect to Kyuubi.
 
         Runs once per pooled DBAPI connection, after SQLAlchemy has merged
@@ -175,19 +181,21 @@ class HiveTLSDialect(HiveDialect):
         password = cparams.pop("password", "x")
         database = cparams.pop("database", "default")
         ssl_cert = cparams.pop("ssl_cert", None)
-        check_hostname = _as_bool(cparams.pop("check_hostname", None), True)
-        ssl_verify = _as_bool(cparams.pop("ssl_verify", None), True)
+        check_hostname = self.as_bool(
+            cparams.pop("check_hostname", None), True
+        )
+        ssl_verify = self.as_bool(cparams.pop("ssl_verify", None), True)
 
         socket = TSSLSocket(
             host,
             port,
-            ssl_context=build_ssl_context(
+            ssl_context=self.build_ssl_context(
                 ca_bundle=ssl_cert,
                 check_hostname=check_hostname,
                 verify=ssl_verify,
             ),
             server_hostname=host,
-            validate_callback=_skip_thrift_hostname_check,
+            validate_callback=self.skip_thrift_hostname_check,
         )
         transport = TSaslClientTransport(
             lambda: hive.get_installed_sasl(
