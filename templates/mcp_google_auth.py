@@ -38,12 +38,18 @@ factory instead.
 """
 
 import os
-from typing import Any, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, List, Optional
 from urllib.parse import urlparse
 
 import httpx
 from fastmcp.server.auth.auth import AccessToken, TokenVerifier
 from fastmcp.server.auth.providers.google import GoogleProvider
+
+if TYPE_CHECKING:
+    # Not imported at runtime: flask isn't a dependency of the isolated
+    # google-auth-proxy tox env this module is tested in (see tox.ini) —
+    # only Superset's own workload container has it.
+    from flask import Flask
 
 # Google's tokeninfo endpoint, not standard OAuth introspection (RFC
 # 7662): it's a plain GET with no credentials, and it reports a bad token
@@ -68,7 +74,7 @@ class GoogleIssuedTokenVerifier(TokenVerifier):
     up.
     """
 
-    def __init__(self, client_id: str, required_scopes: List[str]):
+    def __init__(self, client_id: str, required_scopes: List[str]) -> None:
         """Construct.
 
         Args:
@@ -154,8 +160,12 @@ class GoogleAuthProxy(GoogleProvider):  # pylint: disable=too-many-ancestors
     """
 
     def __init__(
-        self, *, client_id: str, registration_enabled: bool = True, **kwargs
-    ):
+        self,
+        *,
+        client_id: str,
+        registration_enabled: bool = True,
+        **kwargs: Any,
+    ) -> None:
         """Construct.
 
         Args:
@@ -263,7 +273,9 @@ def _client_registration_enabled() -> bool:
     ).lower() != "false"
 
 
-def build_google_mcp_auth_factory():
+def build_google_mcp_auth_factory() -> (
+    Optional[Callable[["Flask"], GoogleAuthProxy]]
+):
     """Return a Google-backed MCP auth provider factory, or None.
 
     Reads the MCP_AUTH_* environment variables the charm's
@@ -283,7 +295,9 @@ def build_google_mcp_auth_factory():
     client_secret = _required("MCP_AUTH_CLIENT_SECRET")
     registration_enabled = _client_registration_enabled()
 
-    def _factory(app):  # noqa: ARG001 - signature required by MCP_AUTH_FACTORY
+    def _factory(
+        app: "Flask",  # noqa: ARG001 - signature required by MCP_AUTH_FACTORY
+    ) -> GoogleAuthProxy:
         """Build the Google auth provider MCP_AUTH_FACTORY consumes.
 
         Args:

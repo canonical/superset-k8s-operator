@@ -610,7 +610,7 @@ def test_mcp_auth_config_populates_environment(ctx):
     assert environment["MCP_AUTH_CLIENT_ID"] == "superset-client"
     assert environment["MCP_AUTH_CLIENT_SECRET"] == "secret-value"
     assert environment["MCP_AUTH_BASE_URL"] == "https://mcp.example"
-    assert environment["MCP_AUTH_CLIENT_REGISTRATION"] is True
+    assert environment["MCP_AUTH_CLIENT_REGISTRATION"] == "true"
 
 
 def test_mcp_auth_client_registration_populates_environment(ctx):
@@ -631,7 +631,7 @@ def test_mcp_auth_client_registration_populates_environment(ctx):
     state_out = ctx.run(ctx.on.config_changed(), state_in)
 
     environment = superset_environment(state_out)
-    assert environment["MCP_AUTH_CLIENT_REGISTRATION"] is False
+    assert environment["MCP_AUTH_CLIENT_REGISTRATION"] == "false"
 
 
 def test_invalid_default_role(ctx):

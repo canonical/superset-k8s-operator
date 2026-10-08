@@ -4,12 +4,17 @@
 
 """Auth-status reporting and environment config for the mcp charm function."""
 
-from ops import BlockedStatus, WaitingStatus
+from typing import Dict, Optional
+
+from ops import BlockedStatus, ConfigData, StatusBase, WaitingStatus
 
 from literals import MCP_FUNCTION
+from relations.oauth import OAuthRelation
 
 
-def auth_status(config, oauth, https_ingress_url):
+def auth_status(
+    config: ConfigData, oauth: OAuthRelation, https_ingress_url: Optional[str]
+) -> Optional[StatusBase]:
     """Report on the mcp application's auth configuration.
 
     None for any other charm function. mcp requires exactly one of two
@@ -45,7 +50,9 @@ def auth_status(config, oauth, https_ingress_url):
     return _oauth_status(oauth, https_ingress_url)
 
 
-def _oauth_status(oauth, https_ingress_url):
+def _oauth_status(
+    oauth: OAuthRelation, https_ingress_url: Optional[str]
+) -> Optional[StatusBase]:
     """Report on the oauth-relation identity source.
 
     Args:
@@ -65,7 +72,11 @@ def _oauth_status(oauth, https_ingress_url):
     return None
 
 
-def get_mcp_auth_config(oauth, https_ingress_url, auth_client_registration):
+def get_mcp_auth_config(
+    oauth: OAuthRelation,
+    https_ingress_url: Optional[str],
+    auth_client_registration: bool,
+) -> Dict[str, str]:
     """Return MCP_AUTH_* environment values for mcp's own auth provider.
 
     Reuses the same oauth relation and the same client_id/client_secret as
@@ -105,5 +116,7 @@ def get_mcp_auth_config(oauth, https_ingress_url, auth_client_registration):
         # Only consumed by mcp_google_auth.py's OAuth-proxy path; ignored
         # by the plain JWKS verifier a non-Google provider gets instead.
         "MCP_AUTH_BASE_URL": https_ingress_url or "",
-        "MCP_AUTH_CLIENT_REGISTRATION": auth_client_registration,
+        "MCP_AUTH_CLIENT_REGISTRATION": (
+            "true" if auth_client_registration else "false"
+        ),
     }

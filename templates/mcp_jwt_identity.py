@@ -9,7 +9,11 @@ auth is configured — see superset_config.py.
 """
 
 
-def _identity_candidates(claims, client_id=None, prefer_email=False):
+def _identity_candidates(
+    claims: dict[str, str | None],
+    client_id: str | None = None,
+    prefer_email: bool = False,
+) -> list[str]:
     """Return candidate Superset usernames from a JWT, most likely first.
 
     Hydra's client_credentials tokens set sub to the client_id itself, so
@@ -29,7 +33,7 @@ def _identity_candidates(claims, client_id=None, prefer_email=False):
     Returns:
         Candidate usernames, most likely first, with duplicates dropped.
     """
-    identities = (
+    identities: tuple[str | None, ...] = (
         (claims.get("email"), claims.get("sub"))
         if prefer_email
         else (claims.get("sub"), claims.get("email"))
@@ -43,7 +47,7 @@ def _identity_candidates(claims, client_id=None, prefer_email=False):
     return result
 
 
-def _should_prefer_email():
+def _should_prefer_email() -> bool:
     """Whether the related provider's sub is untrustworthy as a username.
 
     Returns:
