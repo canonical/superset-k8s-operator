@@ -1,6 +1,6 @@
 lockfile_version: '1'
-generated_at: '2026-09-23T06:49:11.761359+00:00'
-apm_version: 0.29.0
+generated_at: '2026-10-05T09:24:27.698459+00:00'
+apm_version: 0.33.0
 dependencies:
 - repo_url: canonical/canonical-data-mesh-docs
   name: data-mesh-guidelines
@@ -108,10 +108,12 @@ dependencies:
   package_type: apm_package
   deployed_files:
   - .claude/agents/charm-engineer.md
+  - .codex/agents/charm-engineer.toml
   - .github/agents/charm-engineer.agent.md
   - .opencode/agents/charm-engineer.md
   deployed_file_hashes:
     .claude/agents/charm-engineer.md: sha256:dc061846ee1ba04dd8cafdceb1f8aa8268a063e9d90dab27649a75066393fc9a
+    .codex/agents/charm-engineer.toml: sha256:c3da9eb7535b1e2f194b4851437ad11bc83267d162f82e5099303b6ee7859bac
     .github/agents/charm-engineer.agent.md: sha256:dc061846ee1ba04dd8cafdceb1f8aa8268a063e9d90dab27649a75066393fc9a
     .opencode/agents/charm-engineer.md: sha256:dc061846ee1ba04dd8cafdceb1f8aa8268a063e9d90dab27649a75066393fc9a
   content_hash: sha256:3d7dd67cfe9be2e92a4b083a1beaebcb2928c339894cd6b347ee44da90dd5995
@@ -187,6 +189,7 @@ dependencies:
   - .claude/skills/apm-usage/package-authoring.md
   - .claude/skills/apm-usage/troubleshooting.md
   - .claude/skills/apm-usage/workflow.md
+  - .codex/agents/apm-expert.toml
   - .github/agents/apm-expert.agent.md
   - .opencode/agents/apm-expert.md
   deployed_file_hashes:
@@ -209,6 +212,7 @@ dependencies:
     .claude/skills/apm-usage/package-authoring.md: sha256:f9e72b4cf76483a49bad2311dfa9eff1397c9182c00aabee2524335ff2e255f6
     .claude/skills/apm-usage/troubleshooting.md: sha256:43676bd88638a042188ef5763fe4a48a245862d60797141088d67f7ce8279e2e
     .claude/skills/apm-usage/workflow.md: sha256:b38359a5bf58a9448be0b4e204a1cf6f3e73c1bd832bcffc792f9f3d245cdf39
+    .codex/agents/apm-expert.toml: sha256:0b4bec64f7c6ab70df3841237928eaccfb927789d45300870ce56163230498c4
     .github/agents/apm-expert.agent.md: sha256:f6cded3e7eef97ad8fff06208bcfd5a0beafb9cfe810f78e10294c90e16fd8ae
     .opencode/agents/apm-expert.md: sha256:f6cded3e7eef97ad8fff06208bcfd5a0beafb9cfe810f78e10294c90e16fd8ae
   content_hash: sha256:399adecef0c704d2302da8ad766ec1d9b4f822d01e2bef6ce043682f73c82e17
@@ -520,6 +524,24 @@ deployments:
   - canonical/copilot-collections/skills/secret-guard
   active_owner: canonical/copilot-collections/skills/secret-guard
   content_hash: sha256:397edfa9a6ca91add7ed8947d111705a79c15515f1b5bf62941adfa5a83781db
+- kind: project-relative
+  target: codex
+  value: .codex/agents/apm-expert.toml
+  runtime: null
+  scope: project
+  owners:
+  - microsoft/apm/packages/apm-guide
+  active_owner: microsoft/apm/packages/apm-guide
+  content_hash: sha256:0b4bec64f7c6ab70df3841237928eaccfb927789d45300870ce56163230498c4
+- kind: project-relative
+  target: codex
+  value: .codex/agents/charm-engineer.toml
+  runtime: null
+  scope: project
+  owners:
+  - canonical/copilot-collections/groups/platform-engineering/agents/charm-engineer.agent.md
+  active_owner: canonical/copilot-collections/groups/platform-engineering/agents/charm-engineer.agent.md
+  content_hash: sha256:c3da9eb7535b1e2f194b4851437ad11bc83267d162f82e5099303b6ee7859bac
 - kind: project-relative
   target: copilot
   value: .github/agents/apm-expert.agent.md
