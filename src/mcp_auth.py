@@ -67,7 +67,7 @@ def _oauth_status(
     provider = oauth.provider_info()
     if provider is None:
         return WaitingStatus("waiting for the oauth relation to be ready")
-    if not provider.client_id or not provider.client_secret:
+    if not (provider.client_id and provider.client_secret):
         return WaitingStatus("waiting for the oauth client to be registered")
     return None
 
