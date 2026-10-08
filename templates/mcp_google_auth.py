@@ -33,13 +33,19 @@ withdrawing registration has to take the proxy's own client down with
 it.
 
 The proxy keeps the clients it registers and the tokens it mints in
-whatever `client_storage` it is given, which defaults to a store local to
-the pod. A caller registered by hand with Google is unaffected, since it
-never registers with this proxy at all, but a caller that discovers and
-registers with the proxy is only recognised by the unit that handled its
-registration — so running more than one `mcp` unit behind Google serves
-those callers inconsistently unless `client_storage` is backed by
-something shared instead.
+whatever `client_storage` it is given. `build_google_mcp_auth_factory()`
+wires in `_build_client_storage()`'s `RedisStore`, built from the same
+redis relation every charm-function already requires. That makes
+registrations and tokens visible to every unit, not just the one that
+handled the original registration.
+
+A caller registered by hand with Google is unaffected either way — it
+never registers with this proxy at all.
+
+If the redis client library isn't importable, `_build_client_storage()`
+returns None instead. The proxy then falls back to its own default: an
+encrypted `FileTreeStore` local to the pod, visible only to the unit
+that wrote it.
 
 `build_google_mcp_auth_factory()` is the entry point. It reads the
 MCP_AUTH_* environment variables set by the charm's
@@ -62,6 +68,7 @@ from urllib.parse import urlparse
 import httpx
 from fastmcp.server.auth.auth import AccessToken, TokenVerifier
 from fastmcp.server.auth.providers.google import GoogleProvider
+from key_value.aio.protocols import AsyncKeyValue
 
 if TYPE_CHECKING:
     # Not imported at runtime: flask isn't a dependency of the isolated
@@ -80,6 +87,11 @@ GOOGLE_TOKENINFO_TIMEOUT = 10
 
 # Advertised to clients so they know what to ask the provider for.
 ADVERTISED_SCOPES = ["openid", "profile", "email"]
+
+# templates/superset_config.py's own caches already claim DBs 0-6 on this
+# same Redis; this keeps the OAuth proxy's state in its own namespace
+# rather than colliding with them.
+REDIS_DB = 7
 
 
 class GoogleIssuedTokenVerifier(TokenVerifier):
@@ -291,6 +303,35 @@ def _client_registration_enabled() -> bool:
     ).lower() != "false"
 
 
+def _build_client_storage() -> Optional[AsyncKeyValue]:
+    """Return a durable store for the proxy's OAuth state, or None.
+
+    Without one, the proxy defaults to an encrypted FileTreeStore under
+    FastMCP's home directory. That store is pod-local: client
+    registrations, tokens, and authorization codes vanish when the pod
+    is replaced, and aren't visible to other units.
+
+    REDIS_HOST/REDIS_PORT come from the same redis relation every
+    charm-function already requires for its own caches (see
+    templates/superset_config.py).
+
+    Returns:
+        A RedisStore when the redis relation is present and the redis
+        client library is importable, otherwise None.
+    """
+    redis_host = os.getenv("REDIS_HOST")
+    redis_port = os.getenv("REDIS_PORT")
+    if not redis_host or not redis_port:
+        return None
+
+    try:
+        from key_value.aio.stores.redis import RedisStore
+    except ImportError:
+        return None
+
+    return RedisStore(host=redis_host, port=int(redis_port), db=REDIS_DB)
+
+
 def build_google_mcp_auth_factory() -> (
     Optional[Callable[["Flask"], GoogleAuthProxy]]
 ):
@@ -332,6 +373,7 @@ def build_google_mcp_auth_factory() -> (
             registration_enabled=registration_enabled,
             required_scopes=["openid"],
             valid_scopes=ADVERTISED_SCOPES,
+            client_storage=_build_client_storage(),
             # CIMD lets an unregistered caller register anyway, by handing
             # this proxy a URL as its client_id and having the proxy fetch
             # metadata from that URL. That reopens registration when it's

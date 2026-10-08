@@ -30,7 +30,7 @@ All applications of a deployment integrate with the same PostgreSQL and Redis ap
 The charm requires:
 
 - [PostgreSQL](https://charmhub.io/postgresql-k8s), for the metadata database.
-- [Redis](https://charmhub.io/redis-k8s), for caching and the Celery broker.
+- [Redis](https://charmhub.io/redis-k8s), for caching, the Celery broker, and `mcp`'s durable OAuth client storage.
 
 It optionally integrates with an ingress provider over the `ingress` interface, an identity provider over `oauth`, [Trino](https://charmhub.io/trino-k8s) over `trino-catalog`, a certificate provider over `certificates`, and the Canonical Observability Stack.
 
