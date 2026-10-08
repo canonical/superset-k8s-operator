@@ -20,6 +20,8 @@ A deployment is made up of one or more applications of this charm, each set to a
 - `app-gunicorn` (default) or `app`: the web server and user interface.
 - `worker`: Celery workers running asynchronous queries, alerts, and reports.
 - `beat`: the Celery scheduler that triggers periodic tasks.
+- `mcp`: an MCP (Model Context Protocol) server exposing Superset's data to
+  MCP clients.
 
 All applications of a deployment integrate with the same PostgreSQL and Redis applications.
 

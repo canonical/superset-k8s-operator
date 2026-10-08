@@ -423,6 +423,11 @@ if os.getenv("CHARM_FUNCTION") == "mcp":
     # workload container. mcp_auth.py can't do it — that code runs in the
     # charm, a different process.
     #
+    # Every MCP_AUTH_* variable read below (JWKS_URL, ISSUER, CLIENT_ID,
+    # BASE_URL) comes from mcp_auth.py's get_mcp_auth_config(), merged into
+    # this workload's environment by charm.py's _create_env() — not set
+    # anywhere in this file or this process.
+    #
     # charm.py's auth_status() only lets mcp reach Active with exactly one
     # of {oauth relation, mcp-dev-username} set. Setting MCP_AUTH_JWKS_URL
     # is not enough on its own: create_default_mcp_auth_factory also needs
@@ -444,6 +449,18 @@ if os.getenv("CHARM_FUNCTION") == "mcp":
             )
             if v
         ]
+
+        # _create_auth_provider() in superset/mcp_service/server.py
+        # checks MCP_AUTH_FACTORY (a callable (flask_app) -> AuthProvider)
+        # before falling back to create_default_mcp_auth_factory above.
+        # Only set when the oauth relation is actually Google-backed
+        # (introspection host is oauth2.googleapis.com) — otherwise
+        # leave it unset so the JWKS path built above runs unchanged.
+        from mcp_google_auth import build_google_mcp_auth_factory
+
+        google_mcp_auth_factory = build_google_mcp_auth_factory()
+        if google_mcp_auth_factory is not None:
+            MCP_AUTH_FACTORY = google_mcp_auth_factory
 
         import superset.mcp_service.auth as _mcp_auth_module
 

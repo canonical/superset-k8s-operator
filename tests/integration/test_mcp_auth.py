@@ -7,7 +7,11 @@
 mcp's own oauth relation is independent of the web UI's: it carries the
 MCP_AUTH_* environment the FastMCP JWTVerifier uses to validate access
 tokens, in a namespace of its own so mcp never receives the web UI's OIDC
-credentials. This covers the plain JWKS verification path only.
+credentials. A Google-backed oauth relation (introspection host
+oauth2.googleapis.com) is detected purely at the workload level and fronted
+with mcp's own OAuth proxy instead, since Google doesn't support Dynamic
+Client Registration. This covers the plain JWKS path and the Google-proxied
+oauth path.
 """
 
 import logging
@@ -15,10 +19,48 @@ from pathlib import Path
 
 import jubilant
 import pytest
+import requests
 import steps
 from bdd import and_, given, then, when
 
 logger = logging.getLogger(__name__)
+
+MCP_PORT = 5008
+
+
+def _call_tool(url: str, token: str | None) -> requests.Response:
+    """Call the list_dashboards tool once over the streamable-HTTP transport.
+
+    Args:
+        url: The mcp endpoint URL.
+        token: Bearer token to authenticate with, or None to send none.
+
+    Returns:
+        The raw HTTP response.
+    """
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream",
+    }
+    if token is not None:
+        headers["Authorization"] = f"Bearer {token}"
+    return requests.post(
+        url,
+        json={
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "call_tool",
+                "arguments": {
+                    "name": "list_dashboards",
+                    "arguments": {"request": {}},
+                },
+            },
+        },
+        headers=headers,
+        timeout=30,
+    )
 
 
 def _deploy_mcp_behind_ingress(
@@ -198,3 +240,55 @@ def test_mcp_auth_config_populates_once_https_is_added(
         assert environment["MCP_AUTH_CLIENT_SECRET"] == (
             steps.OAUTH_STUB_CONFIG["client_secret"]
         )
+
+
+def test_mcp_fronts_a_google_provider_with_its_own_oauth_proxy(
+    mcp_with_oauth_over_https: jubilant.Juju,
+):
+    """Scenario: the related provider's introspection endpoint is Google's.
+
+    OAUTH_STUB_CONFIG's introspection_endpoint is Google's real tokeninfo
+    URL, deliberately — Google is CS387's actual target IdP. A plain
+    JWTVerifier (the default JWKS path) mounts no discovery routes of its
+    own; only an OAuthProvider-derived proxy does.
+
+    Given mcp behind an HTTPS ingress with a Google-shaped oauth relation
+    Then mcp exposes its own OAuth authorization server metadata
+    """
+    juju = mcp_with_oauth_over_https
+    url = steps.get_unit_url(juju, steps.MCP_NAME, port=MCP_PORT)
+
+    with given(
+        "mcp behind an HTTPS ingress with a Google-shaped oauth relation"
+    ):
+        steps.assert_active(juju, [steps.MCP_NAME])
+
+    with then("mcp exposes its own OAuth authorization server metadata"):
+        response = requests.get(
+            f"{url}/.well-known/oauth-authorization-server", timeout=10
+        )
+        assert response.status_code == 200, response.text
+
+
+def test_mcp_rejects_an_unverifiable_token_under_a_google_provider(
+    mcp_with_oauth_over_https: jubilant.Juju,
+):
+    """Scenario: a call carries no token the proxy or Google can vouch for.
+
+    Given mcp fronting a Google-shaped oauth relation with its own proxy
+    When a tool is called with no bearer token
+    Then the call is rejected before it reaches any tool
+    """
+    juju = mcp_with_oauth_over_https
+    url = f"{steps.get_unit_url(juju, steps.MCP_NAME, port=MCP_PORT)}/mcp"
+
+    with given(
+        "mcp fronting a Google-shaped oauth relation with its own proxy"
+    ):
+        steps.assert_active(juju, [steps.MCP_NAME])
+
+    with when("a tool is called with no bearer token"):
+        response = _call_tool(url, None)
+
+    with then("the call is rejected before it reaches any tool"):
+        assert response.status_code == 401, response.text
