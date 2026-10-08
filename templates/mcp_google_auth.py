@@ -3,9 +3,6 @@
 
 """Google-backed MCP auth provider for Superset's MCP server.
 
-Ported from `canonical/datahub-mcp-k8s-operator`'s `rock/files/serve.py`
-(`DirectGoogleTokenProxy`, `OwnClientOnlyProxy`, `GoogleIssuedTokenVerifier`,
-`_uses_google_tokeninfo`) — see that file for the full design rationale.
 This module only covers the Google branch. Superset's own
 `create_default_mcp_auth_factory` already handles the non-Google case
 (Hydra, or any other standard OIDC provider), so that branch isn't ported
@@ -27,6 +24,23 @@ fallback for a pre-shared `client_id` still expects the caller to go
 through this proxy's own authorize/consent/token flow — not what a
 caller holding an already-issued Google token needs.
 
+Client registration can be turned off entirely
+(`MCP_AUTH_CLIENT_REGISTRATION=false`, set by the charm), producing a
+restricted proxy that honours only a client registered by hand with
+Google. That closes the proxy's own client too, not just a caller's
+self-registered one — see `GoogleAuthProxy.get_client()` for why
+withdrawing registration has to take the proxy's own client down with
+it.
+
+The proxy keeps the clients it registers and the tokens it mints in
+whatever `client_storage` it is given, which defaults to a store local to
+the pod. A caller registered by hand with Google is unaffected, since it
+never registers with this proxy at all, but a caller that discovers and
+registers with the proxy is only recognised by the unit that handled its
+registration — so running more than one `mcp` unit behind Google serves
+those callers inconsistently unless `client_storage` is backed by
+something shared instead.
+
 `build_google_mcp_auth_factory()` is the entry point. It reads the
 MCP_AUTH_* environment variables set by the charm's
 `_get_mcp_auth_config()` and returns a callable `(flask_app) ->
@@ -35,6 +49,10 @@ when the deployment's introspection endpoint isn't Google's — meaning the
 oauth relation is Hydra or another standard OIDC provider — so the caller
 knows to leave MCP_AUTH_FACTORY unset and use the default JWKS-based
 factory instead.
+
+Ported from `canonical/datahub-mcp-k8s-operator`'s `rock/files/serve.py`
+(`DirectGoogleTokenProxy`, `OwnClientOnlyProxy`, `GoogleIssuedTokenVerifier`,
+`_uses_google_tokeninfo`), provenance only.
 """
 
 import os
