@@ -293,8 +293,8 @@ def test_an_unreachable_database_is_not_reported_as_an_unmigrated_one(
     )
 
 
-def test_mcp_blocks_without_oauth_or_dev_username(ctx, probe):
-    """The mcp function with neither auth source configured blocks."""
+def test_mcp_blocks_without_any_auth_source(ctx, probe):
+    """The mcp function with no auth source configured blocks."""
     state_in = build_state(config={"charm-function": "mcp"})
 
     state_out = ctx.run(ctx.on.config_changed(), state_in)
@@ -304,8 +304,8 @@ def test_mcp_blocks_without_oauth_or_dev_username(ctx, probe):
     )
 
 
-def test_mcp_blocks_with_both_oauth_and_dev_username(ctx, probe):
-    """The mcp function with both auth sources configured blocks, naming the conflict."""
+def test_mcp_blocks_with_oauth_and_dev_username(ctx, probe):
+    """The mcp function blocks, naming the conflict, when oauth is also set."""
     state_in = build_state(
         config={"charm-function": "mcp", "mcp-dev-username": "admin"},
         extra_relations=(oauth_relation(),),
@@ -314,8 +314,8 @@ def test_mcp_blocks_with_both_oauth_and_dev_username(ctx, probe):
     state_out = ctx.run(ctx.on.config_changed(), state_in)
 
     assert state_out.unit_status == BlockedStatus(
-        "conflicting mcp auth configuration: both the oauth relation "
-        "and mcp-dev-username are set — remove one"
+        "conflicting mcp auth configuration: only one of the oauth "
+        "relation and mcp-dev-username may be set"
     )
 
 
