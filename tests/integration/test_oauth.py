@@ -34,20 +34,12 @@ def _relate_idp(juju: jubilant.Juju) -> None:
 
 
 def _add_ingress_tls(juju: jubilant.Juju) -> None:
-    """Put a TLS provider behind Traefik and settle the deployment.
+    """Put TLS on the ingress and settle the identity provider with it.
 
     Args:
         juju: Jubilant object.
     """
-    steps.deploy_tls(juju)
-    juju.integrate(
-        f"{steps.TRAEFIK_NAME}:certificates", f"{steps.TLS_NAME}:certificates"
-    )
-    steps.wait_for_active(
-        juju,
-        [steps.UI_NAME, steps.TRAEFIK_NAME, steps.OAUTH_INTEGRATOR_NAME],
-        timeout=steps.SETTLE_TIMEOUT,
-    )
+    steps.add_ingress_tls(juju, steps.OAUTH_INTEGRATOR_NAME)
 
 
 @pytest.fixture(scope="module")

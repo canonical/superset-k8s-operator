@@ -503,6 +503,26 @@ def deploy_tls(juju: jubilant.Juju) -> None:
     wait_for_active(juju, [TLS_NAME], timeout=SETTLE_TIMEOUT)
 
 
+def add_ingress_tls(juju: jubilant.Juju, *also_settling: str) -> None:
+    """Put a TLS provider behind Traefik, so it publishes an HTTPS URL.
+
+    The UI then marks its session cookie Secure, while every application of
+    the deployment still reaches it over plain HTTP.
+
+    Args:
+        juju: Jubilant object.
+        also_settling: Further applications to wait for, such as one the
+            HTTPS URL unblocks.
+    """
+    deploy_tls(juju)
+    juju.integrate(f"{TRAEFIK_NAME}:certificates", f"{TLS_NAME}:certificates")
+    wait_for_active(
+        juju,
+        [UI_NAME, TRAEFIK_NAME, *also_settling],
+        timeout=SETTLE_TIMEOUT,
+    )
+
+
 def deploy_smtp_integrator(juju: jubilant.Juju) -> None:
     """Deploy the SMTP provider the `ALERT_REPORTS` feature flag requires.
 

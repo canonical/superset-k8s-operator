@@ -8,7 +8,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlsplit
 
 import jwt
 import requests
@@ -111,7 +111,7 @@ class SupersetApiClient:
         self._session = requests.Session()
         # Over HTTPS the standard jar already returns Secure cookies, and
         # clearing the flag could leak them on a redirect to plain HTTP.
-        if self.base_url.startswith("http://"):
+        if urlsplit(self.base_url).scheme == "http":
             self._session.cookies = PlainHttpCookieJar()
         self._access_token: str | None = None
         self._refresh_token: str | None = None

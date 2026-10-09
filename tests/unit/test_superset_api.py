@@ -18,7 +18,7 @@ CSRF_TOKEN = "signed-csrf-token"  # nosec B105
 
 
 class _SupersetStub(BaseHTTPRequestHandler):
-    """Answer the calls a role grant makes, enforcing CSRF like Superset.
+    """Answer the calls a database update makes, enforcing CSRF like Superset.
 
     The CSRF token is handed out with a Secure session cookie, and a write
     is refused unless that cookie comes back with the token.
@@ -52,13 +52,15 @@ class _SupersetStub(BaseHTTPRequestHandler):
         self.wfile.write(json.dumps(body).encode())
 
     def do_POST(self):  # noqa: N802
-        """Serve the login and the role permission write."""
+        """Serve the login."""
         self.rfile.read(int(self.headers.get("Content-Length", 0)))
-        if self.path == "/api/v1/security/login":
-            exp = datetime.now(timezone.utc) + timedelta(hours=1)
-            token = jwt.encode({"exp": exp}, "k" * 32, algorithm="HS256")
-            self._reply(200, {"access_token": token, "refresh_token": token})
-            return
+        exp = datetime.now(timezone.utc) + timedelta(hours=1)
+        token = jwt.encode({"exp": exp}, "k" * 32, algorithm="HS256")
+        self._reply(200, {"access_token": token, "refresh_token": token})
+
+    def do_PUT(self):  # noqa: N802
+        """Serve the database update, refused without the session cookie."""
+        self.rfile.read(int(self.headers.get("Content-Length", 0)))
         has_session = SESSION in (self.headers.get("Cookie") or "")
         has_token = self.headers.get("X-CSRF-Token") == CSRF_TOKEN
         _SupersetStub.writes.append(has_session and has_token)
@@ -68,15 +70,28 @@ class _SupersetStub(BaseHTTPRequestHandler):
         self._reply(200, {"result": "ok"})
 
     def do_GET(self):  # noqa: N802
-        """Serve the CSRF token and the role's current permissions."""
-        if self.path == "/api/v1/security/csrf_token/":
-            self._reply(
-                200,
-                {"result": CSRF_TOKEN},
-                cookie=f"{SESSION}; Secure; HttpOnly; Path=/; SameSite=Lax",
-            )
-            return
-        self._reply(200, {"result": []})
+        """Serve the CSRF token with a Secure session cookie."""
+        self._reply(
+            200,
+            {"result": CSRF_TOKEN},
+            cookie=f"{SESSION}; Secure; HttpOnly; Path=/; SameSite=Lax",
+        )
+
+
+def update_a_database(api):
+    """Make the CSRF-protected write the trino-catalog reconciler makes.
+
+    Args:
+        api: The client under test.
+    """
+    api.update_trino_database(
+        database_id=1,
+        host_port="trino:8080",
+        trino_catalog="catalog",
+        username="user",
+        password="password",  # nosec B106
+        use_ssl=False,
+    )
 
 
 @pytest.fixture(name="superset_url")
@@ -98,7 +113,7 @@ def test_writes_carry_the_secure_session_cookie_over_http(superset_url):
     """A CSRF-protected write sends back the Secure session cookie over HTTP."""
     api = SupersetApiClient("admin", "password", base_url=superset_url)
 
-    api.update_role_permissions(role_id=1, permission_view_menu_id=7)
+    update_a_database(api)
 
     assert _SupersetStub.writes == [True]
 
@@ -106,11 +121,11 @@ def test_writes_carry_the_secure_session_cookie_over_http(superset_url):
 def test_a_write_without_the_session_cookie_is_refused(superset_url):
     """The stub refuses a write that lacks the session cookie, as Superset does."""
     api = SupersetApiClient("admin", "password", base_url=superset_url)
-    api.update_role_permissions(role_id=1, permission_view_menu_id=7)
+    update_a_database(api)
     api._session.cookies.clear()  # pylint: disable=protected-access
 
     with pytest.raises(SupersetApiError):
-        api.update_role_permissions(role_id=1, permission_view_menu_id=7)
+        update_a_database(api)
 
 
 def test_an_https_client_keeps_its_cookies_secure():

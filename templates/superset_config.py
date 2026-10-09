@@ -5,7 +5,7 @@ from cachelib.redis import RedisCache
 from celery.schedules import crontab
 from celery.signals import import_modules
 from flask_appbuilder.security.manager import AUTH_OAUTH
-from flask import session
+from flask import current_app, session
 from flask_login import user_logged_in
 from sqlalchemy.dialects import registry
 from custom_security_manager import CustomSecurityManager
@@ -139,9 +139,11 @@ class CsrfSeededMachineAuthProvider(MachineAuthProvider):
 
     @staticmethod
     def get_auth_cookies(user):
-        # Flask-WTF validates against the raw token in session["csrf_token"].
+        # Flask-WTF validates against the raw token it keeps in the session
+        # under WTF_CSRF_FIELD_NAME.
         def seed_csrf_token(*_, **__):
-            session.setdefault("csrf_token", secrets.token_hex(20))
+            field = current_app.config.get("WTF_CSRF_FIELD_NAME", "csrf_token")
+            session.setdefault(field, secrets.token_hex(20))
 
         with user_logged_in.connected_to(seed_csrf_token):
             return MachineAuthProvider.get_auth_cookies(user)
