@@ -1183,6 +1183,34 @@ def wait_for_celery_workers(
     return workers
 
 
+def session_cookies(response: requests.Response) -> list[str]:
+    """Return the Set-Cookie headers a response carries for the session.
+
+    Args:
+        response: A response fetched without following redirects.
+
+    Returns:
+        Each `session` Set-Cookie header, attributes included.
+    """
+    return [
+        header
+        for header in response.raw.headers.getlist("Set-Cookie")
+        if header.startswith("session=")
+    ]
+
+
+def cookie_attributes(header: str) -> set[str]:
+    """Return the attributes of a Set-Cookie header, lowercased.
+
+    Args:
+        header: A Set-Cookie header value.
+
+    Returns:
+        Each attribute after the name and value, such as `secure`.
+    """
+    return {part.strip().lower() for part in header.split(";")[1:]}
+
+
 def request_until(
     session: Optional[requests.Session],
     method: str,

@@ -67,6 +67,7 @@ WANT_ENVIRONMENT = {
     "SENTRY_REDACT_PARAMS": False,
     "SENTRY_SAMPLE_RATE": 1.0,
     "SERVER_ALIAS": "superset-k8s",
+    "SESSION_COOKIE_SECURE": False,
     "SMTP_SUPERSET_EXTERNAL_URL": None,
     "SMTP_EMAIL_SUBJECT_PREFIX": "[Superset] ",
     "APPLICATION_PORT": 8088,
@@ -213,6 +214,28 @@ def test_ingress_url_without_tls_is_not_used(ctx):
     with ctx(ctx.on.config_changed(), state_in) as manager:
         manager.run()
         assert manager.charm.https_ingress_url is None
+
+
+def test_https_ingress_makes_the_session_cookie_secure(ctx):
+    """An HTTPS ingress URL marks the session cookie Secure."""
+    state_in = build_state(
+        extra_relations=(ingress_relation("https://superset.example"),)
+    )
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    assert superset_environment(state_out)["SESSION_COOKIE_SECURE"] is True
+
+
+def test_plain_http_ingress_keeps_the_session_cookie_usable(ctx):
+    """A plain HTTP ingress URL leaves the session cookie without Secure."""
+    state_in = build_state(
+        extra_relations=(ingress_relation("http://superset.example"),)
+    )
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    assert superset_environment(state_out)["SESSION_COOKIE_SECURE"] is False
 
 
 def test_ingress_ready_republishes_oauth_client_config(ctx):

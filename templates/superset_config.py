@@ -97,6 +97,11 @@ RESULTS_BACKEND = RedisCache(
 
 TALISMAN_ENABLED = True
 
+# Set by the charm when an HTTPS ingress serves the UI. Flask's own setting is
+# needed as well, because Talisman applies session_cookie_secure only from a
+# before_request hook.
+SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "").lower() == "true"
+
 image_allow_list = ["'self'", "data:"]
 image_domains = os.getenv("ALLOW_IMAGE_DOMAINS")
 
@@ -112,20 +117,17 @@ TALISMAN_CONFIG = {
         "connect-src": ["'self'", "https://api.mapbox.com", "https://events.mapbox.com"],
         "object-src": "'none'",
      },
-     "session_cookie_secure": True,
+     "session_cookie_secure": SESSION_COOKIE_SECURE,
 }
-# Talisman applies session_cookie_secure only from a before_request hook, so a
-# cookie written before that hook runs would still go out without Secure.
-SESSION_COOKIE_SECURE = True
 
 
 class CsrfSeededMachineAuthProvider(MachineAuthProvider):
     """Log headless browsers in with a CSRF token already in the session.
 
     Report screenshots load the UI over plain HTTP, where a browser refuses the
-    Secure session cookie the UI sends once a page generates a CSRF token. The
-    cookie injected here is then the only one the browser ever holds, so the
-    page's CSRF-protected requests need the token to be in it.
+    Secure session cookie an HTTPS-ingress deployment sends once a page
+    generates a CSRF token. The cookie injected here is then the only one the
+    browser ever holds, so the page's CSRF-protected requests need the token.
     """
 
     @staticmethod

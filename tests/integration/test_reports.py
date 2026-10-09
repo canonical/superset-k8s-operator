@@ -211,17 +211,21 @@ def worker_log(juju: jubilant.Juju, lines: int = 200) -> str:
     return worker_ssh(juju, f"tail -n {lines} {LOG_FILE}")
 
 
-def report_browser_requests(juju: jubilant.Juju) -> list[tuple[str, int]]:
-    """Return what the headless report browser requested from the UI.
+LOG_TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\S+")
+BROWSER_REQUEST = re.compile(
+    r'"([A-Z]+ \S+) HTTP/[\d.]+" (\d{3}) .*HeadlessChrome'
+)
 
-    Gunicorn logs every request to the UI service's pebble log, and only a
-    report or thumbnail render identifies itself as `HeadlessChrome`.
+
+def ui_log(juju: jubilant.Juju) -> list[tuple[str, str]]:
+    """Return the timestamped lines of the UI service's pebble log.
 
     Args:
         juju: Jubilant object.
 
     Returns:
-        The request line and status code of each of the browser's requests.
+        Each line's ISO timestamp and the line itself, oldest first. Lines
+        without a timestamp, such as traceback continuations, are dropped.
     """
     task = juju.exec(
         "PEBBLE_SOCKET=/charm/containers/superset/pebble.socket "
@@ -230,11 +234,46 @@ def report_browser_requests(juju: jubilant.Juju) -> list[tuple[str, int]]:
         wait=5 * 60,
     )
     return [
+        (match.group(0), line)
+        for line in task.stdout.splitlines()
+        if (match := LOG_TIMESTAMP.match(line))
+    ]
+
+
+def ui_log_cursor(juju: jubilant.Juju) -> str:
+    """Return the timestamp of the UI's latest log line.
+
+    It is taken from the log itself, so no clock is compared across machines.
+
+    Args:
+        juju: Jubilant object.
+
+    Returns:
+        The latest timestamp, or an empty string for an empty log.
+    """
+    lines = ui_log(juju)
+    return lines[-1][0] if lines else ""
+
+
+def report_browser_requests(
+    juju: jubilant.Juju, since: str
+) -> list[tuple[str, int]]:
+    """Return what the headless report browser requested from the UI.
+
+    Gunicorn logs every request to the UI service's pebble log, and only a
+    report or thumbnail render identifies itself as `HeadlessChrome`.
+
+    Args:
+        juju: Jubilant object.
+        since: A cursor from `ui_log_cursor`; only later requests count.
+
+    Returns:
+        The request line and status code of each of the browser's requests.
+    """
+    return [
         (match.group(1), int(match.group(2)))
-        for match in re.finditer(
-            r'"([A-Z]+ \S+) HTTP/[\d.]+" (\d{3}) .*HeadlessChrome',
-            task.stdout,
-        )
+        for timestamp, line in ui_log(juju)
+        if timestamp > since and (match := BROWSER_REQUEST.search(line))
     ]
 
 
@@ -344,6 +383,7 @@ def test_a_dry_run_report_renders_and_delivers_nothing(
     )
     try:
         with when("a report on a chart is executed"):
+            cursor = ui_log_cursor(juju)
             output = execute_report(juju, report_id)
 
         with then("the report succeeds"):
@@ -359,7 +399,7 @@ def test_a_dry_run_report_renders_and_delivers_nothing(
         with and_(
             "every request the report's browser made to the UI succeeded"
         ):
-            browser_requests = report_browser_requests(juju)
+            browser_requests = report_browser_requests(juju, cursor)
             # Explore saves its state with a CSRF-protected POST, so this one
             # succeeding shows the browser's session carries a CSRF token.
             assert any(

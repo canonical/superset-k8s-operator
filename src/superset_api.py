@@ -60,10 +60,11 @@ class SupersetApiError(Exception):
 class PlainHttpCookieJar(RequestsCookieJar):
     """Cookie jar that sends Secure cookies back over plain HTTP.
 
-    Superset keeps the CSRF token in its session cookie and marks that cookie
-    Secure, while the charm reaches Superset at http://localhost. A standard
-    jar never returns a Secure cookie over http, so every CSRF-protected
-    write would fail with "The CSRF session token is missing".
+    Superset keeps the CSRF token in its session cookie, which is Secure
+    behind an HTTPS ingress, while the charm reaches Superset at
+    http://localhost. A standard jar never returns a Secure cookie over http,
+    so every CSRF-protected write would fail with "The CSRF session token is
+    missing".
     """
 
     def set_cookie(self, cookie, *args, **kwargs):

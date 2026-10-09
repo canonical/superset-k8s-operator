@@ -756,6 +756,9 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "SENTRY_REDACT_PARAMS": self.config["sentry-redact-params"],
             "SENTRY_SAMPLE_RATE": self.config["sentry-sample-rate"],
             "SERVER_ALIAS": self.config["server-alias"],
+            # A browser sends a Secure cookie back over HTTPS only, so the
+            # session cookie is Secure only when an HTTPS ingress serves the UI.
+            "SESSION_COOKIE_SECURE": self.https_ingress_url is not None,
             "SMTP_SUPERSET_EXTERNAL_URL": self.config["external-url"],
             "SMTP_EMAIL_SUBJECT_PREFIX": self.config["email-subject-prefix"],
             "APPLICATION_PORT": APPLICATION_PORT,
