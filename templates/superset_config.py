@@ -7,6 +7,7 @@ from celery.signals import import_modules
 from flask_appbuilder.security.manager import AUTH_OAUTH
 from flask import session
 from flask_login import user_logged_in
+from sqlalchemy.dialects import registry
 from custom_security_manager import CustomSecurityManager
 from mcp_jwt_identity import get_user_from_request_with_jwt
 from permission_error_messages import attach_error_rewriter
@@ -55,6 +56,12 @@ PREFERRED_DATABASE = [
     "Trino",
     "MySQL",
 ]
+
+# PyHive ships no dialect for a Thrift *binary* endpoint with TLS, which is
+# what Charmed Kyuubi exposes once it is related to a certificates provider.
+# Registration is lazy: templates/hive_tls.py is only imported when a
+# `hive+tls://` connection is created.
+registry.register("hive.tls", "hive_tls", "HiveTLSDialect")
 
 # Redis caching
 CACHE_CONFIG = {
