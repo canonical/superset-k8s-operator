@@ -111,3 +111,19 @@ def test_a_write_without_the_session_cookie_is_refused(superset_url):
 
     with pytest.raises(SupersetApiError):
         api.update_role_permissions(role_id=1, permission_view_menu_id=7)
+
+
+def test_an_https_client_keeps_its_cookies_secure():
+    """A client on HTTPS stores Secure cookies with the flag intact."""
+    api = SupersetApiClient(
+        "admin", "password", base_url="https://superset.example"
+    )
+
+    api._session.cookies.set(  # pylint: disable=protected-access
+        "session", "value", secure=True
+    )
+
+    assert all(
+        cookie.secure
+        for cookie in api._session.cookies  # pylint: disable=protected-access
+    )

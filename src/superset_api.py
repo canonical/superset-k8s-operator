@@ -109,7 +109,10 @@ class SupersetApiClient:
         self._admin_password = admin_password
         self._timeout = timeout
         self._session = requests.Session()
-        self._session.cookies = PlainHttpCookieJar()
+        # Over HTTPS the standard jar already returns Secure cookies, and
+        # clearing the flag could leak them on a redirect to plain HTTP.
+        if self.base_url.startswith("http://"):
+            self._session.cookies = PlainHttpCookieJar()
         self._access_token: str | None = None
         self._refresh_token: str | None = None
         self._csrf_token: str | None = None
