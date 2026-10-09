@@ -260,6 +260,14 @@ def superset_deployment_with_ingress(
             f"{steps.UI_NAME}:certificates", f"{steps.TLS_NAME}:certificates"
         )
         steps.wait_for_active(juju, [steps.UI_NAME, steps.TLS_NAME])
+    steps.poll_until(
+        juju,
+        lambda: "BEGIN CERTIFICATE"
+        in steps.read_workload_file(
+            juju, f"{steps.UI_NAME}/0", steps.CA_CERT_PATH
+        )[1],
+        "The UI has not installed the ingress CA",
+    )
     return juju
 
 
