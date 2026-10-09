@@ -44,6 +44,7 @@ CONFIG_FILES = [
     "custom_security_manager.py",
     "sentry_interceptor.py",
     "permission_error_messages.py",
+    "hive_tls.py",
     "mcp_jwt_identity.py",
     "mcp_google_auth.py",
 ]
