@@ -125,6 +125,7 @@ def build_state(
     secrets=(),
     with_database=True,
     with_redis=True,
+    with_ingress=True,
     signing_keys=None,
 ):
     """Build the input `State` for a healthy Superset UI application.
@@ -137,6 +138,8 @@ def build_state(
         secrets: secrets to include in the state.
         with_database: whether to include the PostgreSQL relation.
         with_redis: whether to include the Redis relation.
+        with_ingress: whether to include HTTPS ingress for the UI, unless
+            an explicit ingress relation is supplied.
         signing_keys: the signing keys secret to use, or None for a valid
             one built by `signing_keys_secret`.
 
@@ -161,6 +164,13 @@ def build_state(
             )
         )
     relations.update(extra_relations)
+    if (
+        with_ingress
+        and (config or {}).get("charm-function", "app-gunicorn")
+        == "app-gunicorn"
+        and not any(r.endpoint == "ingress" for r in relations)
+    ):
+        relations.add(ingress_relation())
 
     keys_secret = (
         signing_keys_secret() if signing_keys is None else signing_keys

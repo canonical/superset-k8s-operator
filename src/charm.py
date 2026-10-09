@@ -627,6 +627,14 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         if self.oauth.is_related() and self.https_ingress_url is None:
             return BlockedStatus("OAuth requires an HTTPS ingress URL")
 
+        if (
+            self.config["charm-function"] == UI_FUNCTION
+            and self.https_ingress_url is None
+        ):
+            return BlockedStatus(
+                "The UI requires an HTTPS ingress (for Secure session cookies)"
+            )
+
         return None
 
     def report_failure(self, status):

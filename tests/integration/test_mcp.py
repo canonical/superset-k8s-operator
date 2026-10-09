@@ -53,6 +53,7 @@ def _deploy_mcp(juju: jubilant.Juju, charm: Path, charm_image: str) -> None:
         juju, charm, charm_image, "app-gunicorn"
     )
     steps.integrate_dependencies(juju, ui_name)
+    steps.deploy_traefik(juju, ui_name)
     steps.wait_for_active(juju, [ui_name], timeout=steps.DEPLOY_TIMEOUT)
 
     name = steps.deploy_superset_application(juju, charm, charm_image, "mcp")

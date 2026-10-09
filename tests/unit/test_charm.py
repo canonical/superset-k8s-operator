@@ -13,6 +13,7 @@ import json
 import logging
 from unittest import mock
 
+import pytest
 from ops import ActiveStatus, BlockedStatus, MaintenanceStatus, WaitingStatus
 from ops.pebble import ChangeError
 from ops.pebble import ConnectionError as PebbleConnectionError
@@ -262,7 +263,7 @@ def test_oauth_redirect_uri_strips_trailing_slash(ctx):
 def test_oauth_without_ingress_does_not_publish_client_config(ctx):
     """Registration waits for the provider to publish an external URL."""
     oauth = oauth_relation()
-    state_in = build_state(extra_relations=(oauth,))
+    state_in = build_state(extra_relations=(oauth,), with_ingress=False)
 
     state_out = ctx.run(ctx.on.relation_created(oauth), state_in)
 
@@ -271,9 +272,13 @@ def test_oauth_without_ingress_does_not_publish_client_config(ctx):
     )
 
 
-def test_oauth_without_ingress_blocks_the_unit(ctx):
+@pytest.mark.parametrize("url", [None, "", "http://superset.example"])
+def test_oauth_without_ingress_blocks_the_unit(ctx, url):
     """An OAuth relation without an HTTPS ingress URL blocks the unit."""
-    state_in = build_state(extra_relations=(oauth_relation(),))
+    relations = () if url is None else (ingress_relation(url or None),)
+    state_in = build_state(
+        extra_relations=(oauth_relation(), *relations), with_ingress=False
+    )
 
     state_out = ctx.run(ctx.on.config_changed(), state_in)
 
@@ -845,6 +850,9 @@ def test_ingress_relation_broken_does_not_defer(ctx):
         ctx.on.relation_broken(state_mid.get_relation(ingress.id)), state_mid
     )
 
+    assert state_out.unit_status == BlockedStatus(
+        "The UI requires an HTTPS ingress (for Secure session cookies)"
+    )
     assert state_out.deferred == []
 
 

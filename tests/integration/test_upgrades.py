@@ -68,6 +68,7 @@ def deploy_baseline(juju: jubilant.Juju, channel: str) -> None:
     if not legacy:
         configure_signing_keys(juju, steps.CHARM_NAME)
 
+    steps.deploy_traefik(juju, steps.CHARM_NAME)
     steps.wait_for_active(
         juju, [steps.CHARM_NAME], timeout=steps.DEPLOY_TIMEOUT
     )
