@@ -1,14 +1,18 @@
 import json
 import os
+import secrets
 from cachelib.redis import RedisCache
 from celery.schedules import crontab
 from celery.signals import import_modules
 from flask_appbuilder.security.manager import AUTH_OAUTH
+from flask import session
+from flask_login import user_logged_in
 from custom_security_manager import CustomSecurityManager
 from mcp_jwt_identity import get_user_from_request_with_jwt
 from permission_error_messages import attach_error_rewriter
 from sentry_interceptor import redact_params
 from superset.stats_logger import StatsdStatsLogger
+from superset.utils.machine_auth import MachineAuthProvider
 import sentry_sdk
 import yaml
 
@@ -108,8 +112,33 @@ TALISMAN_CONFIG = {
         "connect-src": ["'self'", "https://api.mapbox.com", "https://events.mapbox.com"],
         "object-src": "'none'",
      },
-     "session_cookie_secure": False,
+     "session_cookie_secure": True,
 }
+# Talisman applies session_cookie_secure only from a before_request hook, so a
+# cookie written before that hook runs would still go out without Secure.
+SESSION_COOKIE_SECURE = True
+
+
+class CsrfSeededMachineAuthProvider(MachineAuthProvider):
+    """Log headless browsers in with a CSRF token already in the session.
+
+    Report screenshots load the UI over plain HTTP, where a browser refuses the
+    Secure session cookie the UI sends once a page generates a CSRF token. The
+    cookie injected here is then the only one the browser ever holds, so the
+    page's CSRF-protected requests need the token to be in it.
+    """
+
+    @staticmethod
+    def get_auth_cookies(user):
+        # Flask-WTF validates against the raw token in session["csrf_token"].
+        def seed_csrf_token(*_, **__):
+            session.setdefault("csrf_token", secrets.token_hex(20))
+
+        with user_logged_in.connected_to(seed_csrf_token):
+            return MachineAuthProvider.get_auth_cookies(user)
+
+
+MACHINE_AUTH_PROVIDER_CLASS = "superset_config.CsrfSeededMachineAuthProvider"
 
 SQLALCHEMY_POOL_SIZE = int(os.getenv("SQLALCHEMY_POOL_SIZE"))
 SQLALCHEMY_POOL_TIMEOUT = int(os.getenv("SQLALCHEMY_POOL_TIMEOUT"))

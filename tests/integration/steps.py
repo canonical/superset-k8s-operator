@@ -25,6 +25,8 @@ import requests
 import yaml
 from celery import Celery
 
+from superset_api import PlainHttpCookieJar
+
 logger = logging.getLogger(__name__)
 
 METADATA = yaml.safe_load(Path("./charmcraft.yaml").read_text())
@@ -954,6 +956,9 @@ def api_session(
     """
     base_url = get_unit_url(juju, app, unit)
     session = requests.Session()
+    # The unit is reached over plain HTTP, and writes need the CSRF token held
+    # in Superset's Secure session cookie.
+    session.cookies = PlainHttpCookieJar()
     auth_payload = {
         "username": "admin",
         "password": get_admin_password(juju, app),

@@ -11,6 +11,7 @@ timeout it is bounded by, and the beat scheduler that dispatches it.
 """
 
 import logging
+import re
 import shlex
 import time
 import uuid
@@ -210,6 +211,33 @@ def worker_log(juju: jubilant.Juju, lines: int = 200) -> str:
     return worker_ssh(juju, f"tail -n {lines} {LOG_FILE}")
 
 
+def report_browser_requests(juju: jubilant.Juju) -> list[tuple[str, int]]:
+    """Return what the headless report browser requested from the UI.
+
+    Gunicorn logs every request to the UI service's pebble log, and only a
+    report or thumbnail render identifies itself as `HeadlessChrome`.
+
+    Args:
+        juju: Jubilant object.
+
+    Returns:
+        The request line and status code of each of the browser's requests.
+    """
+    task = juju.exec(
+        "PEBBLE_SOCKET=/charm/containers/superset/pebble.socket "
+        f"/charm/bin/pebble logs {steps.WORKLOAD_SERVICE} -n all",
+        unit=f"{steps.UI_NAME}/0",
+        wait=5 * 60,
+    )
+    return [
+        (match.group(1), int(match.group(2)))
+        for match in re.finditer(
+            r'"([A-Z]+ \S+) HTTP/[\d.]+" (\d{3}) .*HeadlessChrome',
+            task.stdout,
+        )
+    ]
+
+
 def wait_for_report(
     session: requests.Session,
     url: str,
@@ -327,6 +355,20 @@ def test_a_dry_run_report_renders_and_delivers_nothing(
             assert (
                 "ALERT_REPORTS_NOTIFICATION_DRY_RUN is enabled" in log
             ), f"dry-run notice absent from {LOG_FILE}; exec output was {output!r}"
+
+        with and_(
+            "every request the report's browser made to the UI succeeded"
+        ):
+            browser_requests = report_browser_requests(juju)
+            # Explore saves its state with a CSRF-protected POST, so this one
+            # succeeding shows the browser's session carries a CSRF token.
+            assert any(
+                line.startswith("POST /api/v1/explore/form_data")
+                and status == 201
+                for line, status in browser_requests
+            ), browser_requests
+            failed = [entry for entry in browser_requests if entry[1] >= 400]
+            assert not failed, failed
     finally:
         steps.api_delete(session, url, "/api/v1/report", report_id)
 
