@@ -157,14 +157,39 @@ def test_the_health_check_trips_on_a_single_failure(ctx, probe):
     assert plan["services"]["superset"]["on-check-failure"] == {"up": "ignore"}
 
 
-def test_a_worker_is_active_without_being_asked(ctx, probe):
-    """A worker serves no HTTP, so it is never probed."""
-    state_in = build_state(config={"charm-function": "worker"})
+@pytest.mark.parametrize("function", ["worker", "beat"])
+def test_a_worker_is_active_without_being_asked(ctx, probe, function):
+    """Celery functions need no ingress and are never probed over HTTP."""
+    state_in = build_state(
+        config={"charm-function": function}, with_ingress=False
+    )
 
     state_out = ctx.run(ctx.on.config_changed(), state_in)
 
     probe.assert_not_called()
     assert state_out.unit_status == ActiveStatus("Status check: UP")
+
+
+@pytest.mark.parametrize(
+    "url", [None, "", "http://superset.example", "https://superset.example"]
+)
+def test_ui_requires_https_ingress(ctx, probe, url):
+    """Only a published HTTPS ingress makes the UI ready for browser login."""
+    relations = () if url is None else (ingress_relation(url or None),)
+    state_in = build_state(extra_relations=relations, with_ingress=False)
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    if url and url.startswith("https://"):
+        assert state_out.unit_status == ActiveStatus("Status check: UP")
+        assert "superset" in state_out.get_container("superset").plan.services
+    else:
+        assert state_out.unit_status == BlockedStatus(
+            "The UI requires an HTTPS ingress (for Secure session cookies)"
+        )
+        assert state_out.get_container("superset").plan.to_dict() == {}
+        probe.assert_not_called()
+    assert state_out.deferred == []
 
 
 def test_an_unreachable_container_waits(ctx, probe):

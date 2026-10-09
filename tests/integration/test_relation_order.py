@@ -109,6 +109,7 @@ def test_a_worker_waits_for_the_ui_to_migrate_the_database(
             juju, charm, charm_image, "app-gunicorn"
         )
         steps.integrate_dependencies(juju, steps.UI_NAME)
+        steps.deploy_traefik(juju)
 
     with then("the UI migrates the database and becomes active"):
         steps.wait_for_active(

@@ -274,6 +274,7 @@ def test_the_deployment_survives_losing_its_application(
             juju, charm, charm_image, "app-gunicorn"
         )
         steps.integrate_dependencies(juju, steps.UI_NAME)
+        steps.deploy_traefik(juju)
         steps.wait_for_active(
             juju, [steps.UI_NAME], timeout=steps.DEPLOY_TIMEOUT
         )

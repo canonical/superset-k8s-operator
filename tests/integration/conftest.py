@@ -245,19 +245,30 @@ def superset_deployment(
 def superset_deployment_with_ingress(
     request: FixtureRequest, superset_deployment: jubilant.Juju
 ) -> jubilant.Juju:
-    """A Superset deployment whose UI is served through Traefik.
+    """A Superset deployment whose UI trusts Traefik's certificate authority.
 
     Args:
         request: Pytest request object.
         superset_deployment: The active deployment.
 
     Returns:
-        The model, with the UI behind an ingress.
+        The model, with the ingress CA installed in the UI workload.
     """
-    logger.info("Putting the UI behind Traefik")
-    return steps.adopt_or_build(
-        request, superset_deployment, steps.deploy_traefik
+    juju = superset_deployment
+    if not request.config.getoption("--no-deploy"):
+        juju.integrate(
+            f"{steps.UI_NAME}:certificates", f"{steps.TLS_NAME}:certificates"
+        )
+        steps.wait_for_active(juju, [steps.UI_NAME, steps.TLS_NAME])
+    steps.poll_until(
+        juju,
+        lambda: "BEGIN CERTIFICATE"
+        in steps.read_workload_file(
+            juju, f"{steps.UI_NAME}/0", steps.CA_CERT_PATH
+        )[1],
+        "The UI has not installed the ingress CA",
     )
+    return juju
 
 
 @pytest.fixture(autouse=True)

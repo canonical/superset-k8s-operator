@@ -83,6 +83,7 @@ def _deploy_mcp_behind_ingress(
         juju, charm, charm_image, "app-gunicorn"
     )
     steps.integrate_dependencies(juju, ui_name)
+    steps.deploy_traefik(juju, ui_name)
     steps.wait_for_active(juju, [ui_name], timeout=steps.DEPLOY_TIMEOUT)
 
     mcp_name = steps.deploy_superset_application(
@@ -90,11 +91,12 @@ def _deploy_mcp_behind_ingress(
     )
     steps.integrate_dependencies(juju, mcp_name)
 
-    juju.deploy(
+    steps.remove_relation(
+        juju,
         steps.TRAEFIK_NAME,
-        channel=steps.TRAEFIK_CHANNEL,
-        config=steps.TRAEFIK_CONFIG,
-        trust=True,
+        "certificates",
+        steps.TLS_NAME,
+        "certificates",
     )
     juju.integrate(f"{mcp_name}:ingress", f"{steps.TRAEFIK_NAME}:ingress")
     steps.wait_for_active(

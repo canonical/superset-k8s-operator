@@ -32,7 +32,11 @@ The charm requires:
 - [PostgreSQL](https://charmhub.io/postgresql-k8s), for the metadata database.
 - [Redis](https://charmhub.io/redis-k8s), for caching and the Celery broker.
 
-It optionally integrates with an ingress provider over the `ingress` interface, an identity provider over `oauth`, [Trino](https://charmhub.io/trino-k8s) over `trino-catalog`, a certificate provider over `certificates`, and the Canonical Observability Stack.
+The UI (`app-gunicorn`) also requires an ingress provider over the `ingress` interface that publishes an HTTPS URL. TLS terminates at the ingress; its connection to Superset can remain HTTP. Worker and beat applications do not require ingress.
+
+**Upgrade notice:** Existing UI deployments without HTTPS ingress will become blocked. Configure HTTPS ingress before upgrading: direct plain-HTTP browser login is unsupported because session cookies are Secure. This readiness check does not restrict network access to the pod's HTTP port.
+
+It optionally integrates with an identity provider over `oauth`, [Trino](https://charmhub.io/trino-k8s) over `trino-catalog`, a certificate provider over `certificates`, and the Canonical Observability Stack.
 
 ```bash
 juju add-secret superset-signing-keys \

@@ -464,6 +464,7 @@ def deploy_superset(
     ui = f"{CHARM_NAME}-{CHARM_FUNCTIONS['app-gunicorn']}"
     if ui in names:
         integrate_dependencies(juju, ui)
+        deploy_traefik(juju, ui)
         wait_for_active(juju, [ui], timeout=DEPLOY_TIMEOUT)
 
     for name in names:
@@ -475,18 +476,23 @@ def deploy_superset(
 
 
 def deploy_traefik(juju: jubilant.Juju, app: str = UI_NAME) -> None:
-    """Deploy Traefik and put the UI behind it.
+    """Deploy TLS-enabled Traefik and put the UI behind it.
 
     Args:
         juju: Jubilant object.
         app: The Superset application to expose.
     """
-    juju.deploy(
-        TRAEFIK_NAME,
-        channel=TRAEFIK_CHANNEL,
-        config=TRAEFIK_CONFIG,
-        trust=True,
-    )
+    deploy_tls(juju)
+    if TRAEFIK_NAME not in juju.status().apps:
+        juju.deploy(
+            TRAEFIK_NAME,
+            channel=TRAEFIK_CHANNEL,
+            config=TRAEFIK_CONFIG,
+            trust=True,
+        )
+        juju.integrate(
+            f"{TRAEFIK_NAME}:certificates", f"{TLS_NAME}:certificates"
+        )
     juju.integrate(f"{app}:ingress", f"{TRAEFIK_NAME}:ingress")
     wait_for_active(juju, [TRAEFIK_NAME, app], timeout=SETTLE_TIMEOUT)
 
@@ -497,7 +503,8 @@ def deploy_tls(juju: jubilant.Juju) -> None:
     Args:
         juju: Jubilant object.
     """
-    juju.deploy(TLS_NAME, channel=TLS_CHANNEL)
+    if TLS_NAME not in juju.status().apps:
+        juju.deploy(TLS_NAME, channel=TLS_CHANNEL)
     wait_for_active(juju, [TLS_NAME], timeout=SETTLE_TIMEOUT)
 
 

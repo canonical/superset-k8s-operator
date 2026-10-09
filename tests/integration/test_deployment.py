@@ -9,10 +9,15 @@ that must be satisfied before it can serve requests.
 """
 
 import logging
+import re
+import socket
+from html import unescape
 from pathlib import Path
+from urllib.parse import urlparse
 
 import jubilant
 import pytest
+import requests
 import steps
 from bdd import and_, given, then, when
 
@@ -186,6 +191,105 @@ def test_the_generated_admin_password_logs_in(
         session, url = steps.api_session(juju)
         response = session.get(f"{url}/api/v1/chart/", timeout=30)
         assert response.status_code == 200, response.text[:200]
+
+
+def test_a_browser_login_gets_a_secure_session_cookie(
+    superset_deployment_with_ingress: jubilant.Juju,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Scenario: a browser authenticates through the HTTPS ingress.
+
+    Given a Superset deployment behind a trusted HTTPS ingress
+    When the admin logs in using the login form and normal cookie handling
+    Then the session cookie is Secure, HttpOnly and SameSite=Lax
+    And the session alone authenticates a subsequent request
+    """
+    juju = superset_deployment_with_ingress
+
+    with given("a Superset deployment behind a trusted HTTPS ingress"):
+        url = steps.proxied_url(juju).rstrip("/")
+        assert urlparse(url).scheme == "https"
+        return_code, ca = steps.read_workload_file(
+            juju, f"{steps.UI_NAME}/0", steps.CA_CERT_PATH
+        )
+        assert return_code == 0, "the ingress CA is not installed"
+        ca_bundle = tmp_path / "ingress-ca.pem"
+        ca_bundle.write_text(ca)
+
+        hostname = urlparse(url).hostname
+        address = urlparse(
+            steps.get_unit_url(juju, steps.TRAEFIK_NAME)
+        ).hostname
+        getaddrinfo = socket.getaddrinfo
+
+        def resolve_ingress(host, *args, **kwargs):
+            """Resolve the test-only hostname without changing TLS identity.
+
+            Args:
+                host: Hostname to resolve.
+                args: Positional arguments forwarded to getaddrinfo.
+                kwargs: Keyword arguments forwarded to getaddrinfo.
+
+            Returns:
+                Socket addresses for the requested host.
+            """
+            return getaddrinfo(
+                address if host == hostname else host, *args, **kwargs
+            )
+
+        # The .test ingress domain has no public DNS record. Keep the URL
+        # hostname for SNI, certificate validation and cookie scoping.
+        monkeypatch.setattr(socket, "getaddrinfo", resolve_ingress)
+
+    with requests.Session() as session:
+        session.trust_env = False
+        session.verify = str(ca_bundle)
+        login_url = f"{url}/login/"
+        me_url = f"{url}/api/v1/me/"
+
+        with when(
+            "the admin logs in using the login form and normal cookie handling"
+        ):
+            login_page = steps.request_until(session, "GET", login_url)
+            assert login_page.status_code == 200
+            csrf = re.search(
+                r'name="csrf_token"[^>]*value="([^"]+)"', login_page.text
+            )
+            assert csrf is not None, "the login form has no CSRF token"
+            anonymous = session.get(me_url, timeout=30, allow_redirects=False)
+            assert anonymous.status_code == 401
+
+            login = session.post(
+                login_url,
+                data={
+                    "username": "admin",
+                    "password": steps.get_admin_password(juju),
+                    "csrf_token": unescape(csrf.group(1)),
+                },
+                headers={"Referer": login_url},
+                timeout=30,
+                allow_redirects=False,
+            )
+            assert login.status_code == 302
+
+        with then("the session cookie is Secure, HttpOnly and SameSite=Lax"):
+            cookies = [
+                cookie
+                for cookie in session.cookies
+                if cookie.name == "session"
+            ]
+            assert len(cookies) == 1
+            assert cookies[0].secure
+            assert cookies[0].has_nonstandard_attr("HttpOnly")
+            assert cookies[0].get_nonstandard_attr("SameSite") == "Lax"
+
+        with and_("the session alone authenticates a subsequent request"):
+            authenticated = session.get(
+                me_url, timeout=30, allow_redirects=False
+            )
+            assert authenticated.status_code == 200
+            assert authenticated.json()["result"]["username"] == "admin"
 
 
 @pytest.mark.parametrize("app", [steps.WORKER_NAME, steps.BEAT_NAME])

@@ -27,6 +27,13 @@ def _relate_idp(juju: jubilant.Juju) -> None:
     Args:
         juju: Jubilant object.
     """
+    steps.remove_relation(
+        juju,
+        steps.TRAEFIK_NAME,
+        "certificates",
+        steps.TLS_NAME,
+        "certificates",
+    )
     steps.deploy_oauth_integrator(juju)
     juju.integrate(
         f"{steps.UI_NAME}:oauth", f"{steps.OAUTH_INTEGRATOR_NAME}:oauth"
