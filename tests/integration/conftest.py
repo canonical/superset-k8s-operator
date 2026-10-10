@@ -260,6 +260,25 @@ def superset_deployment_with_ingress(
     )
 
 
+@pytest.fixture(scope="module")
+def superset_deployment_with_https_ingress(
+    request: FixtureRequest, superset_deployment_with_ingress: jubilant.Juju
+) -> jubilant.Juju:
+    """A Superset deployment whose UI is served through Traefik over HTTPS.
+
+    Args:
+        request: Pytest request object.
+        superset_deployment_with_ingress: The deployment behind Traefik.
+
+    Returns:
+        The model, with TLS on the ingress and a Secure session cookie.
+    """
+    logger.info("Putting TLS on the ingress")
+    return steps.adopt_or_build(
+        request, superset_deployment_with_ingress, steps.add_ingress_tls
+    )
+
+
 @pytest.fixture(autouse=True)
 def log_scenario(request: FixtureRequest):
     """Log the title of the scenario about to run.

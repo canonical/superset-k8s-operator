@@ -9,10 +9,12 @@ that must be satisfied before it can serve requests.
 """
 
 import logging
+import re
 from pathlib import Path
 
 import jubilant
 import pytest
+import requests
 import steps
 from bdd import and_, given, then, when
 
@@ -158,6 +160,58 @@ def test_the_ui_serves_its_login_page(superset_deployment: jubilant.Juju):
         assert (
             response.status_code == 200
         ), f"{url} returned {response.status_code}: {response.text[:200]}"
+
+
+def test_a_browser_logs_in_over_plain_http(
+    superset_deployment: jubilant.Juju,
+):
+    """Scenario: a user logs in through the login form of a plain-HTTP UI.
+
+    Given a complete Superset deployment with no HTTPS ingress
+    When the admin logs in through the login form over plain HTTP
+    Then the session cookies the UI sets are HttpOnly and Lax but not Secure
+    And the session cookie it issues authenticates the admin
+    """
+    juju = superset_deployment
+
+    with given("a complete Superset deployment with no HTTPS ingress"):
+        steps.assert_active(juju, [steps.UI_NAME])
+
+    with when("the admin logs in through the login form over plain HTTP"):
+        url = steps.get_unit_url(juju, steps.UI_NAME)
+        # A standard cookie jar keeps and returns cookies as a browser does.
+        browser = requests.Session()
+        form = browser.get(f"{url}/login/", timeout=30)
+        form.raise_for_status()
+        token = re.search(r'name="csrf_token"[^>]*value="([^"]+)"', form.text)
+        assert token, "the login form carries no CSRF token"
+        login = browser.post(
+            f"{url}/login/",
+            data={
+                "username": "admin",
+                "password": steps.get_admin_password(juju),
+                "csrf_token": token.group(1),
+            },
+            allow_redirects=False,
+            timeout=30,
+        )
+
+    with then(
+        "the session cookies the UI sets are HttpOnly and Lax but not Secure"
+    ):
+        assert login.status_code == 302, login.text[:200]
+        assert "/login" not in login.headers["Location"], login.headers
+        cookies = steps.session_cookies(form) + steps.session_cookies(login)
+        assert len(cookies) == 2, cookies
+        for cookie in cookies:
+            attributes = steps.cookie_attributes(cookie)
+            assert {"httponly", "samesite=lax"} <= attributes, cookie
+            assert "secure" not in attributes, cookie
+
+    with and_("the session cookie it issues authenticates the admin"):
+        me = browser.get(f"{url}/api/v1/me/", timeout=30)
+        assert me.status_code == 200, me.text[:200]
+        assert me.json()["result"]["username"] == "admin"
 
 
 def test_the_generated_admin_password_logs_in(

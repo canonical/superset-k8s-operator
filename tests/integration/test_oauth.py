@@ -34,20 +34,12 @@ def _relate_idp(juju: jubilant.Juju) -> None:
 
 
 def _add_ingress_tls(juju: jubilant.Juju) -> None:
-    """Put a TLS provider behind Traefik and settle the deployment.
+    """Put TLS on the ingress and settle the identity provider with it.
 
     Args:
         juju: Jubilant object.
     """
-    steps.deploy_tls(juju)
-    juju.integrate(
-        f"{steps.TRAEFIK_NAME}:certificates", f"{steps.TLS_NAME}:certificates"
-    )
-    steps.wait_for_active(
-        juju,
-        [steps.UI_NAME, steps.TRAEFIK_NAME, steps.OAUTH_INTEGRATOR_NAME],
-        timeout=steps.SETTLE_TIMEOUT,
-    )
+    steps.add_ingress_tls(juju, steps.OAUTH_INTEGRATOR_NAME)
 
 
 @pytest.fixture(scope="module")
@@ -194,3 +186,37 @@ def test_the_login_route_redirects_to_the_identity_provider(
         query = parse_qs(redirect.query)
         assert query["client_id"] == [steps.OAUTH_STUB_CONFIG["client_id"]]
         assert query["scope"] == [steps.OAUTH_STUB_CONFIG["scope"]]
+
+
+def test_behind_an_https_ingress_the_session_cookie_is_secure(
+    an_oauth_provider_over_https: jubilant.Juju,
+):
+    """Scenario: users reach the UI through an HTTPS ingress.
+
+    Given a Superset deployment behind an HTTPS ingress
+    When a login starts and Superset stores its state in the session
+    Then the session cookie is Secure, HttpOnly and Lax
+    """
+    juju = an_oauth_provider_over_https
+
+    with given("a Superset deployment behind an HTTPS ingress"):
+        steps.assert_active(juju, [steps.UI_NAME])
+        assert steps.proxied_url(juju).startswith("https://")
+
+    with when("a login starts and Superset stores its state in the session"):
+        url = steps.get_unit_url(juju, steps.UI_NAME)
+        response = steps.request_until(
+            None,
+            "GET",
+            f"{url}/login/oidc",
+            expected_status=302,
+            allow_redirects=False,
+        )
+
+    with then("the session cookie is Secure, HttpOnly and Lax"):
+        cookies = steps.session_cookies(response)
+        assert cookies, response.headers
+        for cookie in cookies:
+            assert {"secure", "httponly", "samesite=lax"} <= (
+                steps.cookie_attributes(cookie)
+            ), cookie

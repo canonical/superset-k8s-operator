@@ -8,11 +8,12 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlsplit
 
 import jwt
 import requests
 import sqlalchemy
+from requests.cookies import RequestsCookieJar
 from sqlalchemy.exc import SQLAlchemyError
 
 logger = logging.getLogger(__name__)
@@ -56,6 +57,31 @@ class SupersetApiError(Exception):
         self.status_code = status_code
 
 
+class PlainHttpCookieJar(RequestsCookieJar):
+    """Cookie jar that sends Secure cookies back over plain HTTP.
+
+    Superset keeps the CSRF token in its session cookie, which is Secure
+    behind an HTTPS ingress, while the charm reaches Superset at
+    http://localhost. A standard jar never returns a Secure cookie over http,
+    so every CSRF-protected write would fail with "The CSRF session token is
+    missing".
+    """
+
+    def set_cookie(self, cookie, *args, **kwargs):
+        """Store a cookie with its Secure attribute cleared.
+
+        Args:
+            cookie: The cookie being stored.
+            args: Positional arguments for the parent method.
+            kwargs: Keyword arguments for the parent method.
+
+        Returns:
+            Whatever the parent method returns.
+        """
+        cookie.secure = False
+        return super().set_cookie(cookie, *args, **kwargs)
+
+
 class SupersetApiClient:
     """Client for the Superset REST API.
 
@@ -83,6 +109,10 @@ class SupersetApiClient:
         self._admin_password = admin_password
         self._timeout = timeout
         self._session = requests.Session()
+        # Over HTTPS the standard jar already returns Secure cookies, and
+        # clearing the flag could leak them on a redirect to plain HTTP.
+        if urlsplit(self.base_url).scheme == "http":
+            self._session.cookies = PlainHttpCookieJar()
         self._access_token: str | None = None
         self._refresh_token: str | None = None
         self._csrf_token: str | None = None

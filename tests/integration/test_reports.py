@@ -14,6 +14,7 @@ import logging
 import shlex
 import time
 import uuid
+from datetime import datetime
 from typing import Any, Mapping, Optional
 
 import jubilant
@@ -210,6 +211,54 @@ def worker_log(juju: jubilant.Juju, lines: int = 200) -> str:
     return worker_ssh(juju, f"tail -n {lines} {LOG_FILE}")
 
 
+def explore_state_saves(session: requests.Session, url: str) -> list[datetime]:
+    """Return when Explore saved its state, from Superset's own event log.
+
+    A rendered chart saves its state with a CSRF-protected
+    `POST /api/v1/explore/form_data`. Superset logs
+    `ExploreFormDataRestApi.post` only once that view runs, so a POST refused
+    for a missing CSRF token leaves no entry.
+
+    Args:
+        session: Authenticated Superset API session.
+        url: Superset base URL.
+
+    Returns:
+        The time of each save, newest first.
+    """
+    query = (
+        "(filters:!((col:action,opr:eq,value:'ExploreFormDataRestApi.post')),"
+        "order_column:dttm,order_direction:desc,page_size:100)"
+    )
+    response = session.get(
+        f"{url}/api/v1/log/", params={"q": query}, timeout=30
+    )
+    response.raise_for_status()
+    return [
+        datetime.fromisoformat(entry["dttm"])
+        for entry in response.json()["result"]
+    ]
+
+
+def assert_ui_session_cookie_secure(juju: jubilant.Juju) -> None:
+    """Assert the UI marks its session cookie Secure.
+
+    Only then does a report browser, which reaches the UI over plain HTTP,
+    drop the cookies the UI sets, which is what the CSRF assertion is for.
+
+    Args:
+        juju: Jubilant object.
+    """
+    url = steps.get_unit_url(juju, steps.UI_NAME)
+    response = steps.request_until(
+        None, "GET", f"{url}/login/", allow_redirects=False
+    )
+    cookies = steps.session_cookies(response)
+    assert cookies, response.headers
+    for cookie in cookies:
+        assert "secure" in steps.cookie_attributes(cookie), cookie
+
+
 def wait_for_report(
     session: requests.Session,
     url: str,
@@ -251,7 +300,9 @@ def wait_for_report(
 
 
 @pytest.fixture(scope="module")
-def a_report_source_chart(superset_deployment: jubilant.Juju):
+def a_report_source_chart(
+    superset_deployment_with_https_ingress: jubilant.Juju,
+):
     """Create a chart on a data source every unit of the deployment reaches.
 
     Superset's bundled examples live in a SQLite file written during UI
@@ -260,12 +311,13 @@ def a_report_source_chart(superset_deployment: jubilant.Juju):
     such file, so no example chart could ever render for a report.
 
     Args:
-        superset_deployment: The active deployment.
+        superset_deployment_with_https_ingress: The deployment behind an
+            HTTPS ingress.
 
     Yields:
         The identifier of the chart created.
     """
-    juju = superset_deployment
+    juju = superset_deployment_with_https_ingress
     session, url = steps.api_session(juju)
     environment = steps.workload_environment(juju, f"{steps.UI_NAME}/0")
 
@@ -285,18 +337,20 @@ def a_report_source_chart(superset_deployment: jubilant.Juju):
     "global_async_queries", [False, True], ids=["sync", "async"]
 )
 def test_a_dry_run_report_renders_and_delivers_nothing(
-    superset_deployment: jubilant.Juju,
+    superset_deployment_with_https_ingress: jubilant.Juju,
     a_report_source_chart: int,
     global_async_queries: bool,
 ):
     """Scenario: a report is rendered with delivery suppressed.
 
     Given a Superset deployment rendering reports in dry-run mode
+    And a UI behind an HTTPS ingress that marks its session cookie Secure
     When a report on a chart is executed
     Then the report succeeds
     And it says its notification was suppressed rather than sent
+    And the report's browser passed Superset's CSRF check
     """
-    juju = superset_deployment
+    juju = superset_deployment_with_https_ingress
 
     with given("a Superset deployment rendering reports in dry-run mode"):
         configure_reports(
@@ -305,6 +359,11 @@ def test_a_dry_run_report_renders_and_delivers_nothing(
             global_async_queries=global_async_queries,
         )
         assert_worker_configuration(juju, screenshot_timeout=600)
+
+    with and_(
+        "a UI behind an HTTPS ingress that marks its session cookie Secure"
+    ):
+        assert_ui_session_cookie_secure(juju)
 
     session, url = steps.api_session(juju)
     report_id = create_chart_report(
@@ -316,6 +375,7 @@ def test_a_dry_run_report_renders_and_delivers_nothing(
     )
     try:
         with when("a report on a chart is executed"):
+            saved_before = explore_state_saves(session, url)
             output = execute_report(juju, report_id)
 
         with then("the report succeeds"):
@@ -327,6 +387,13 @@ def test_a_dry_run_report_renders_and_delivers_nothing(
             assert (
                 "ALERT_REPORTS_NOTIFICATION_DRY_RUN is enabled" in log
             ), f"dry-run notice absent from {LOG_FILE}; exec output was {output!r}"
+
+        with and_("the report's browser passed Superset's CSRF check"):
+            last = max(saved_before, default=datetime.min)
+            saved = [
+                at for at in explore_state_saves(session, url) if at > last
+            ]
+            assert saved, "the rendered chart never saved its Explore state"
     finally:
         steps.api_delete(session, url, "/api/v1/report", report_id)
 
@@ -335,7 +402,8 @@ def test_a_dry_run_report_renders_and_delivers_nothing(
     "screenshot_timeout", [600, 1], ids=["default", "short"]
 )
 def test_the_configured_screenshot_timeout_reaches_superset(
-    superset_deployment: jubilant.Juju, screenshot_timeout: int
+    superset_deployment_with_https_ingress: jubilant.Juju,
+    screenshot_timeout: int,
 ):
     """Scenario: the operator bounds how long a report screenshot may take.
 
@@ -343,7 +411,7 @@ def test_the_configured_screenshot_timeout_reaches_superset(
     When the screenshot timeout is configured
     Then Superset's loaded configuration carries it, in milliseconds
     """
-    juju = superset_deployment
+    juju = superset_deployment_with_https_ingress
 
     with given("a Superset deployment rendering reports"):
         pass
@@ -362,7 +430,8 @@ def test_the_configured_screenshot_timeout_reaches_superset(
 
 
 def test_the_beat_scheduler_dispatches_a_report_the_worker_runs(
-    superset_deployment: jubilant.Juju, a_report_source_chart: int
+    superset_deployment_with_https_ingress: jubilant.Juju,
+    a_report_source_chart: int,
 ):
     """Scenario: a report runs end to end.
 
@@ -371,7 +440,7 @@ def test_the_beat_scheduler_dispatches_a_report_the_worker_runs(
     When an active report schedule is created
     Then the report is executed
     """
-    juju = superset_deployment
+    juju = superset_deployment_with_https_ingress
 
     with given("a Superset deployment rendering reports in dry-run mode"):
         configure_reports(

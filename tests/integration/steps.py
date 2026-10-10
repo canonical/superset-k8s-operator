@@ -25,6 +25,8 @@ import requests
 import yaml
 from celery import Celery
 
+from superset_api import PlainHttpCookieJar
+
 logger = logging.getLogger(__name__)
 
 METADATA = yaml.safe_load(Path("./charmcraft.yaml").read_text())
@@ -501,6 +503,26 @@ def deploy_tls(juju: jubilant.Juju) -> None:
     wait_for_active(juju, [TLS_NAME], timeout=SETTLE_TIMEOUT)
 
 
+def add_ingress_tls(juju: jubilant.Juju, *also_settling: str) -> None:
+    """Put a TLS provider behind Traefik, so it publishes an HTTPS URL.
+
+    The UI then marks its session cookie Secure, while every application of
+    the deployment still reaches it over plain HTTP.
+
+    Args:
+        juju: Jubilant object.
+        also_settling: Further applications to wait for, such as one the
+            HTTPS URL unblocks.
+    """
+    deploy_tls(juju)
+    juju.integrate(f"{TRAEFIK_NAME}:certificates", f"{TLS_NAME}:certificates")
+    wait_for_active(
+        juju,
+        [UI_NAME, TRAEFIK_NAME, *also_settling],
+        timeout=SETTLE_TIMEOUT,
+    )
+
+
 def deploy_smtp_integrator(juju: jubilant.Juju) -> None:
     """Deploy the SMTP provider the `ALERT_REPORTS` feature flag requires.
 
@@ -954,6 +976,9 @@ def api_session(
     """
     base_url = get_unit_url(juju, app, unit)
     session = requests.Session()
+    # The unit is reached over plain HTTP, and writes need the CSRF token held
+    # in Superset's Secure session cookie.
+    session.cookies = PlainHttpCookieJar()
     auth_payload = {
         "username": "admin",
         "password": get_admin_password(juju, app),
@@ -1176,6 +1201,34 @@ def wait_for_celery_workers(
         timeout=timeout,
     )
     return workers
+
+
+def session_cookies(response: requests.Response) -> list[str]:
+    """Return the Set-Cookie headers a response carries for the session.
+
+    Args:
+        response: A response fetched without following redirects.
+
+    Returns:
+        Each `session` Set-Cookie header, attributes included.
+    """
+    return [
+        header
+        for header in response.raw.headers.getlist("Set-Cookie")
+        if header.startswith("session=")
+    ]
+
+
+def cookie_attributes(header: str) -> set[str]:
+    """Return the attributes of a Set-Cookie header, lowercased.
+
+    Args:
+        header: A Set-Cookie header value.
+
+    Returns:
+        Each attribute after the name and value, such as `secure`.
+    """
+    return {part.strip().lower() for part in header.split(";")[1:]}
 
 
 def request_until(
