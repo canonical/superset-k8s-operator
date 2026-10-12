@@ -810,6 +810,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
                 self.oauth,
                 self.https_ingress_url,
                 self.config["mcp-auth-client-registration"],
+                signing_keys["secret-key"],
             )
         )
         env.update(self.smtp.environment())

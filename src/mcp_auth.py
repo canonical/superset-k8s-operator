@@ -76,6 +76,7 @@ def get_mcp_auth_config(
     oauth: OAuthRelation,
     https_ingress_url: Optional[str],
     auth_client_registration: bool,
+    redis_storage_encryption_key: str,
 ) -> Dict[str, str]:
     """Return MCP_AUTH_* environment values for mcp's own auth provider.
 
@@ -91,6 +92,10 @@ def get_mcp_auth_config(
         https_ingress_url: The charm's current HTTPS ingress URL, or None.
         auth_client_registration: The mcp-auth-client-registration config
             value.
+        redis_storage_encryption_key: The `secret-key` field of the
+            signing-keys-secret-id Juju secret, the same value the charm
+            sends the workload as SUPERSET_SECRET_KEY. mcp_google_auth.py
+            uses it to encrypt its Redis-backed storage.
 
     Returns:
         The MCP_AUTH_* environment values, empty when OAuth is not
@@ -119,4 +124,8 @@ def get_mcp_auth_config(
         "MCP_AUTH_CLIENT_REGISTRATION": (
             "true" if auth_client_registration else "false"
         ),
+        # mcp_google_auth.py uses this to encrypt its client_storage. It
+        # rotates together with SUPERSET_SECRET_KEY, since it's the same
+        # secret.
+        "MCP_REDIS_STORAGE_ENCRYPTION_KEY": redis_storage_encryption_key,
     }

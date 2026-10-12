@@ -16,6 +16,8 @@ import httpx
 import mcp_google_auth as m
 import pytest
 import respx
+from key_value.aio.stores.memory import MemoryStore
+from key_value.aio.wrappers.encryption import FernetEncryptionWrapper
 
 BASE_URL = "https://mcp.superset.example"
 CLIENT_ID = "superset-mcp"
@@ -203,17 +205,48 @@ class TestGoogleAuthProxy:
         assert asyncio.run(proxy.get_client(CLIENT_ID)) is None
 
 
+def _wrapped(inner_store, source_material):
+    """Build a FernetEncryptionWrapper over inner_store for one key.
+
+    Args:
+        inner_store: The plain AsyncKeyValue the wrapper encrypts for.
+        source_material: The key to derive the Fernet key from.
+
+    Returns:
+        A FernetEncryptionWrapper using the real storage salt.
+    """
+    return FernetEncryptionWrapper(
+        key_value=inner_store,
+        source_material=source_material,
+        salt="mcp-redis-storage-encryption-key",
+        raise_on_decryption_error=False,
+    )
+
+
 class TestBuildClientStorage:
-    """Tests for the OAuth proxy's durable client_storage backend."""
+    """Tests for the OAuth proxy's durable, encrypted client_storage backend."""
 
     def test_none_without_a_redis_relation(self, monkeypatch):
         """No relation yet must fall back to the proxy's own default store."""
         monkeypatch.delenv("REDIS_HOST", raising=False)
         monkeypatch.delenv("REDIS_PORT", raising=False)
+        monkeypatch.setenv(
+            "MCP_REDIS_STORAGE_ENCRYPTION_KEY", "example-signing-key"
+        )
 
         assert m._build_client_storage() is None
 
-    def test_builds_a_redis_store_against_the_relation(self, monkeypatch):
+    def test_none_without_an_encryption_key(self, monkeypatch):
+        """A relation with no key yet must never write unencrypted to Redis."""
+        monkeypatch.setenv("REDIS_HOST", "redis.example")
+        monkeypatch.setenv("REDIS_PORT", "6379")
+        monkeypatch.delenv("MCP_REDIS_STORAGE_ENCRYPTION_KEY", raising=False)
+
+        assert m._build_client_storage() is None
+
+    def test_builds_an_encrypted_redis_store_against_the_relation(
+        self, monkeypatch
+    ):
         """A real RedisStore construction call is reached, not just the early return.
 
         key_value.aio.stores.redis isn't installed in this isolated env,
@@ -223,6 +256,9 @@ class TestBuildClientStorage:
         """
         monkeypatch.setenv("REDIS_HOST", "redis.example")
         monkeypatch.setenv("REDIS_PORT", "6379")
+        monkeypatch.setenv(
+            "MCP_REDIS_STORAGE_ENCRYPTION_KEY", "example-signing-key"
+        )
         calls = []
 
         class _StubRedisStore:
@@ -239,7 +275,8 @@ class TestBuildClientStorage:
 
         storage = m._build_client_storage()
 
-        assert isinstance(storage, _StubRedisStore)
+        assert isinstance(storage, FernetEncryptionWrapper)
+        assert isinstance(storage.key_value, _StubRedisStore)
         assert calls == [
             {
                 "host": "redis.example",
@@ -247,6 +284,45 @@ class TestBuildClientStorage:
                 "db": m.REDIS_DB,
             }
         ]
+
+    def test_values_are_encrypted_at_rest(self):
+        """A value read back raw from storage is not plaintext.
+
+        No stubbing: this exercises the real FernetEncryptionWrapper and
+        a real in-memory store, so it proves the value is unreadable
+        without the key, not just that the right classes are wired
+        together.
+        """
+        inner_store = MemoryStore()
+        wrapped = _wrapped(inner_store, "example-signing-key")
+
+        asyncio.run(
+            wrapped.put(
+                collection="mcp-upstream-tokens",
+                key="a-token-id",
+                value={"access_token": "a-token"},  # nosec B105
+            )
+        )
+
+        raw = asyncio.run(
+            inner_store.get(collection="mcp-upstream-tokens", key="a-token-id")
+        )
+        assert "a-token" not in str(raw)
+
+        decrypted = asyncio.run(
+            wrapped.get(collection="mcp-upstream-tokens", key="a-token-id")
+        )
+        assert decrypted == {"access_token": "a-token"}  # nosec B105
+
+        other_wrapped = _wrapped(inner_store, "a-different-signing-key")
+        assert (
+            asyncio.run(
+                other_wrapped.get(
+                    collection="mcp-upstream-tokens", key="a-token-id"
+                )
+            )
+            is None
+        )
 
 
 class TestBuildGoogleMcpAuthFactory:

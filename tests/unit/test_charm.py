@@ -634,6 +634,10 @@ def test_mcp_auth_config_populates_environment(ctx):
     assert environment["MCP_AUTH_CLIENT_SECRET"] == "secret-value"
     assert environment["MCP_AUTH_BASE_URL"] == "https://mcp.example"
     assert environment["MCP_AUTH_CLIENT_REGISTRATION"] == "true"
+    assert (
+        environment["MCP_REDIS_STORAGE_ENCRYPTION_KEY"]
+        == environment["SUPERSET_SECRET_KEY"]
+    )
 
 
 def test_mcp_auth_client_registration_populates_environment(ctx):
