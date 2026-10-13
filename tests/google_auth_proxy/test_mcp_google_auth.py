@@ -9,6 +9,8 @@ OAuthProxy, and faking that behavior would mean reimplementing it.
 """
 
 import asyncio
+import sys
+import types
 
 import httpx
 import mcp_google_auth as m
@@ -201,6 +203,52 @@ class TestGoogleAuthProxy:
         assert asyncio.run(proxy.get_client(CLIENT_ID)) is None
 
 
+class TestBuildClientStorage:
+    """Tests for the OAuth proxy's durable client_storage backend."""
+
+    def test_none_without_a_redis_relation(self, monkeypatch):
+        """No relation yet must fall back to the proxy's own default store."""
+        monkeypatch.delenv("REDIS_HOST", raising=False)
+        monkeypatch.delenv("REDIS_PORT", raising=False)
+
+        assert m._build_client_storage() is None
+
+    def test_builds_a_redis_store_against_the_relation(self, monkeypatch):
+        """A real RedisStore construction call is reached, not just the early return.
+
+        key_value.aio.stores.redis isn't installed in this isolated env,
+        so it's stubbed via sys.modules — the same technique
+        test_mcp_auth_bridge.py uses for modules this env can't install
+        for real.
+        """
+        monkeypatch.setenv("REDIS_HOST", "redis.example")
+        monkeypatch.setenv("REDIS_PORT", "6379")
+        calls = []
+
+        class _StubRedisStore:
+            """Stand in for the real RedisStore, recording its constructor args."""
+
+            def __init__(self, **kwargs):  # noqa: DCO010
+                calls.append(kwargs)
+
+        stub_module = types.ModuleType("key_value.aio.stores.redis")
+        stub_module.RedisStore = _StubRedisStore
+        monkeypatch.setitem(
+            sys.modules, "key_value.aio.stores.redis", stub_module
+        )
+
+        storage = m._build_client_storage()
+
+        assert isinstance(storage, _StubRedisStore)
+        assert calls == [
+            {
+                "host": "redis.example",
+                "port": 6379,
+                "db": m.REDIS_DB,
+            }
+        ]
+
+
 class TestBuildGoogleMcpAuthFactory:
     """Tests for the entry point Superset's MCP_AUTH_FACTORY config calls."""
 
@@ -268,6 +316,28 @@ class TestBuildGoogleMcpAuthFactory:
         factory = m.build_google_mcp_auth_factory()
 
         assert factory(None).client_registration_options.enabled is False
+
+    def test_passes_the_redis_backed_storage_through(
+        self, oauth_env, monkeypatch
+    ):
+        """The factory must actually hand its storage decision to the proxy.
+
+        Args:
+            oauth_env: Fixture setting the workload's MCP_AUTH_* environment.
+            monkeypatch: The pytest monkeypatch fixture.
+        """
+        oauth_env(
+            introspection_url=GOOGLE_TOKENINFO,
+            client_id=CLIENT_ID,
+            client_secret="s3cret",  # nosec B106
+            base_url=BASE_URL,
+        )
+        sentinel = object()
+        monkeypatch.setattr(m, "_build_client_storage", lambda: sentinel)
+
+        proxy = m.build_google_mcp_auth_factory()(None)
+
+        assert proxy._client_storage is sentinel
 
     @pytest.mark.parametrize(
         "missing", ["client_id", "client_secret", "base_url"]
