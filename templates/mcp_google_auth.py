@@ -97,9 +97,9 @@ GOOGLE_TOKENINFO_TIMEOUT = 10
 ADVERTISED_SCOPES = ["openid", "profile", "email"]
 
 # templates/superset_config.py's own caches already claim DBs 0-6 on this
-# same Redis; this keeps the OAuth proxy's state in its own namespace
-# rather than colliding with them.
-REDIS_DB = 7
+# same Redis. Leaving a gap to 14 instead of taking 7 outright, so a
+# future Superset release adding its own cache doesn't collide with this.
+REDIS_DB = 14
 
 
 class GoogleIssuedTokenVerifier(TokenVerifier):
@@ -335,7 +335,7 @@ def _build_client_storage() -> Optional[AsyncKeyValue]:
     redis_host = os.getenv("REDIS_HOST")
     redis_port = os.getenv("REDIS_PORT")
     encryption_key = os.getenv("MCP_REDIS_STORAGE_ENCRYPTION_KEY")
-    if not redis_host or not redis_port or not encryption_key:
+    if not (redis_host and redis_port and encryption_key):
         return None
 
     try:
