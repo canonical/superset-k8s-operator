@@ -3,6 +3,7 @@
 # See LICENSE file for licensing details.
 
 """Metrics wiring for each of the charm functions."""
+import socket
 
 from ops import Port
 
@@ -28,9 +29,10 @@ def metrics_targets(function):
     if function not in METRICS_FUNCTIONS:
         return []
 
-    targets = [f"*:{PROMETHEUS_METRICS_PORT}"]
+    fqdn = socket.getfqdn()
+    targets = [f"{fqdn}:{PROMETHEUS_METRICS_PORT}"]
     if function == WORKER_FUNCTION:
-        targets.append(f"*:{CELERY_METRICS_PORT}")
+        targets.append(f"{fqdn}:{CELERY_METRICS_PORT}")
     return targets
 
 
