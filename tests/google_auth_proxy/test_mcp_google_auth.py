@@ -16,6 +16,7 @@ import httpx
 import mcp_google_auth as m
 import pytest
 import respx
+from key_value.aio.wrappers.encryption import FernetEncryptionWrapper
 
 BASE_URL = "https://mcp.superset.example"
 CLIENT_ID = "superset-mcp"
@@ -204,16 +205,29 @@ class TestGoogleAuthProxy:
 
 
 class TestBuildClientStorage:
-    """Tests for the OAuth proxy's durable client_storage backend."""
+    """Tests for the OAuth proxy's durable, encrypted client_storage backend."""
 
     def test_none_without_a_redis_relation(self, monkeypatch):
         """No relation yet must fall back to the proxy's own default store."""
         monkeypatch.delenv("REDIS_HOST", raising=False)
         monkeypatch.delenv("REDIS_PORT", raising=False)
+        monkeypatch.setenv(
+            "MCP_REDIS_STORAGE_ENCRYPTION_KEY", "example-signing-key"
+        )
 
         assert m._build_client_storage() is None
 
-    def test_builds_a_redis_store_against_the_relation(self, monkeypatch):
+    def test_none_without_an_encryption_key(self, monkeypatch):
+        """A relation with no key yet must never write unencrypted to Redis."""
+        monkeypatch.setenv("REDIS_HOST", "redis.example")
+        monkeypatch.setenv("REDIS_PORT", "6379")
+        monkeypatch.delenv("MCP_REDIS_STORAGE_ENCRYPTION_KEY", raising=False)
+
+        assert m._build_client_storage() is None
+
+    def test_builds_an_encrypted_redis_store_against_the_relation(
+        self, monkeypatch
+    ):
         """A real RedisStore construction call is reached, not just the early return.
 
         key_value.aio.stores.redis isn't installed in this isolated env,
@@ -223,6 +237,9 @@ class TestBuildClientStorage:
         """
         monkeypatch.setenv("REDIS_HOST", "redis.example")
         monkeypatch.setenv("REDIS_PORT", "6379")
+        monkeypatch.setenv(
+            "MCP_REDIS_STORAGE_ENCRYPTION_KEY", "example-signing-key"
+        )
         calls = []
 
         class _StubRedisStore:
@@ -239,7 +256,8 @@ class TestBuildClientStorage:
 
         storage = m._build_client_storage()
 
-        assert isinstance(storage, _StubRedisStore)
+        assert isinstance(storage, FernetEncryptionWrapper)
+        assert isinstance(storage.key_value, _StubRedisStore)
         assert calls == [
             {
                 "host": "redis.example",

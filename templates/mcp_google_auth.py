@@ -34,22 +34,30 @@ it.
 
 The proxy keeps the clients it registers and the tokens it mints in
 whatever `client_storage` it is given. `build_google_mcp_auth_factory()`
-wires in `_build_client_storage()`'s `RedisStore`, built from the same
-redis relation every charm-function already requires. That makes
+wires in `_build_client_storage()`'s Redis-backed store, built from the
+same redis relation every charm-function already requires. That makes
 registrations and tokens visible to every unit, not just the one that
 handled the original registration.
+
+That store is Fernet-encrypted (`FernetEncryptionWrapper`), keyed from
+`MCP_REDIS_STORAGE_ENCRYPTION_KEY` — the same value as
+SUPERSET_SECRET_KEY, so it rotates whenever that does. A stale key
+doesn't error: `raise_on_decryption_error=False` below just makes an
+old client or token read back as missing, so the caller registers or
+logs in again.
 
 A caller registered by hand with Google is unaffected either way — it
 never registers with this proxy at all.
 
-If the redis client library isn't importable, `_build_client_storage()`
+If the redis client library isn't importable, or the signing keys
+secret hasn't reached the workload yet, `_build_client_storage()`
 returns None instead. The proxy then falls back to its own default: an
 encrypted `FileTreeStore` local to the pod, visible only to the unit
 that wrote it.
 
 `build_google_mcp_auth_factory()` is the entry point. It reads the
 MCP_AUTH_* environment variables set by the charm's
-`_get_mcp_auth_config()` and returns a callable `(flask_app) ->
+`get_mcp_auth_config()` and returns a callable `(flask_app) ->
 AuthProvider` for Superset's `MCP_AUTH_FACTORY` config. It returns None
 when the deployment's introspection endpoint isn't Google's — meaning the
 oauth relation is Hydra or another standard OIDC provider — so the caller
@@ -89,9 +97,9 @@ GOOGLE_TOKENINFO_TIMEOUT = 10
 ADVERTISED_SCOPES = ["openid", "profile", "email"]
 
 # templates/superset_config.py's own caches already claim DBs 0-6 on this
-# same Redis; this keeps the OAuth proxy's state in its own namespace
-# rather than colliding with them.
-REDIS_DB = 7
+# same Redis. Leaving a gap to 14 instead of taking 7 outright, so a
+# future Superset release adding its own cache doesn't collide with this.
+REDIS_DB = 14
 
 
 class GoogleIssuedTokenVerifier(TokenVerifier):
@@ -304,7 +312,7 @@ def _client_registration_enabled() -> bool:
 
 
 def _build_client_storage() -> Optional[AsyncKeyValue]:
-    """Return a durable store for the proxy's OAuth state, or None.
+    """Return a durable, encrypted store for the proxy's OAuth state, or None.
 
     Without one, the proxy defaults to an encrypted FileTreeStore under
     FastMCP's home directory. That store is pod-local: client
@@ -313,23 +321,37 @@ def _build_client_storage() -> Optional[AsyncKeyValue]:
 
     REDIS_HOST/REDIS_PORT come from the same redis relation every
     charm-function already requires for its own caches (see
-    templates/superset_config.py).
+    templates/superset_config.py). MCP_REDIS_STORAGE_ENCRYPTION_KEY is
+    the signing keys secret's own `secret-key`, set by the charm's
+    `get_mcp_auth_config()` — required here too, so this function can
+    never hand the proxy a store that writes OAuth state to Redis
+    unencrypted.
 
     Returns:
-        A RedisStore when the redis relation is present and the redis
-        client library is importable, otherwise None.
+        A Fernet-encrypted RedisStore when the redis relation is present,
+        the redis client library is importable, and the encryption key is
+        set, otherwise None.
     """
     redis_host = os.getenv("REDIS_HOST")
     redis_port = os.getenv("REDIS_PORT")
-    if not redis_host or not redis_port:
+    encryption_key = os.getenv("MCP_REDIS_STORAGE_ENCRYPTION_KEY")
+    if not (redis_host and redis_port and encryption_key):
         return None
 
     try:
         from key_value.aio.stores.redis import RedisStore
+        from key_value.aio.wrappers.encryption import FernetEncryptionWrapper
     except ImportError:
         return None
 
-    return RedisStore(host=redis_host, port=int(redis_port), db=REDIS_DB)
+    return FernetEncryptionWrapper(
+        key_value=RedisStore(
+            host=redis_host, port=int(redis_port), db=REDIS_DB
+        ),
+        source_material=encryption_key,
+        salt="mcp-redis-storage-encryption-key",
+        raise_on_decryption_error=False,
+    )
 
 
 def build_google_mcp_auth_factory() -> (
@@ -338,7 +360,7 @@ def build_google_mcp_auth_factory() -> (
     """Return a Google-backed MCP auth provider factory, or None.
 
     Reads the MCP_AUTH_* environment variables the charm's
-    _get_mcp_auth_config() sets.
+    `get_mcp_auth_config()` sets.
 
     Returns:
         A callable `(flask_app) -> AuthProvider` when
