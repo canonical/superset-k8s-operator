@@ -224,7 +224,7 @@
       "collapsed": false,
       "panels": []
     },
-   {
+    {
       "id": 3,
       "title": "Selected scrape targets — NOT process liveness",
       "type": "timeseries",
@@ -862,12 +862,190 @@
       "pluginVersion": "9.5.3"
     },
     {
+      "id": 36,
+      "title": "MCP tool calls - actions per second (all tools)",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 30,
+        "w": 12,
+        "h": 7
+      },
+      "description": "A single tool call can have several steps — query, validate, write, etc. Each one is counted separately here.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${prometheusds}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${prometheusds}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(label_replace({__name__=~\"superset_mcp_.+\",__name__!~\"superset_mcp_tool_.*\",juju_application=~\"$juju_application\",juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_unit=~\"$juju_unit\"}, \"name\", \"$1\", \"__name__\", \"(.+)\")[$__rate_interval:]))",
+          "legendFormat": "rate_mcp_tool_calls",
+          "refId": "A",
+          "format": "time_series",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "No telemetry",
+          "mappings": [],
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "auto",
+            "spanNulls": false,
+            "axisPlacement": "auto",
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "pluginVersion": "9.5.3"
+    },
+    {
+      "id": 39,
+      "title": "MCP tool calls, grouped by category",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 30,
+        "w": 12,
+        "h": 7
+      },
+      "description": "Breakdown of the tool call actions by functional area.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${prometheusds}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${prometheusds}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (domain) (rate(label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(sum by (__name__) ({__name__=~\"superset_mcp_.+\",__name__!~\"superset_mcp_tool_.*\",juju_application=~\"$juju_application\",juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_unit=~\"$juju_unit\"}), \"name\", \"$1\", \"__name__\", \"(.+)\"), \"tool\", \"$1\", \"__name__\", \"superset_mcp_(create_virtual_dataset|add_chart_to_dashboard|generate_explore_link|update_chart_preview|generate_dashboard|get_dashboard_info|get_instance_info|get_database_info|get_chart_preview|get_dataset_info|list_dashboards|generate_chart|list_databases|get_chart_data|get_chart_info|save_sql_query|list_datasets|update_chart|health_check|open_sql_lab|execute_sql|list_charts|get_schema)_.+\"), \"domain\", \"chart\", \"tool\", \"generate_chart|get_chart_data|get_chart_info|get_chart_preview|list_charts|update_chart|update_chart_preview\"), \"domain\", \"dashboard\", \"tool\", \"add_chart_to_dashboard|generate_dashboard|get_dashboard_info|list_dashboards\"), \"domain\", \"database\", \"tool\", \"get_database_info|list_databases\"), \"domain\", \"dataset\", \"tool\", \"create_virtual_dataset|get_dataset_info|list_datasets\"), \"domain\", \"explore\", \"tool\", \"generate_explore_link\"), \"domain\", \"sql_lab\", \"tool\", \"execute_sql|open_sql_lab|save_sql_query\"), \"domain\", \"system\", \"tool\", \"get_instance_info|get_schema|health_check\")[$__rate_interval:]))",
+          "legendFormat": "{{domain}}",
+          "refId": "A",
+          "format": "time_series",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "No telemetry",
+          "mappings": [],
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "auto",
+            "spanNulls": false,
+            "axisPlacement": "auto",
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "pluginVersion": "9.5.3"
+    },
+    {
       "id": 13,
       "title": "3 · Performance — Superset server-side timings",
       "type": "row",
       "gridPos": {
         "x": 0,
-        "y": 30,
+        "y": 37,
         "w": 24,
         "h": 1
       },
@@ -881,7 +1059,7 @@
       "type": "timeseries",
       "gridPos": {
         "x": 0,
-        "y": 31,
+        "y": 38,
         "w": 24,
         "h": 7
       },
@@ -1010,7 +1188,7 @@
       "type": "timeseries",
       "gridPos": {
         "x": 0,
-        "y": 38,
+        "y": 45,
         "w": 12,
         "h": 7
       },
@@ -1113,7 +1291,7 @@
       "type": "timeseries",
       "gridPos": {
         "x": 12,
-        "y": 38,
+        "y": 45,
         "w": 12,
         "h": 7
       },
@@ -1216,7 +1394,7 @@
       "type": "timeseries",
       "gridPos": {
         "x": 0,
-        "y": 45,
+        "y": 52,
         "w": 24,
         "h": 7
       },
@@ -1306,7 +1484,7 @@
       "type": "row",
       "gridPos": {
         "x": 0,
-        "y": 52,
+        "y": 59,
         "w": 24,
         "h": 1
       },
@@ -1319,7 +1497,7 @@
           "type": "timeseries",
           "gridPos": {
             "x": 0,
-            "y": 53,
+            "y": 60,
             "w": 24,
             "h": 7
           },
@@ -1424,7 +1602,7 @@
       "type": "row",
       "gridPos": {
         "x": 0,
-        "y": 53,
+        "y": 60,
         "w": 24,
         "h": 1
       },
@@ -1437,7 +1615,7 @@
           "type": "text",
           "gridPos": {
             "x": 0,
-            "y": 54,
+            "y": 61,
             "w": 24,
             "h": 2
           },
@@ -1453,7 +1631,7 @@
           "type": "timeseries",
           "gridPos": {
             "x": 0,
-            "y": 58,
+            "y": 65,
             "w": 12,
             "h": 7
           },
@@ -1561,7 +1739,7 @@
           "type": "timeseries",
           "gridPos": {
             "x": 12,
-            "y": 58,
+            "y": 65,
             "w": 12,
             "h": 7
           },
@@ -1653,7 +1831,7 @@
       "type": "row",
       "gridPos": {
         "x": 0,
-        "y": 54,
+        "y": 61,
         "w": 24,
         "h": 1
       },
@@ -1666,7 +1844,7 @@
           "type": "logs",
           "gridPos": {
             "x": 0,
-            "y": 55,
+            "y": 62,
             "w": 24,
             "h": 7
           },
@@ -1731,6 +1909,44 @@
               },
               "editorMode": "code",
               "expr": "{juju_application=~\".*superset-worker.*\",juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_unit=~\"$juju_unit\"} |~ \"(?i)error\"",
+              "queryType": "range",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 38,
+          "title": "MCP errors",
+          "type": "logs",
+          "gridPos": {
+            "x": 0,
+            "y": 69,
+            "w": 24,
+            "h": 7
+          },
+          "description": "MCP error and warning log lines.",
+          "datasource": {
+            "type": "loki",
+            "uid": "${lokids}"
+          },
+          "options": {
+            "dedupStrategy": "exact",
+            "enableLogDetails": true,
+            "prettifyLogMessage": false,
+            "showCommonLabels": false,
+            "showLabels": false,
+            "showTime": true,
+            "sortOrder": "Descending",
+            "wrapLogMessage": true
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "loki",
+                "uid": "${lokids}"
+              },
+              "editorMode": "code",
+              "expr": "{juju_application=~\".*mcp.*\",juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_unit=~\"$juju_unit\"} |~ \"(?i):(error|warning):\"",
               "queryType": "range",
               "refId": "A"
             }
