@@ -1,7 +1,7 @@
 # Copyright 2025 Canonical Ltd.
 # See LICENSE file for licensing details.
 
-### SIGNING KEYS: one secret shared by the three Superset applications
+### SIGNING KEYS: one secret shared by the Superset applications
 
 resource "random_password" "secret_key" {
   length  = 32
@@ -24,16 +24,12 @@ resource "juju_secret" "signing_keys" {
 }
 
 resource "juju_access_secret" "signing_keys" {
-  model_uuid = var.model_uuid
-  applications = [
-    module.superset_ui.application.name,
-    module.superset_worker.application.name,
-    module.superset_beat.application.name,
-  ]
-  secret_id = juju_secret.signing_keys.secret_id
+  model_uuid   = var.model_uuid
+  applications = local.superset_app_names
+  secret_id    = juju_secret.signing_keys.secret_id
 }
 
-### SUPERSET: one charm, three applications
+### SUPERSET: one charm, three applications, plus mcp when `superset_mcp` is set
 
 module "superset_ui" {
   source = "../charm"
@@ -75,6 +71,21 @@ module "superset_beat" {
   constraints = var.superset.constraints
   resources   = var.superset.resources
   units       = 1
+}
+
+module "superset_mcp" {
+  count  = local.enable_mcp ? 1 : 0
+  source = "../charm"
+
+  app_name    = var.superset_mcp.app_name
+  model_uuid  = var.model_uuid
+  channel     = var.superset.channel
+  revision    = var.superset.revision
+  base        = var.superset.base
+  config      = local.mcp_config
+  constraints = var.superset.constraints
+  resources   = var.superset.resources
+  units       = var.superset_mcp.units
 }
 
 ### DEPENDENCIES: deployed in-module unless an external offer is supplied
@@ -157,7 +168,26 @@ module "oauth_external_idp_integrator" {
   config      = local.oauth_charm_config
 }
 
-### ALERTS AND REPORTS (optional): SMTP relay related to all three applications
+### MCP SSO (optional): a second external IdP integrator related to mcp over the `oauth` interface
+#
+# A separate instance is needed because the integrator's `oauth` endpoint takes a single relation
+# and the UI's instance already uses it.
+
+module "mcp_oauth_external_idp_integrator" {
+  count  = local.enable_mcp_sso ? 1 : 0
+  source = "./modules/oauth-external-idp-integrator"
+
+  model_uuid  = var.model_uuid
+  app_name    = var.mcp_oauth_external_idp_integrator_charm.app_name
+  channel     = var.mcp_oauth_external_idp_integrator_charm.channel
+  revision    = var.mcp_oauth_external_idp_integrator_charm.revision
+  base        = var.mcp_oauth_external_idp_integrator_charm.base
+  constraints = var.mcp_oauth_external_idp_integrator_charm.constraints
+  units       = var.mcp_oauth_external_idp_integrator_charm.units
+  config      = local.mcp_oauth_charm_config
+}
+
+### ALERTS AND REPORTS (optional): SMTP relay related to every Superset application
 
 module "smtp_integrator" {
   count  = local.enable_smtp ? 1 : 0
@@ -184,23 +214,18 @@ resource "juju_secret" "smtp_password" {
 }
 
 # The relay publishes this secret's ID on the `smtp` relation but cannot grant a secret it does not
-# own, so the three Superset applications that read the password from it are granted it here too.
+# own, so the Superset applications that read the password from it are granted it here too.
 resource "juju_access_secret" "smtp_password" {
-  count      = local.enable_smtp ? 1 : 0
-  model_uuid = var.model_uuid
-  applications = [
-    module.smtp_integrator[0].application.name,
-    module.superset_ui.application.name,
-    module.superset_worker.application.name,
-    module.superset_beat.application.name,
-  ]
-  secret_id = juju_secret.smtp_password[0].secret_id
+  count        = local.enable_smtp ? 1 : 0
+  model_uuid   = var.model_uuid
+  applications = concat([module.smtp_integrator[0].application.name], local.superset_app_names)
+  secret_id    = juju_secret.smtp_password[0].secret_id
 }
 
 ### INTEGRATIONS: every Superset application to PostgreSQL and to Redis
 #
-# No ordering is imposed between the three. Only the UI application migrates the metadata
-# database; the worker and the beat scheduler report `waiting for the UI to initialise the
+# No ordering is imposed between the applications. Only the UI application migrates the metadata
+# database; the worker, the beat scheduler and mcp report `waiting for the UI to initialise the
 # database` and are released by the following update-status.
 
 resource "juju_integration" "superset_postgresql" {
@@ -237,9 +262,9 @@ resource "juju_integration" "superset_redis" {
   }
 }
 
-### INTEGRATIONS: the UI to ingress, and ingress to TLS
+### INTEGRATIONS: the UI and mcp to ingress, and ingress to TLS
 #
-# Only the UI holds an ingress relation. The worker and the beat scheduler serve no HTTP.
+# Only the UI and mcp hold an ingress relation. The worker and the beat scheduler serve no HTTP.
 
 resource "juju_integration" "superset_ingress" {
   model_uuid = var.model_uuid
@@ -247,6 +272,22 @@ resource "juju_integration" "superset_ingress" {
   application {
     name     = module.superset_ui.requires.ingress.name
     endpoint = module.superset_ui.requires.ingress.endpoint
+  }
+
+  application {
+    name     = module.traefik.application.name
+    endpoint = module.traefik.provides.ingress
+  }
+}
+
+resource "juju_integration" "mcp_ingress" {
+  count = local.enable_mcp ? 1 : 0
+
+  model_uuid = var.model_uuid
+
+  application {
+    name     = module.superset_mcp[0].requires.ingress.name
+    endpoint = module.superset_mcp[0].requires.ingress.endpoint
   }
 
   application {
@@ -287,9 +328,26 @@ resource "juju_integration" "superset_oauth" {
   }
 }
 
+resource "juju_integration" "mcp_oauth" {
+  count = local.enable_mcp_sso ? 1 : 0
+
+  model_uuid = var.model_uuid
+
+  application {
+    name     = module.superset_mcp[0].requires.oauth.name
+    endpoint = module.superset_mcp[0].requires.oauth.endpoint
+  }
+
+  application {
+    name     = module.mcp_oauth_external_idp_integrator[0].provides.oauth.name
+    endpoint = module.mcp_oauth_external_idp_integrator[0].provides.oauth.endpoint
+  }
+}
+
 # The `smtp` endpoint is declared on the charm as a whole and `ALERT_REPORTS` is checked per
-# application, so all three are related: the UI offers alerts and reports, the worker delivers
-# them and the beat scheduler dispatches them. The relay reads its password secret only on
+# application, so every application is related: the UI offers alerts and reports, the worker
+# delivers them, the beat scheduler dispatches them, and mcp is related because the charm blocks it
+# on the flag too. The relay reads its password secret only on
 # config-changed and on relation-created, so relating after the grant is what lets it recover when
 # its first config-changed ran before the grant existed.
 resource "juju_integration" "superset_smtp" {
@@ -337,8 +395,10 @@ resource "time_static" "updated_at" {
     ui_config         = jsonencode(var.superset_ui)
     worker_config     = jsonencode(var.superset_worker)
     beat_config       = jsonencode(var.superset_beat)
+    mcp_config        = jsonencode(var.superset_mcp)
     external_hostname = var.external_hostname
     enable_sso        = tostring(local.enable_sso)
+    enable_mcp_sso    = tostring(local.enable_mcp_sso)
     enable_smtp       = tostring(local.enable_smtp)
   }
 }

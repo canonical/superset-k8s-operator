@@ -23,10 +23,14 @@ output "models" {
           traefik-k8s              = module.traefik.application.name
           self-signed-certificates = module.self_signed_certificates.app_name
         },
+        local.enable_mcp ? { superset-mcp = module.superset_mcp[0].application.name } : {},
         local.deploy_postgresql ? { postgresql-k8s = module.postgresql[0].application_name } : {},
         local.deploy_redis ? { redis-k8s = module.redis[0].application.name } : {},
         local.enable_sso ? {
           oauth-external-idp-integrator = module.oauth_external_idp_integrator[0].application.name
+        } : {},
+        local.enable_mcp_sso ? {
+          mcp-oauth-external-idp-integrator = module.mcp_oauth_external_idp_integrator[0].application.name
         } : {},
         local.enable_smtp ? { smtp-integrator = module.smtp_integrator[0].application.name } : {},
       )

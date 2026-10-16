@@ -3,8 +3,9 @@
 This folder contains a Terraform **product module** that deploys a full Superset solution into one
 Kubernetes model: the three `superset-k8s` applications that make one deployment (via the
 [charm module](../charm)), their mandatory dependencies (PostgreSQL and Redis), a Traefik ingress
-with TLS from self-signed-certificates, the Juju secret the applications share, and optionally an
-IdP integrator for SSO, an SMTP relay for alerts and reports, and a Trino catalog offer.
+with TLS from self-signed-certificates, the Juju secret the applications share, and optionally a
+fourth application for MCP, an IdP integrator for SSO, an SMTP relay for alerts and reports, and a
+Trino catalog offer.
 
 ## Topology
 
@@ -13,32 +14,35 @@ enough and every relation is in-model. The module consumes a model rather than c
 the UUID of a model you have already created, so the cloud, credential and `workload-storage` stay
 yours to choose.
 
-## One Superset is three applications
+## One Superset is three or four applications
 
-`charm-function` splits `superset-k8s` into `app-gunicorn` (the web UI), `worker` (Celery) and
-`beat` (the scheduler). The module deploys the charm module three times and owns that option: it is
-what makes the applications differ, so it is rejected in every caller-supplied config map and
-merged last.
+`charm-function` splits `superset-k8s` into `app-gunicorn` (the web UI), `worker` (Celery), `beat`
+(the scheduler) and, when `superset_mcp` is set, `mcp`. The module deploys the charm module once per
+application and owns that option: it is what makes the applications differ, so it is rejected in
+every caller-supplied config map and merged last.
 
 - The UI serves the web interface and is the only application that migrates the metadata database.
 - The worker executes Celery tasks: asynchronous queries, alerts and reports.
 - The beat scheduler dispatches them. It is always a single unit; a second scheduler would dispatch
   every scheduled task twice, so `superset_beat` has no `units` input.
+- The optional mcp application serves MCP tool calls against the metadata database; see
+  [MCP](#mcp).
 
 **No ordering is imposed on the relations.** Only the UI initialises the metadata database, and the
-charm gates on that: the worker and the beat scheduler report
+charm gates on that: the worker, the beat scheduler and mcp report
 `waiting for the UI to initialise the database` until `ab_role` is populated, and the following
-`update-status` releases them. Terraform therefore creates the six database and cache relations in
+`update-status` releases them. Terraform therefore creates the database and cache relations in
 whatever order it likes.
 
 ## Configuration inputs
 
 Configuration reaches the applications from three places, merged in this order:
 
-1. `superset.config` - options that apply to all three, such as `feature-flags` and the Sentry and
-   SQLAlchemy pool options.
-2. `superset_ui.config`, `superset_worker.config`, `superset_beat.config` - options that apply to
-   one, such as `load-examples` (UI), `screenshot-timeout` (worker) and `log-retention-days` (beat).
+1. `superset.config` - options that apply to every application, such as `feature-flags` and the
+   Sentry and SQLAlchemy pool options.
+2. `superset_ui.config`, `superset_worker.config`, `superset_beat.config`, `superset_mcp.config` -
+   options that apply to one, such as `load-examples` (UI), `screenshot-timeout` (worker),
+   `log-retention-days` (beat) and `mcp-dev-username` (mcp).
 3. The options this module owns: `signing-keys-secret-id` and `charm-function`. Setting either in
    any of the config maps is a variable-validation error.
 
@@ -50,7 +54,7 @@ worker loads dashboards from when rendering a report screenshot. An explicit val
 
 | Secret | Content | Do you supply values? |
 |--------|---------|------------------------|
-| `superset-signing-keys` | `secret-key`, `async-queries-jwt` | **No**, random values are generated and granted to the three applications. |
+| `superset-signing-keys` | `secret-key`, `async-queries-jwt` | **No**, random values are generated and granted to the three applications, and to mcp when it is deployed. |
 
 `secret-key` signs the session cookie and encrypts the database connection passwords stored in the
 metadata database, so it has to stay the same for the lifetime of a deployment: changing it makes
@@ -101,13 +105,37 @@ The UI blocks with `OAuth requires an HTTPS ingress URL` until the ingress publi
 which is why the module integrates Traefik with self-signed-certificates. The callback the charm
 registers is `<ingress URL>/oauth-authorized/oidc`.
 
+## MCP
+
+Set `superset_mcp` to deploy the `mcp` application. Like the UI, it uses the module's PostgreSQL,
+Redis, signing-keys secret and Traefik ingress, and once `external_hostname` is set it is served at
+`<model name>-<mcp app name>.example.com`. It is also related to the SMTP relay when one is
+configured; see [Alerts and reports](#alerts-and-reports). Set `external-url` in
+`superset_mcp.config` to the UI's URL, which mcp uses as the base for the URLs it generates.
+
+Exactly one of the following must be configured. The module rejects any other combination,
+because the mcp application blocks with neither or both:
+
+- `mcp-dev-username` in `superset_mcp.config`, or in `superset.config`, which mcp inherits, runs
+  every call as that Superset user. It is meant for development: it bypasses client authentication
+  and the role check, so anyone who can reach the ingress acts as that user.
+- `mcp_oauth_external_idp_integrator_config` takes the same inputs as
+  `oauth_external_idp_integrator_config`. The module deploys a second oauth-external-idp-integrator
+  for mcp, because the integrator's `oauth` endpoint takes a single relation and the UI's instance
+  already uses it. mcp blocks with `OAuth requires an HTTPS ingress URL` until the ingress
+  publishes one.
+
+With the default Google endpoints, the OAuth client must list `<mcp ingress URL>/auth/callback`
+as an authorized redirect URI. It can be the UI's own client: pass the same `client_id` and
+`client_secret` and add that redirect URI to it.
+
 ## Alerts and reports
 
 `ALERT_REPORTS` in `feature-flags` makes the UI offer alerts and reports, the beat scheduler
-schedule them and the worker deliver them. The charm blocks all three with
+schedule them and the worker deliver them. The charm blocks every application, mcp included, with
 `ALERT_REPORTS requires an smtp relation` unless a relay is related or `report-dry-run` is set, so
-set `smtp_integrator_config` alongside the flag. The module relates the relay to all three
-applications, since the flag is checked per application.
+set `smtp_integrator_config` alongside the flag. The module relates the relay to every application,
+since the flag is checked per application.
 
 `external-url` on the worker is the link report recipients open. The worker holds no ingress
 relation and cannot learn it, so set it in `superset_worker.config` when reports are enabled.
@@ -138,8 +166,8 @@ and the hostname is what gives Traefik an address to publish the UI's HTTPS URL 
 This product module is composed entirely of charm modules; it declares no `juju_application` of its
 own.
 
-- **main.tf** - composes the three Superset applications, PostgreSQL, Redis, Traefik, TLS and the
-  optional SSO and SMTP charm modules; creates the signing-keys secret and every integration.
+- **main.tf** - composes the Superset applications, PostgreSQL, Redis, Traefik, TLS and the optional
+  SSO and SMTP charm modules; creates the signing-keys secret and every integration.
 - **variables.tf** - model UUID, per-charm configuration objects, offer-URL toggles, secret
   overrides and `external_hostname`.
 - **locals.tf** - dependency and feature toggles, the per-application config assembly and the
