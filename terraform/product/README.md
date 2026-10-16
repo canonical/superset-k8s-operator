@@ -116,8 +116,9 @@ configured; see [Alerts and reports](#alerts-and-reports). Set `external-url` in
 Exactly one of the following must be configured. The module rejects any other combination,
 because the mcp application blocks with neither or both:
 
-- `mcp-dev-username` in `superset_mcp.config` runs every call as that Superset user. It is meant
-  for development and skips the role check.
+- `mcp-dev-username` in `superset_mcp.config`, or in `superset.config`, which mcp inherits, runs
+  every call as that Superset user. It is meant for development: it bypasses client authentication
+  and the role check, so anyone who can reach the ingress acts as that user.
 - `mcp_oauth_external_idp_integrator_config` takes the same inputs as
   `oauth_external_idp_integrator_config`. The module deploys a second oauth-external-idp-integrator
   for mcp, because the integrator's `oauth` endpoint takes a single relation and the UI's instance
