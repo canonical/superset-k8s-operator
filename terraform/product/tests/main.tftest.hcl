@@ -20,6 +20,95 @@ run "setup_tests" {
   }
 }
 
+# Invalid mcp inputs fail at plan time, so none of the next five runs deploys anything.
+
+# `charm-function` is owned by the module. The dev username is set, so the reserved key is the only
+# problem.
+run "mcp_rejects_reserved_config" {
+  command = plan
+
+  variables {
+    model_uuid = run.setup_tests.model_uuid
+
+    superset_mcp = {
+      config = {
+        "charm-function"   = "worker"
+        "mcp-dev-username" = "admin"
+      }
+    }
+  }
+
+  expect_failures = [var.superset_mcp]
+}
+
+# The other half of the same validation: `signing-keys-secret-id` is owned by the module too.
+run "mcp_rejects_reserved_secret_id" {
+  command = plan
+
+  variables {
+    model_uuid = run.setup_tests.model_uuid
+
+    superset_mcp = {
+      config = {
+        "signing-keys-secret-id" = "secret:stub"
+        "mcp-dev-username"       = "admin"
+      }
+    }
+  }
+
+  expect_failures = [var.superset_mcp]
+}
+
+# mcp needs exactly one way to authenticate, and this sets none.
+run "mcp_rejects_no_authentication" {
+  command = plan
+
+  variables {
+    model_uuid   = run.setup_tests.model_uuid
+    superset_mcp = {}
+  }
+
+  expect_failures = [var.superset_mcp]
+}
+
+# mcp needs exactly one way to authenticate, and this sets two.
+run "mcp_rejects_two_authentications" {
+  command = plan
+
+  variables {
+    model_uuid = run.setup_tests.model_uuid
+
+    superset_mcp = {
+      config = {
+        "mcp-dev-username" = "admin"
+      }
+    }
+
+    mcp_oauth_external_idp_integrator_config = {
+      client_id     = "stub-client-id"
+      client_secret = "stub-client-secret"
+    }
+  }
+
+  expect_failures = [var.superset_mcp]
+}
+
+# An IdP config with no mcp application to use it is rejected rather than silently ignored.
+run "mcp_rejects_idp_config_without_mcp" {
+  command = plan
+
+  variables {
+    model_uuid = run.setup_tests.model_uuid
+
+    mcp_oauth_external_idp_integrator_config = {
+      client_id     = "stub-client-id"
+      client_secret = "stub-client-secret"
+    }
+  }
+
+  expect_failures = [var.superset_mcp]
+}
+
 run "full_deploy" {
   variables {
     model_uuid        = run.setup_tests.model_uuid
@@ -46,6 +135,11 @@ run "full_deploy" {
   assert {
     condition     = !contains(keys(output.models.superset.components), "smtp-integrator")
     error_message = "the SMTP relay was deployed without an smtp config"
+  }
+
+  assert {
+    condition     = !contains(keys(output.models.superset.components), "superset-mcp")
+    error_message = "mcp was deployed without a superset_mcp config"
   }
 }
 
@@ -211,5 +305,117 @@ run "wait_for_ui_active_with_sso" {
   assert {
     condition     = data.external.app_status.result.status == "active"
     error_message = "superset-k8s-ui did not stay active after enabling SSO: ${data.external.app_status.result.message}"
+  }
+}
+
+# Enable mcp with a fixed Superset user, so no IdP is needed. This apply sets neither SSO nor SMTP,
+# so it removes the integrator and the relay enabled by the previous run.
+run "enable_mcp" {
+  variables {
+    model_uuid        = run.setup_tests.model_uuid
+    external_hostname = "superset.test"
+
+    superset_mcp = {
+      config = {
+        "mcp-dev-username" = "admin"
+      }
+    }
+  }
+
+  assert {
+    condition     = output.models.superset.components["superset-mcp"] == "superset-k8s-mcp"
+    error_message = "mcp was not deployed when configured"
+  }
+
+  assert {
+    condition = alltrue([
+      contains(keys(juju_integration.superset_postgresql), "mcp"),
+      contains(keys(juju_integration.superset_redis), "mcp"),
+      length(juju_integration.mcp_ingress) == 1,
+      contains(juju_access_secret.signing_keys.applications, "superset-k8s-mcp"),
+    ])
+    error_message = "mcp was not related to PostgreSQL, Redis and the ingress, or not granted the signing keys"
+  }
+
+  assert {
+    condition     = length(juju_integration.mcp_oauth) == 0
+    error_message = "mcp was related to an IdP integrator without an mcp oauth config"
+  }
+}
+
+run "wait_for_mcp_active" {
+  module {
+    source = "./tests/wait_for_active"
+  }
+
+  variables {
+    model_uuid = run.setup_tests.model_uuid
+    app_name   = "superset-k8s-mcp"
+    timeout    = 900
+  }
+
+  assert {
+    condition     = data.external.app_status.result.status == "active"
+    error_message = "superset-k8s-mcp did not reach active state: ${data.external.app_status.result.message}"
+  }
+}
+
+# Switch mcp from the dev username to OAuth through its own IdP integrator, and relate it to the
+# SMTP relay as well.
+run "enable_mcp_sso_and_smtp" {
+  variables {
+    model_uuid        = run.setup_tests.model_uuid
+    external_hostname = "superset.test"
+
+    superset_mcp = {}
+
+    mcp_oauth_external_idp_integrator_config = {
+      client_id     = "stub-client-id"
+      client_secret = "stub-client-secret"
+    }
+
+    smtp_integrator_config = {
+      host               = "smtp.example.com"
+      smtp_sender        = "reports@example.com"
+      port               = 587
+      auth_type          = "plain"
+      transport_security = "starttls"
+      user               = "superset"
+      password           = "stub-smtp-password"
+    }
+  }
+
+  assert {
+    condition = alltrue([
+      output.models.superset.components["mcp-oauth-external-idp-integrator"] == "mcp-oauth-external-idp-integrator",
+      length(juju_integration.mcp_oauth) == 1,
+    ])
+    error_message = "the mcp IdP integrator was not deployed and related when configured"
+  }
+
+  assert {
+    condition = alltrue([
+      contains(keys(juju_integration.superset_smtp), "mcp"),
+      contains(juju_access_secret.smtp_password[0].applications, "superset-k8s-mcp"),
+    ])
+    error_message = "mcp was not related to the SMTP relay or not granted its password secret"
+  }
+}
+
+# Like the UI, mcp blocks with `OAuth requires an HTTPS ingress URL` until the ingress has TLS.
+run "wait_for_mcp_active_with_sso" {
+  module {
+    source = "./tests/wait_for_active"
+  }
+
+  variables {
+    model_uuid = run.setup_tests.model_uuid
+    app_name   = "superset-k8s-mcp"
+    timeout    = 1200
+  }
+
+  assert {
+    condition     = data.external.app_status.result.status == "active"
+    error_message = "superset-k8s-mcp did not reach active state with SSO: ${data.external.app_status.result.message}"
   }
 }

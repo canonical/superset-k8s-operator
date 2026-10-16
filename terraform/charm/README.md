@@ -7,16 +7,19 @@ deployment onto any Kubernetes environment managed by Juju. It models one `super
 application only. Its dependencies (PostgreSQL, Redis, ingress, TLS, SSO, SMTP) are wired up by the
 higher-level [product module](../product).
 
-## One deployment is three applications
+## One deployment is three or four applications
 
 `superset-k8s` is deployed several times over: `charm-function` splits it into `app-gunicorn` (the
-web UI), `worker` (Celery) and `beat` (the scheduler), which together make one Superset. This
-module deploys **one** of them, so a full deployment instantiates it three times with a different
-`app_name` and `charm-function`. The applications of one deployment must also name the same
-`signing-keys-secret-id`; the product module owns both of those values.
+web UI), `worker` (Celery) and `beat` (the scheduler), which together make one Superset. A fourth,
+optional function, `mcp`, serves MCP tool calls.
 
-Only the UI application initialises the metadata database. The worker and the beat scheduler wait
-in `WaitingStatus` until it has, so no ordering is imposed here: relations can be created in any
+This module deploys **one** of these applications, so a full deployment instantiates it three
+times, or four with mcp, each with its own `app_name` and `charm-function`. The applications of one
+deployment must also name the same `signing-keys-secret-id`; the product module owns both of those
+values.
+
+Only the UI application initialises the metadata database. The other applications wait in
+`WaitingStatus` until it has, so no ordering is imposed here: relations can be created in any
 order and the deployment converges.
 
 ## Module structure
@@ -42,7 +45,7 @@ order and the deployment converges.
 | `units` | `number` | `1` | Number of units. Must be at least 1. |
 
 `config` is a `map(string)` rather than a typed object: `superset-k8s` carries around thirty
-configuration options, split by which of the three applications reads them, and the product module
+configuration options, split by which of the applications reads them, and the product module
 assembles a different map per application from shared and per-role inputs.
 
 ## Outputs

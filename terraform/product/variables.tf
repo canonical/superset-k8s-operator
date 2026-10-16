@@ -22,6 +22,45 @@ variable "external_hostname" {
   default     = ""
 }
 
+variable "mcp_oauth_external_idp_integrator_charm" {
+  description = "Charm deployment configuration for the oauth-external-idp-integrator dedicated to mcp. It is separate from the UI's because the integrator's `oauth` endpoint takes a single relation."
+  type = object({
+    app_name    = optional(string, "mcp-oauth-external-idp-integrator")
+    channel     = optional(string, "latest/edge")
+    revision    = optional(number)
+    base        = optional(string, "ubuntu@22.04")
+    constraints = optional(string, "arch=amd64")
+    units       = optional(number, 1)
+  })
+  default = {}
+}
+
+variable "mcp_oauth_external_idp_integrator_config" {
+  description = <<-EOT
+    External IdP details for mcp's own authentication, served to mcp over the `oauth` relation.
+    Leave null to set `mcp-dev-username` in superset_mcp.config instead; exactly one of the two must
+    be set when superset_mcp is set, because mcp blocks with neither or both. Setting it while
+    superset_mcp is null is a variable-validation error.
+
+    With the default Google endpoints, the OAuth client must list `<mcp ingress URL>/auth/callback`
+    as an authorized redirect URI. It can be the UI's own client with that redirect URI added.
+  EOT
+  type = object({
+    issuer_url             = optional(string, "https://accounts.google.com")
+    authorization_endpoint = optional(string, "https://accounts.google.com/o/oauth2/auth")
+    token_endpoint         = optional(string, "https://oauth2.googleapis.com/token")
+    introspection_endpoint = optional(string, "https://oauth2.googleapis.com/tokeninfo")
+    userinfo_endpoint      = optional(string, "https://www.googleapis.com/oauth2/v1/userinfo")
+    jwks_endpoint          = optional(string, "https://www.googleapis.com/oauth2/v3/certs")
+    scope                  = optional(string, "openid email profile")
+    client_id              = string
+    client_secret          = string
+    jwt_access_token       = optional(bool, false)
+  })
+  default   = null
+  sensitive = true
+}
+
 variable "model_uuid" {
   description = "UUID of the Kubernetes Juju model to deploy the Superset solution into."
   type        = string
@@ -113,7 +152,7 @@ variable "self_signed_certificates" {
 
 variable "signing_keys" {
   description = <<-EOT
-    Optional overrides for the signing keys shared by the three Superset applications. When a field
+    Optional overrides for the signing keys shared by the Superset applications. When a field
     is empty a random value is generated. `secret_key` signs the session cookie and encrypts the
     database connection passwords stored in the metadata database, so it must stay the same for the
     lifetime of a deployment: set it to keep an existing deployment's connections readable.
@@ -141,8 +180,8 @@ variable "smtp_integrator_charm" {
 
 variable "smtp_integrator_config" {
   description = <<-EOT
-    Relay details for the SMTP provider the `ALERT_REPORTS` feature flag needs, served to all three
-    Superset applications over the `smtp` relation. Leave null to deploy no relay.
+    Relay details for the SMTP provider the `ALERT_REPORTS` feature flag needs, served to every
+    Superset application over the `smtp` relation. Leave null to deploy no relay.
   EOT
   type = object({
     host               = string
@@ -162,7 +201,7 @@ variable "smtp_integrator_config" {
 
 variable "superset" {
   description = <<-EOT
-    Deployment settings shared by the three Superset applications, plus the configuration options
+    Deployment settings shared by the Superset applications, plus the configuration options
     that apply to all of them. `charm-function` and `signing-keys-secret-id` are owned by this
     module and must not appear in any of the config maps.
   EOT
@@ -199,6 +238,39 @@ variable "superset_beat" {
       !contains(keys(var.superset_beat.config), "signing-keys-secret-id"),
     ])
     error_message = "superset_beat.config must not set charm-function or signing-keys-secret-id; the product derives both."
+  }
+}
+
+variable "superset_mcp" {
+  description = "Configuration for the Superset mcp application, which serves MCP tool calls against the metadata database. Leave null to deploy no mcp application. When it is set, exactly one of `mcp-dev-username` in `config` and mcp_oauth_external_idp_integrator_config must be set, because mcp blocks with neither or both."
+  type = object({
+    app_name = optional(string, "superset-k8s-mcp")
+    config   = optional(map(string), {})
+    units    = optional(number, 1)
+  })
+  default = null
+
+  validation {
+    condition = alltrue([
+      !contains(keys(try(var.superset_mcp.config, {})), "charm-function"),
+      !contains(keys(try(var.superset_mcp.config, {})), "signing-keys-secret-id"),
+    ])
+    error_message = "superset_mcp.config must not set charm-function or signing-keys-secret-id; the product derives both."
+  }
+
+  validation {
+    condition = var.superset_mcp == null || (
+      (try(var.superset_mcp.config["mcp-dev-username"], "") != "") !=
+      nonsensitive(var.mcp_oauth_external_idp_integrator_config != null)
+    )
+    error_message = "superset_mcp needs exactly one of mcp-dev-username in superset_mcp.config and mcp_oauth_external_idp_integrator_config; mcp blocks with neither or both."
+  }
+
+  # Checked here rather than on mcp_oauth_external_idp_integrator_config: that variable is already
+  # read by the validation above, and referring back to superset_mcp from it would be a cycle.
+  validation {
+    condition     = var.superset_mcp != null || !nonsensitive(var.mcp_oauth_external_idp_integrator_config != null)
+    error_message = "mcp_oauth_external_idp_integrator_config is set but superset_mcp is null, so no mcp application would be deployed to use it; set superset_mcp or drop the IdP config."
   }
 }
 
