@@ -109,6 +109,84 @@ run "mcp_rejects_idp_config_without_mcp" {
   expect_failures = [var.superset_mcp]
 }
 
+# mcp reads mcp-dev-username from superset.config too, so an inherited username counts as its
+# authentication: alone it is enough, and with an IdP config it is a conflict.
+run "mcp_inherits_dev_username" {
+  command = plan
+
+  variables {
+    model_uuid = run.setup_tests.model_uuid
+
+    superset = {
+      config = {
+        "mcp-dev-username" = "admin"
+      }
+    }
+
+    superset_mcp = {}
+  }
+
+  assert {
+    condition     = module.superset_mcp[0].application.config["mcp-dev-username"] == "admin"
+    error_message = "mcp did not inherit mcp-dev-username from superset.config"
+  }
+}
+
+run "mcp_rejects_inherited_dev_username_with_idp" {
+  command = plan
+
+  variables {
+    model_uuid = run.setup_tests.model_uuid
+
+    superset = {
+      config = {
+        "mcp-dev-username" = "admin"
+      }
+    }
+
+    superset_mcp = {}
+
+    mcp_oauth_external_idp_integrator_config = {
+      client_id     = "stub-client-id"
+      client_secret = "stub-client-secret"
+    }
+  }
+
+  expect_failures = [var.superset_mcp]
+}
+
+# An empty mcp-dev-username in superset_mcp.config overrides the inherited one, which leaves the IdP
+# as the only authentication.
+run "mcp_overrides_inherited_dev_username" {
+  command = plan
+
+  variables {
+    model_uuid = run.setup_tests.model_uuid
+
+    superset = {
+      config = {
+        "mcp-dev-username" = "admin"
+      }
+    }
+
+    superset_mcp = {
+      config = {
+        "mcp-dev-username" = ""
+      }
+    }
+
+    mcp_oauth_external_idp_integrator_config = {
+      client_id     = "stub-client-id"
+      client_secret = "stub-client-secret"
+    }
+  }
+
+  assert {
+    condition     = module.superset_mcp[0].application.config["mcp-dev-username"] == ""
+    error_message = "superset_mcp.config did not override the inherited mcp-dev-username"
+  }
+}
+
 run "full_deploy" {
   variables {
     model_uuid        = run.setup_tests.model_uuid

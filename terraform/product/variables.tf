@@ -38,9 +38,10 @@ variable "mcp_oauth_external_idp_integrator_charm" {
 variable "mcp_oauth_external_idp_integrator_config" {
   description = <<-EOT
     External IdP details for mcp's own authentication, served to mcp over the `oauth` relation.
-    Leave null to set `mcp-dev-username` in superset_mcp.config instead; exactly one of the two must
-    be set when superset_mcp is set, because mcp blocks with neither or both. Setting it while
-    superset_mcp is null is a variable-validation error.
+    Leave null to set `mcp-dev-username` instead, in superset_mcp.config or in superset.config,
+    which mcp inherits. Exactly one of the two must be set when superset_mcp is set, because mcp
+    blocks with neither or both. Setting this while superset_mcp is null is a variable-validation
+    error.
 
     With the default Google endpoints, the OAuth client must list `<mcp ingress URL>/auth/callback`
     as an authorized redirect URI. It can be the UI's own client with that redirect URI added.
@@ -242,7 +243,7 @@ variable "superset_beat" {
 }
 
 variable "superset_mcp" {
-  description = "Configuration for the Superset mcp application, which serves MCP tool calls against the metadata database. Leave null to deploy no mcp application. When it is set, exactly one of `mcp-dev-username` in `config` and mcp_oauth_external_idp_integrator_config must be set, because mcp blocks with neither or both."
+  description = "Configuration for the Superset mcp application, which serves MCP tool calls against the metadata database. Leave null to deploy no mcp application. When it is set, exactly one of `mcp-dev-username` (in `config`, or inherited from `superset.config`) and mcp_oauth_external_idp_integrator_config must be set, because mcp blocks with neither or both."
   type = object({
     app_name = optional(string, "superset-k8s-mcp")
     config   = optional(map(string), {})
@@ -260,10 +261,10 @@ variable "superset_mcp" {
 
   validation {
     condition = var.superset_mcp == null || (
-      (try(var.superset_mcp.config["mcp-dev-username"], "") != "") !=
+      (try(merge(var.superset.config, var.superset_mcp.config)["mcp-dev-username"], "") != "") !=
       nonsensitive(var.mcp_oauth_external_idp_integrator_config != null)
     )
-    error_message = "superset_mcp needs exactly one of mcp-dev-username in superset_mcp.config and mcp_oauth_external_idp_integrator_config; mcp blocks with neither or both."
+    error_message = "superset_mcp needs exactly one of mcp-dev-username (in superset_mcp.config, or inherited from superset.config) and mcp_oauth_external_idp_integrator_config; mcp blocks with neither or both."
   }
 
   # Checked here rather than on mcp_oauth_external_idp_integrator_config: that variable is already

@@ -28,9 +28,13 @@ superset_worker = {
 
 superset_mcp = {
   config = {
-    "external-url"     = "https://superset-superset-k8s-ui.example.com"
-    "mcp-dev-username" = "admin"
+    "external-url" = "https://superset-superset-k8s-ui.example.com"
   }
+}
+
+mcp_oauth_external_idp_integrator_config = {
+  client_id     = "changeme"
+  client_secret = "changeme"
 }
 
 smtp_integrator_config = {
