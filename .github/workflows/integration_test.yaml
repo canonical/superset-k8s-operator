@@ -16,6 +16,7 @@ jobs:
       contents: read
       packages: write
     with:
+      extra-ignored-file-patterns: '^apm\.yml$|^apm\.lock\.yaml$|^\.agents/|^\.github/instructions/'
       test-timeout: 90
       provider: "k8s"
       channel: "1.32-classic/stable"
