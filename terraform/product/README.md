@@ -158,8 +158,10 @@ TF_VAR_k8s_cloud_name=microk8s TF_VAR_k8s_credential_name=microk8s \
   TF_VAR_k8s_workload_storage=microk8s-hostpath terraform test
 ```
 
-The tests set `external_hostname = "superset.test"`. The CI cluster hands out no LoadBalancer IPs,
-and the hostname is what gives Traefik an address to publish the UI's HTTPS URL at.
+The tests set `external_hostname = "superset.test"`, the hostname Traefik publishes the UI's HTTPS
+URL at. Traefik stays in `waiting` until its LoadBalancer service gets an address, so the CI
+workflow gives the cluster an address pool, and a local cluster needs a LoadBalancer provider too or
+the Traefik check times out.
 
 ## Module structure
 
