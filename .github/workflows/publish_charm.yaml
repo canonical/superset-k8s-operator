@@ -5,6 +5,14 @@ on:
     branches:
       - main
       - track/*
+    # Keep in sync with extra-ignored-file-patterns in integration_test.yaml:
+    # integration tests skip these changes, so there is no build to publish.
+    paths-ignore:
+      - apm.yml
+      - apm.lock.yaml
+      - .agents/**
+      - .github/agents/**
+      - .github/instructions/**
 
 jobs:
   publish:
