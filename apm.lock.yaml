@@ -1,6 +1,6 @@
 lockfile_version: '1'
-generated_at: '2026-10-19T09:19:55.481097+00:00'
-apm_version: 0.33.0
+generated_at: '2026-10-26T09:21:54.600470+00:00'
+apm_version: 0.35.0
 dependencies:
 - repo_url: canonical/canonical-data-mesh-docs
   name: data-mesh-guidelines
@@ -145,15 +145,10 @@ dependencies:
   resolved_by: canonical/canonical-data-mesh-docs
   package_type: claude_skill
   deployed_files:
-  - .agents/skills/secret-guard
-  - .agents/skills/secret-guard/SKILL.md
-  - .agents/skills/secret-guard/scripts/keyring_broker.py
   - .claude/skills/secret-guard
   - .claude/skills/secret-guard/SKILL.md
   - .claude/skills/secret-guard/scripts/keyring_broker.py
   deployed_file_hashes:
-    .agents/skills/secret-guard/SKILL.md: sha256:24296f4fa5fc1399bffc9ab4e5927950971715cde1df15d1f64eeae2c8151ca6
-    .agents/skills/secret-guard/scripts/keyring_broker.py: sha256:397edfa9a6ca91add7ed8947d111705a79c15515f1b5bf62941adfa5a83781db
     .claude/skills/secret-guard/SKILL.md: sha256:24296f4fa5fc1399bffc9ab4e5927950971715cde1df15d1f64eeae2c8151ca6
     .claude/skills/secret-guard/scripts/keyring_broker.py: sha256:397edfa9a6ca91add7ed8947d111705a79c15515f1b5bf62941adfa5a83781db
   content_hash: sha256:d7028075a6bb278ed05d57cb1a70c88cf49c779ac34ff845009215ef855e7daa
@@ -497,33 +492,6 @@ deployments:
   - microsoft/apm/packages/apm-guide
   active_owner: microsoft/apm/packages/apm-guide
   content_hash: sha256:b38359a5bf58a9448be0b4e204a1cf6f3e73c1bd832bcffc792f9f3d245cdf39
-- kind: project-relative
-  target: codex
-  value: .agents/skills/secret-guard
-  runtime: null
-  scope: project
-  owners:
-  - canonical/copilot-collections/skills/secret-guard
-  active_owner: canonical/copilot-collections/skills/secret-guard
-  content_hash: null
-- kind: project-relative
-  target: codex
-  value: .agents/skills/secret-guard/SKILL.md
-  runtime: null
-  scope: project
-  owners:
-  - canonical/copilot-collections/skills/secret-guard
-  active_owner: canonical/copilot-collections/skills/secret-guard
-  content_hash: sha256:24296f4fa5fc1399bffc9ab4e5927950971715cde1df15d1f64eeae2c8151ca6
-- kind: project-relative
-  target: codex
-  value: .agents/skills/secret-guard/scripts/keyring_broker.py
-  runtime: null
-  scope: project
-  owners:
-  - canonical/copilot-collections/skills/secret-guard
-  active_owner: canonical/copilot-collections/skills/secret-guard
-  content_hash: sha256:397edfa9a6ca91add7ed8947d111705a79c15515f1b5bf62941adfa5a83781db
 - kind: project-relative
   target: codex
   value: .codex/agents/apm-expert.toml
