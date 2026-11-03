@@ -6,7 +6,7 @@ fastmcp==3.4.4
 # Built from source against Ubuntu's libpq: psycopg2-binary bundles its own
 # OpenSSL, PCRE and Cyrus SASL builds from CentOS 7.
 psycopg2==2.9.13
-Authlib==1.6.12
+Authlib==1.9.1
 elasticsearch-dbapi>=0.2.7,<0.3.0
 trino==0.327.0
 mysqlclient==2.1.1
