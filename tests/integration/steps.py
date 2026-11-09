@@ -363,7 +363,7 @@ def deploy_dependencies(juju: jubilant.Juju) -> None:
     Args:
         juju: Jubilant object.
     """
-    juju.deploy(POSTGRES_NAME, channel=POSTGRES_CHANNEL, trust=True)
+    juju.deploy(POSTGRES_NAME, channel=POSTGRES_CHANNEL, trust=True, force=True)
     juju.deploy(REDIS_NAME, channel=REDIS_CHANNEL, trust=True)
     wait_for_active(juju, [POSTGRES_NAME, REDIS_NAME], timeout=DEPLOY_TIMEOUT)
 

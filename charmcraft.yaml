@@ -33,6 +33,9 @@ links:
     - https://github.com/canonical/superset-k8s-operator/issues
   contact: Business Data <business-data@groups.canonical.com>
 
+assumes:
+  - k8s-api
+  - juju >= 3.6
 base: ubuntu@22.04
 platforms:
   amd64:
