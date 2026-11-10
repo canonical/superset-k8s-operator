@@ -1,0 +1,14 @@
+name: Team Review
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  re-request:
+    uses: canonical/cs-github-actions/.github/workflows/re-request-team-review.yaml@feat/re-request-team-review
+    with:
+      team-slug: "commercial-systems-data-lake"
+      required-approvals: 2
+    permissions:
+      pull-requests: write
