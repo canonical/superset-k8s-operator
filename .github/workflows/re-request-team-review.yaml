@@ -1,0 +1,14 @@
+name: Team Review
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  re-request:
+    uses: canonical/canonical-data-mesh-docs/.github/workflows/re-request-team-review.yml@ci/add-re-request-team-review
+    with:
+      team-slug: "commercial-systems-data-lake"
+      required-approvals: 2
+    permissions:
+      pull-requests: write
