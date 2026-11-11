@@ -363,7 +363,13 @@ def deploy_dependencies(juju: jubilant.Juju) -> None:
     Args:
         juju: Jubilant object.
     """
-    juju.deploy(POSTGRES_NAME, channel=POSTGRES_CHANNEL, trust=True, force=True)
+    # postgresql-k8s declares `assumes: juju < 4`; Juju 4 needs --force.
+    force = juju.version().major == 4
+    if force:
+        logger.warning("Deploying PostgreSQL with --force on Juju 4")
+    juju.deploy(
+        POSTGRES_NAME, channel=POSTGRES_CHANNEL, trust=True, force=force
+    )
     juju.deploy(REDIS_NAME, channel=REDIS_CHANNEL, trust=True)
     wait_for_active(juju, [POSTGRES_NAME, REDIS_NAME], timeout=DEPLOY_TIMEOUT)
 

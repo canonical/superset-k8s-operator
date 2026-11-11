@@ -1,0 +1,45 @@
+name: Weekly integration tests (Juju 4)
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  schedule:
+    - cron: "0 3 * * 2"
+  workflow_dispatch:
+
+jobs:
+  integration-tests:
+    name: Integration tests (juju 4/stable)
+    uses: canonical/operator-workflows/.github/workflows/integration_test.yaml@main
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write
+    with:
+      runs-on: "self-hosted-linux-amd64-noble-xlarge"
+      test-timeout: 90
+      provider: "k8s"
+      channel: "1.32-classic/stable"
+      use-canonical-k8s: true
+      upload-image: "artifact"
+      pre-run-script: .github/scripts/setup-artifact-import.sh
+      extra-arguments: |
+        --kube-config=~/.kube/config
+      juju-channel: "4/stable"
+      trivy-severity-config: CRITICAL
+      modules: >-
+        ["test_deployment.py",
+        "test_lifecycle.py",
+        "test_scaling.py",
+        "test_relation_order.py",
+        "test_upgrades.py",
+        "test_oauth.py",
+        "test_smtp.py",
+        "test_reports.py",
+        "test_trino_catalog.py",
+        "test_observability.py",
+        "test_mcp.py",
+        "test_mcp_auth.py"]
+      with-uv: true
