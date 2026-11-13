@@ -319,6 +319,13 @@ The [`superset_rock`](./superset_rock/) directory contains the [`rockcraft.yaml`
 
 Depending on the changes introduced with the new version of Superset, we may need to update certain aspects of the Superset charm, such as adding/removing feature flags or updating dependencies such as Redis. An example of this can be found [here](https://github.com/canonical/superset-k8s-operator/pull/64/changes).
 
+### MCP preview guard audit
+When upgrading Superset versions, audit `superset/mcp_service/` in upstream:
+- Check for newly added chart or preview tools accepting `preview_formats`.
+- Update `GUARDED_TOOLS` in `templates/mcp_preview_guard.py` if new tools were introduced.
+- Verify that `get_chart_data`, `get_chart_preview`, and any new data-only extraction tools remain in `MCP_DISABLED_TOOLS` inside `templates/superset_config.py`.
+- Set `fastmcp` in the `mcp-templates` tox env to the version the rock ships.
+
 ## Create new track on Charmhub
 
 If a channel for the new version does not exist on Charmhub, you must request for it to be created. This can be done by creating a new topic on [Discourse](https://discourse.charmhub.io/) requesting the creation of such tracks. In this case, you should request the creation of channels `6/edge` and `6/stable`.

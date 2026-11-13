@@ -506,6 +506,22 @@ if os.getenv("CHARM_FUNCTION") == "mcp":
 
         _mcp_auth_module.get_user_from_request = get_user_from_request_with_jwt
 
+    # Attach the preview guard (FastMCP middleware) to every MCP server, restricting chart previews to links.
+    mcp_restrict_data_previews = (
+        os.getenv("MCP_RESTRICT_CHART_DATA_PREVIEWS", "false").lower() == "true"
+    )
+    if mcp_restrict_data_previews:
+        import superset.mcp_service.server as _mcp_server_module
+        import mcp_preview_guard
+
+        mcp_preview_guard.attach_to(_mcp_server_module)
+
+        # These two exist to return rows; there is no link-only mode to
+        # restrict them to.
+        MCP_DISABLED_TOOLS = globals().get("MCP_DISABLED_TOOLS", set()) | {
+            "get_chart_data",
+            "get_chart_preview",
+        }
 
 def FLASK_APP_MUTATOR(app):
     """Override the Flask app dynamically."""

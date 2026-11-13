@@ -97,6 +97,7 @@ WANT_ENVIRONMENT = {
     "MCP_DISABLED_TOOLS": None,
     "MCP_DEV_USERNAME": None,
     "MCP_RBAC_ENABLED": True,
+    "MCP_RESTRICT_CHART_DATA_PREVIEWS": False,
 }
 
 
@@ -659,6 +660,22 @@ def test_mcp_auth_client_registration_populates_environment(ctx):
 
     environment = superset_environment(state_out)
     assert environment["MCP_AUTH_CLIENT_REGISTRATION"] == "false"
+
+
+def test_mcp_restrict_chart_data_previews_populates_environment(ctx):
+    """mcp-restrict-chart-data-previews reaches the workload as configured."""
+    state_in = build_state(
+        config={
+            "charm-function": "mcp",
+            "mcp-dev-username": "admin",
+            "mcp-restrict-chart-data-previews": True,
+        }
+    )
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    environment = superset_environment(state_out)
+    assert environment["MCP_RESTRICT_CHART_DATA_PREVIEWS"] is True
 
 
 def test_invalid_default_role(ctx):

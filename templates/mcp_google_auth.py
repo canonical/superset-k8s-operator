@@ -80,7 +80,7 @@ from key_value.aio.protocols import AsyncKeyValue
 
 if TYPE_CHECKING:
     # Not imported at runtime: flask isn't a dependency of the isolated
-    # google-auth-proxy tox env this module is tested in (see tox.ini) —
+    # mcp-templates tox env this module is tested in (see tox.ini) —
     # only Superset's own workload container has it.
     from flask import Flask
 
