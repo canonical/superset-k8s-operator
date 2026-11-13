@@ -573,6 +573,21 @@ config:
         relation: the application blocks if neither is set, and if both are.
       type: string
 
+    mcp-restrict-chart-data-previews:
+      description: |
+        Restrict MCP chart tools (generate_chart, update_chart, and
+        update_chart_preview) to URL links into Superset, preventing
+        inline table, ASCII, or Vega-Lite data previews. Preview data keys
+        are also removed from every other MCP tool's response.
+        get_chart_data and get_chart_preview are disabled. In environments
+        with sensitive data, this allows utilizing non-data charting features
+        without exposing warehouse records in chat conversations. Other data-
+        returning tools (e.g. execute_sql) must be disabled separately via
+        mcp-disabled-tools.
+
+        Applies to: the mcp application.
+      default: false
+      type: boolean
 actions:
   restart:
     description: Restart the application server.

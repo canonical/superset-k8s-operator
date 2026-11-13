@@ -211,7 +211,9 @@ class TestConnectArgs(unittest.TestCase):
 
     def test_defaults_to_the_kyuubi_thrift_binary_port(self):
         """A URL with no port defaults to Kyuubi's thrift binary port."""
-        kwargs = self._connect_kwargs("hive+tls://admin:secret@kyuubi-0/default")
+        kwargs = self._connect_kwargs(
+            "hive+tls://admin:secret@kyuubi-0/default"
+        )
         self.assertEqual(kwargs["thrift_transport"].transport.port, 10009)
 
     def test_thrift_hostname_check_is_bypassed(self):
@@ -237,7 +239,9 @@ class TestConnectArgs(unittest.TestCase):
 
     def test_sasl_password_placeholder_when_absent(self):
         """A missing password is replaced with the PLAIN mechanism placeholder."""
-        kwargs = self._connect_kwargs("hive+tls://admin@kyuubi-0:10009/default")
+        kwargs = self._connect_kwargs(
+            "hive+tls://admin@kyuubi-0:10009/default"
+        )
         sasl_args = kwargs["thrift_transport"].sasl_factory()
         self.assertEqual(sasl_args["password"], "x")
 
