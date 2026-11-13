@@ -47,6 +47,7 @@ CONFIG_FILES = [
     "hive_tls.py",
     "mcp_jwt_identity.py",
     "mcp_google_auth.py",
+    "mcp_preview_guard.py",
 ]
 CONFIG_PATH = "/app/pythonpath"
 UI_FUNCTION = "app-gunicorn"

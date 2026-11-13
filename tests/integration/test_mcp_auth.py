@@ -292,3 +292,42 @@ def test_mcp_rejects_an_unverifiable_token_under_a_google_provider(
 
     with then("the call is rejected before it reaches any tool"):
         assert response.status_code == 401, response.text
+
+
+def test_mcp_oauth_is_untouched_by_the_preview_guard(
+    mcp_with_oauth_over_https: jubilant.Juju,
+):
+    """Scenario: the chart preview guard leaves OAuth alone.
+
+    Given mcp fronting a Google-shaped oauth relation with its own proxy
+    When mcp-restrict-chart-data-previews is true
+    Then mcp still exposes its OAuth authorization server metadata
+    And a call with no bearer token is still rejected
+    """
+    juju = mcp_with_oauth_over_https
+    url = steps.get_unit_url(juju, steps.MCP_NAME, port=MCP_PORT)
+    config_key = "mcp-restrict-chart-data-previews"
+
+    with given(
+        "mcp fronting a Google-shaped oauth relation with its own proxy"
+    ):
+        steps.assert_active(juju, [steps.MCP_NAME])
+
+    try:
+        with when(f"{config_key} is true"):
+            steps.set_config(juju, [steps.MCP_NAME], {config_key: True})
+
+        with then("mcp still exposes its OAuth authorization server metadata"):
+            response = requests.get(
+                f"{url}/.well-known/oauth-authorization-server", timeout=10
+            )
+            assert response.status_code == 200, response.text
+
+        with and_("a call with no bearer token is still rejected"):
+            response = _call_tool(f"{url}/mcp", None)
+            assert response.status_code == 401, response.text
+    finally:
+        juju.config(steps.MCP_NAME, reset=config_key)
+        steps.wait_for_active(
+            juju, [steps.MCP_NAME], timeout=steps.SETTLE_TIMEOUT
+        )

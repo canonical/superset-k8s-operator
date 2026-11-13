@@ -12,13 +12,16 @@ and refuses to run.
 
 It also exercises the `MCP_DISABLED_TOOLS` rock patch (39835): a tool named
 in `mcp-disabled-tools` must be actually removed from the running FastMCP
-server, not merely rejected at the API layer.
+server, not merely rejected at the API layer. And `mcp-restrict-chart-data-
+previews`: chart tools must return a link, never rows.
 """
 
 import json
 import logging
 import re
+import uuid
 from pathlib import Path
+from typing import Any
 
 import jubilant
 import pytest
@@ -203,6 +206,123 @@ def _wait_for_tool_error(
     return outcome["text"]
 
 
+def _preview_formats_props(node: Any):
+    """Yield every `preview_formats` property schema under `node`.
+
+    Args:
+        node: A JSON schema, or part of one.
+
+    Yields:
+        Each `preview_formats` property schema found.
+    """
+    if isinstance(node, list):
+        for item in node:
+            yield from _preview_formats_props(item)
+    elif isinstance(node, dict):
+        props = node.get("properties")
+        if isinstance(props, dict) and "preview_formats" in props:
+            yield props["preview_formats"]
+        for value in node.values():
+            yield from _preview_formats_props(value)
+
+
+def _list_tools(url: str) -> list[dict]:
+    """List tools available over the MCP endpoint.
+
+    Args:
+        url: The MCP endpoint URL.
+
+    Returns:
+        List of tool descriptors from tools/list.
+    """
+    response = requests.post(
+        url,
+        json={
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/list",
+            "params": {},
+        },
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",
+        },
+        timeout=30,
+    )
+    response.raise_for_status()
+    result = None
+    for line in response.text.splitlines():
+        if line.startswith("data:"):
+            data = json.loads(line.removeprefix("data:"))
+            if "result" in data:
+                result = data
+    parsed = result if result is not None else response.json()
+    return parsed.get("result", {}).get("tools", [])
+
+
+def _assert_preview_formats_url_only(url: str) -> None:
+    """Assert tools and search results advertise only url for preview_formats.
+
+    Verifies:
+    1. tools/list: any tool inputSchema defining preview_formats restricts
+       its enum and default to ["url"] without naming the hidden formats.
+    2. search_tools: search results do not name the hidden formats either.
+
+    Args:
+        url: The MCP endpoint.
+    """
+    tools = _list_tools(url)
+    props = list(_preview_formats_props(tools))
+    for prop in props:
+        assert prop["items"]["enum"] == ["url"], prop
+        assert prop["default"] == ["url"], prop
+        rendered = json.dumps(prop).lower()
+        for banned in ("ascii", "vega_lite", "removed", "disabled"):
+            assert banned not in rendered, prop
+
+    result = _call_tool(url, "search_tools", {"query": "preview formats"})
+    search_results = json.loads(_tool_text(result))
+    guarded = {"generate_chart", "update_chart", "update_chart_preview"}
+    for item in search_results:
+        if item.get("name") in guarded:
+            desc = item.get("description", "").lower()
+            for banned in ("ascii", "vega_lite", "removed", "disabled"):
+                assert banned not in desc, (item.get("name"), desc)
+
+
+def _table_chart_request(juju: jubilant.Juju) -> tuple[int, dict]:
+    """Create a dataset and build a generate_chart call asking for rows.
+
+    Args:
+        juju: Jubilant object.
+
+    Returns:
+        A chart id and the call_tool arguments.
+    """
+    session, api_url = steps.api_session(juju)
+    environment = steps.workload_environment(juju, f"{steps.UI_NAME}/0")
+    _, dataset_id, chart_id = steps.create_metadata_backed_chart(
+        session, api_url, environment, f"test-preview-{uuid.uuid4().hex[:8]}"
+    )
+    request = {
+        "dataset_id": dataset_id,
+        # Superset only builds a url preview for a saved chart.
+        "save_chart": True,
+        "config": {
+            "chart_type": "table",
+            "columns": [
+                {"name": "username"},
+                {"name": "id", "aggregate": "COUNT"},
+            ],
+        },
+        "preview_formats": ["table"],
+    }
+    return chart_id, {
+        "name": "generate_chart",
+        "arguments": {"request": request},
+    }
+
+
 @pytest.fixture(scope="module")
 def mcp_without_auth(
     request: pytest.FixtureRequest,
@@ -343,6 +463,87 @@ def test_mcp_disabled_tools_removes_the_configured_tool(
             assert error_id in tail, tail
     finally:
         juju.config(steps.MCP_NAME, reset="mcp-disabled-tools")
+        steps.wait_for_active(
+            juju, [steps.MCP_NAME], timeout=steps.SETTLE_TIMEOUT
+        )
+
+
+def test_mcp_restrict_chart_data_previews_restricts_previews_to_url(
+    mcp_without_auth: jubilant.Juju,
+):
+    """Scenario: mcp-restrict-chart-data-previews limits previews to a link.
+
+    Given mcp is active and a chart exists
+    And generate_chart returns the chart's rows in a table preview
+    When mcp-restrict-chart-data-previews is set to true
+    Then the same request returns only a preview link, with no rows
+    And the workload log says previews were restricted to url
+    And get_chart_data is no longer available
+    And tool listings and search offer no preview format except url
+    """
+    juju = mcp_without_auth
+    config_key = "mcp-restrict-chart-data-previews"
+
+    with given("mcp is active and a chart exists"):
+        # This scenario must not depend on test ordering: when it runs
+        # alone (-k), nothing else has set the dev username or waited for
+        # the unit to publish an address.
+        steps.set_config(
+            juju, [steps.MCP_NAME], {"mcp-dev-username": MCP_DEV_USERNAME}
+        )
+        steps.wait_for_active(
+            juju, [steps.MCP_NAME], timeout=steps.DEPLOY_TIMEOUT
+        )
+        url = f"{steps.get_unit_url(juju, steps.MCP_NAME, port=MCP_PORT)}/mcp"
+        unit = f"{steps.MCP_NAME}/0"
+        chart_id, chart_call = _table_chart_request(juju)
+
+    with and_("generate_chart returns the chart's rows in a table preview"):
+        text = _tool_text(_call_tool(url, "call_tool", chart_call))
+        previews = json.loads(text).get("previews", {})
+        assert "table_data" in previews.get("table", {}), previews
+
+    try:
+        with when(f"{config_key} is set to true"):
+            steps.set_config(juju, [steps.MCP_NAME], {config_key: True})
+
+        with then(
+            "the same request returns only a preview link, with no rows"
+        ):
+            text = _tool_text(_call_tool(url, "call_tool", chart_call))
+            previews = json.loads(text).get("previews", {})
+            assert list(previews) == ["url"], previews
+            assert "preview_url" in previews["url"], previews
+            for key in ("table_data", "ascii_chart", "ascii_content"):
+                assert key not in text, text
+
+        with and_("the workload log says previews were restricted to url"):
+            _, log = steps.read_workload_file(juju, unit, LOG_FILE)
+            tail = "\n".join(log.splitlines()[-200:])
+            assert "restricted preview_formats to url" in tail, tail
+
+        with and_("get_chart_data is no longer available"):
+            text = _wait_for_tool_error(
+                juju,
+                url,
+                "get_chart_data",
+                {"request": {"identifier": chart_id}},
+            )
+            match = re.search(r"Error ID: (err_\S+)\.", text)
+            assert match, text
+            error_id = match.group(1)
+            _, log = steps.read_workload_file(juju, unit, LOG_FILE)
+            tail = "\n".join(log.splitlines()[-200:])
+            assert "error_type=NotFoundError" in tail, tail
+            assert "Unknown tool: 'get_chart_data'" in tail, tail
+            assert error_id in tail, tail
+
+        with and_(
+            "tool listings and search offer no preview format except url"
+        ):
+            _assert_preview_formats_url_only(url)
+    finally:
+        juju.config(steps.MCP_NAME, reset=config_key)
         steps.wait_for_active(
             juju, [steps.MCP_NAME], timeout=steps.SETTLE_TIMEOUT
         )
