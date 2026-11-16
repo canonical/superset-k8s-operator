@@ -23,11 +23,25 @@ Defences, outermost first:
 import functools
 import json
 import logging
-from typing import Any, Iterable, Sequence
+import types
+from typing import Any, Callable, ParamSpec, Sequence
 
+import mcp.types as mt
+from fastmcp import FastMCP
 from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
+from fastmcp.tools import Tool, ToolResult
 
 logger = logging.getLogger(__name__)
+
+# A JSON value as FastMCP hands it over: tool arguments, result content
+# and tool schemas. FastMCP itself types these as `dict[str, Any]`
+# (`CallToolRequestParams.arguments`, `ToolResult.structured_content`,
+# `Tool.parameters`), since they hold whatever the client or the tool
+# sent. A precise recursive JSON type would need a cast at every
+# boundary with FastMCP.
+FastMcpJson = Any
+
+P = ParamSpec("P")
 
 # The chart tools whose request payload carries preview_formats.
 # Upstream Superset 6.1.0 defines preview_formats only on these three
@@ -71,8 +85,8 @@ ATTACHED_MARKER = "_superset_preview_guard_attached"
 
 
 def restrict_arguments(
-    tool_name: str, arguments: dict[str, Any] | None
-) -> tuple[dict[str, Any] | None, bool]:
+    tool_name: str, arguments: dict[str, FastMcpJson] | None
+) -> tuple[dict[str, FastMcpJson] | None, bool]:
     """Restrict `request.preview_formats` to `["url"]` for guarded tools.
     Handles `request` as a dict or a JSON string (parse-request mode and
     the tool-search proxy). A top-level `preview_formats` is ignored: the
@@ -97,7 +111,9 @@ def restrict_arguments(
     return restricted, True
 
 
-def _restrict_request_object(request: Any) -> tuple[Any, bool]:
+def _restrict_request_object(
+    request: FastMcpJson,
+) -> tuple[FastMcpJson, bool]:
     """Set `preview_formats` on a dict request; non-dicts pass through."""
     if not isinstance(request, dict):
         return request, False
@@ -131,7 +147,7 @@ def _restrict_request_text(request: str) -> tuple[str, bool]:
 
 
 def _client_supplied_preview_formats(
-    arguments: dict[str, Any] | None,
+    arguments: dict[str, FastMcpJson] | None,
 ) -> bool:
     """Whether the caller set `preview_formats` itself (for logging)."""
     request = (arguments or {}).get(REQUEST_ARG)
@@ -143,7 +159,7 @@ def _client_supplied_preview_formats(
     return isinstance(request, dict) and PREVIEW_FORMATS_ARG in request
 
 
-def sanitize_result(obj: Any) -> tuple[Any, list[str]]:
+def sanitize_result(obj: FastMcpJson) -> tuple[FastMcpJson, list[str]]:
     """Remove data keys and sanitize embedded guarded-tool schemas.
 
     Returns:
@@ -171,8 +187,8 @@ def sanitize_json_text(text: str) -> tuple[str, list[str]]:
 
 
 def sanitize_tool_schema(
-    tool_name: str, schema: dict[str, Any]
-) -> dict[str, Any]:
+    tool_name: str, schema: dict[str, FastMcpJson]
+) -> dict[str, FastMcpJson]:
     """Return a guarded tool's input schema sanitized to only offer `url`.
 
     Follows `properties`, `$defs`, `anyOf`/`oneOf`/`allOf` and `items`,
@@ -183,7 +199,7 @@ def sanitize_tool_schema(
     return _sanitize_schema_node(schema)
 
 
-def _sanitize_node(node: Any, removed: list[str]) -> Any:
+def _sanitize_node(node: FastMcpJson, removed: list[str]) -> FastMcpJson:
     """Recursive worker for `sanitize_result()`; appends to `removed`."""
     if isinstance(node, list):
         return [_sanitize_node(item, removed) for item in node]
@@ -193,14 +209,14 @@ def _sanitize_node(node: Any, removed: list[str]) -> Any:
     name = node.get("name")
     describes_guarded_tool = isinstance(name, str) and name in GUARDED_TOOLS
 
-    cleaned: dict[Any, Any] = {}
+    cleaned: dict[str, FastMcpJson] = {}
     for key, value in node.items():
         if key in DATA_RESULT_KEYS:
             removed.append(str(key))
             continue
 
         if key == PREVIEWS_KEY and isinstance(value, dict):
-            kept: dict[Any, Any] = {}
+            kept: dict[str, FastMcpJson] = {}
             for fmt, preview in value.items():
                 if fmt != PREVIEW_FORMAT_URL:
                     removed.append(f"{PREVIEWS_KEY}.{fmt}")
@@ -221,7 +237,7 @@ def _sanitize_node(node: Any, removed: list[str]) -> Any:
     return cleaned
 
 
-def _is_preview_format_enum(values: Any) -> bool:
+def _is_preview_format_enum(values: FastMcpJson) -> bool:
     """Whether `values` is a preview-format enum.
 
     Strict match, since unrelated enums (e.g. `viz_type`) contain `table`.
@@ -236,7 +252,7 @@ def _is_preview_format_enum(values: Any) -> bool:
     )
 
 
-def _url_only(value: Any) -> Any:
+def _url_only(value: FastMcpJson) -> FastMcpJson:
     """Map a preview-format default to its url-only equivalent."""
     if isinstance(value, list):
         return list(ALLOWED_PREVIEW_FORMATS)
@@ -245,9 +261,11 @@ def _url_only(value: Any) -> Any:
     return value
 
 
-def _url_only_preview_formats_schema(original: Any) -> dict[str, Any]:
+def _url_only_preview_formats_schema(
+    original: FastMcpJson,
+) -> dict[str, FastMcpJson]:
     """Replacement schema for the `preview_formats` property: `["url"]`."""
-    url_only: dict[str, Any] = {
+    url_only: dict[str, FastMcpJson] = {
         "type": "array",
         "items": {
             "type": "string",
@@ -262,7 +280,7 @@ def _url_only_preview_formats_schema(original: Any) -> dict[str, Any]:
     return url_only
 
 
-def _sanitize_schema_node(node: Any) -> Any:
+def _sanitize_schema_node(node: FastMcpJson) -> FastMcpJson:
     """Recursive worker for `sanitize_tool_schema()`."""
     if isinstance(node, list):
         return [_sanitize_schema_node(item) for item in node]
@@ -276,7 +294,7 @@ def _sanitize_schema_node(node: Any) -> Any:
         items.get("enum") if isinstance(items, dict) else None
     )
 
-    sanitized: dict[Any, Any] = {}
+    sanitized: dict[str, FastMcpJson] = {}
     for key, value in node.items():
         if key == "properties" and isinstance(value, dict):
             sanitized[key] = {
@@ -295,7 +313,9 @@ def _sanitize_schema_node(node: Any) -> Any:
     return sanitized
 
 
-def _sanitize_preview_format_node(node: dict[str, Any]) -> dict[str, Any]:
+def _sanitize_preview_format_node(
+    node: dict[str, FastMcpJson],
+) -> dict[str, FastMcpJson]:
     """Restrict a recognised preview-format enum node to `url`."""
     sanitized = dict(node)
     if "enum" in sanitized:
@@ -310,44 +330,36 @@ def _sanitize_preview_format_node(node: dict[str, Any]) -> dict[str, Any]:
     return sanitized
 
 
-def sanitize_tool_result(tool_name: str, result: Any) -> Any:
+def sanitize_tool_result(tool_name: str, result: ToolResult) -> ToolResult:
     """Sanitize a ToolResult's structured content, meta and JSON text blocks.
 
     Returns a copy, or the original when nothing changed.
     """
-    if not hasattr(result, "model_copy"):
-        return result
-
     removed: list[str] = []
-    updates: dict[str, Any] = {}
+    updates: dict[str, object] = {}
 
     for field in ("structured_content", "meta"):
-        value = getattr(result, field, None)
-        if not isinstance(value, dict):
+        value = getattr(result, field)
+        if value is None:
             continue
         cleaned, keys = sanitize_result(value)
         if cleaned != value:
             updates[field] = cleaned
             removed.extend(keys)
 
-    content = getattr(result, "content", None)
-    if isinstance(content, (list, tuple)):
-        blocks = []
-        changed = False
-        for block in content:
-            text = getattr(block, "text", None)
-            if isinstance(text, str):
-                cleaned_text, keys = sanitize_json_text(text)
-                if cleaned_text != text:
-                    changed = True
-                    removed.extend(keys)
-                    blocks.append(
-                        block.model_copy(update={"text": cleaned_text})
-                    )
-                    continue
-            blocks.append(block)
-        if changed:
-            updates["content"] = blocks
+    blocks: list[mt.ContentBlock] = []
+    changed = False
+    for block in result.content:
+        if isinstance(block, mt.TextContent):
+            cleaned_text, keys = sanitize_json_text(block.text)
+            if cleaned_text != block.text:
+                changed = True
+                removed.extend(keys)
+                blocks.append(block.model_copy(update={"text": cleaned_text}))
+                continue
+        blocks.append(block)
+    if changed:
+        updates["content"] = blocks
 
     if not updates:
         return result
@@ -386,13 +398,13 @@ class PreviewGuardMiddleware(Middleware):
 
     async def on_call_tool(
         self,
-        context: MiddlewareContext[Any],
-        call_next: CallNext[Any, Any],
-    ) -> Any:
+        context: MiddlewareContext[mt.CallToolRequestParams],
+        call_next: CallNext[mt.CallToolRequestParams, ToolResult],
+    ) -> ToolResult:
         """Restrict arguments before upstream validation, sanitize result."""
         params = context.message
-        tool_name = getattr(params, "name", "")
-        arguments = getattr(params, "arguments", None)
+        tool_name = params.name
+        arguments = params.arguments
 
         restricted, changed = restrict_arguments(tool_name, arguments)
         if changed:
@@ -417,17 +429,17 @@ class PreviewGuardMiddleware(Middleware):
 
     async def on_list_tools(
         self,
-        context: MiddlewareContext[Any],
-        call_next: CallNext[Any, Any],
-    ) -> Sequence[Any]:
+        context: MiddlewareContext[mt.ListToolsRequest],
+        call_next: CallNext[mt.ListToolsRequest, Sequence[Tool]],
+    ) -> Sequence[Tool]:
         """Sanitize advertised schemas; copies tools, never mutates them."""
-        tools: Iterable[Any] = await call_next(context)
+        tools = await call_next(context)
 
         listed = []
         for tool in tools:
-            name = getattr(tool, "name", "")
-            parameters = getattr(tool, "parameters", None)
-            if name in GUARDED_TOOLS and isinstance(parameters, dict):
+            name = tool.name
+            parameters = tool.parameters
+            if name in GUARDED_TOOLS:
                 sanitized = sanitize_tool_schema(name, parameters)
                 if sanitized != parameters:
                     logger.debug(
@@ -444,16 +456,15 @@ class PreviewGuardMiddleware(Middleware):
         return listed
 
 
-def _add_middleware(mcp_server: Any) -> bool:
+def _add_middleware(mcp_server: FastMCP) -> bool:
     """Add the guard as the outermost middleware, once per server.
 
     Returns:
         True if added, False if already present.
     """
-    present = getattr(mcp_server, "middleware", None) or []
     if any(
         isinstance(middleware, PreviewGuardMiddleware)
-        for middleware in present
+        for middleware in mcp_server.middleware
     ):
         logger.debug(
             "mcp-preview-guard: already attached",
@@ -461,13 +472,7 @@ def _add_middleware(mcp_server: Any) -> bool:
         )
         return False
 
-    middleware_instance = PreviewGuardMiddleware()
-    if hasattr(mcp_server, "middleware") and isinstance(
-        mcp_server.middleware, list
-    ):
-        mcp_server.middleware.insert(0, middleware_instance)
-    else:
-        mcp_server.add_middleware(middleware_instance)
+    mcp_server.middleware.insert(0, PreviewGuardMiddleware())
     logger.info(
         "mcp-preview-guard: attached, chart previews restricted to url "
         "(tools=%s)",
@@ -480,22 +485,21 @@ def _add_middleware(mcp_server: Any) -> bool:
     return True
 
 
-def _attached_factory(factory: Any) -> Any:
+def _attached_factory(factory: Callable[P, FastMCP]) -> Callable[P, FastMCP]:
     """Wrap a server factory to attach the guard to the server it builds."""
 
     @functools.wraps(factory)
-    def attached_factory(*args: Any, **kwargs: Any) -> Any:
+    def attached_factory(*args: P.args, **kwargs: P.kwargs) -> FastMCP:
         """Call the upstream factory, then attach the guard."""
         instance = factory(*args, **kwargs)
-        if instance is not None:
-            _add_middleware(instance)
+        _add_middleware(instance)
         return instance
 
     setattr(attached_factory, ATTACHED_MARKER, True)
     return attached_factory
 
 
-def attach_to(server_module: Any) -> list[str]:
+def attach_to(server_module: types.ModuleType) -> list[str]:
     """Attach the preview guard to `server_module`'s factories.
 
     Wraps `create_mcp_app` and `init_fastmcp_server` so whichever path
