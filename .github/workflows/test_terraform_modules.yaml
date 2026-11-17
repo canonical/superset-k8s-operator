@@ -29,3 +29,7 @@ jobs:
     with:
       k8s-controller: true
       terraform-directories: '["terraform/product"]'
+      # Traefik waits for its LoadBalancer service to get an address, so give the cluster a pool.
+      additional-setup-script: |
+        IPADDR=$(ip -4 -j route get 2.2.2.2 | jq -r '.[] | .prefsrc')
+        sudo k8s set load-balancer.cidrs="${IPADDR%.*}.100-${IPADDR%.*}.255" load-balancer.enabled=true load-balancer.l2-mode=true
