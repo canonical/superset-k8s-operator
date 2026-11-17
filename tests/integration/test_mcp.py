@@ -510,7 +510,9 @@ def test_mcp_restrict_chart_data_previews_restricts_previews_to_url(
         with then(
             "the same request returns only a preview link, with no rows"
         ):
-            text = _tool_text(_call_tool(url, "call_tool", chart_call))
+            text = _tool_text(
+                _wait_for_tool_result(juju, url, "call_tool", chart_call)
+            )
             previews = json.loads(text).get("previews", {})
             assert list(previews) == ["url"], previews
             assert "preview_url" in previews["url"], previews

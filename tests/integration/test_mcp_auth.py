@@ -318,14 +318,24 @@ def test_mcp_oauth_is_untouched_by_the_preview_guard(
             steps.set_config(juju, [steps.MCP_NAME], {config_key: True})
 
         with then("mcp still exposes its OAuth authorization server metadata"):
-            response = requests.get(
-                f"{url}/.well-known/oauth-authorization-server", timeout=10
+            steps.poll_until(
+                juju,
+                lambda: requests.get(
+                    f"{url}/.well-known/oauth-authorization-server",
+                    timeout=10,
+                ).status_code
+                == 200,
+                "mcp never served its OAuth authorization server metadata",
+                timeout=120,
             )
-            assert response.status_code == 200, response.text
 
         with and_("a call with no bearer token is still rejected"):
-            response = _call_tool(f"{url}/mcp", None)
-            assert response.status_code == 401, response.text
+            steps.poll_until(
+                juju,
+                lambda: _call_tool(f"{url}/mcp", None).status_code == 401,
+                "mcp never rejected a call with no bearer token",
+                timeout=120,
+            )
     finally:
         juju.config(steps.MCP_NAME, reset=config_key)
         steps.wait_for_active(
