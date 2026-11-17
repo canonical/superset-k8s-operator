@@ -319,6 +319,23 @@ The [`superset_rock`](./superset_rock/) directory contains the [`rockcraft.yaml`
 
 Depending on the changes introduced with the new version of Superset, we may need to update certain aspects of the Superset charm, such as adding/removing feature flags or updating dependencies such as Redis. An example of this can be found [here](https://github.com/canonical/superset-k8s-operator/pull/64/changes).
 
+## Review the MCP tools
+
+On every Superset version bump, minor ones included, compare the MCP tools the new version registers with the previous one, from a clone of [apache/superset](https://github.com/apache/superset):
+
+```shell
+list_tools() {
+  git grep -h -E '^(@tool\b|(async )?def )' "$1" -- 'superset/mcp_service/*.py' |
+    awk '/^@tool/ {p=1; next} p && match($0, /def [A-Za-z_0-9]+/) {print substr($0, RSTART+4, RLENGTH-4); p=0}' |
+    sort
+}
+diff <(list_tools <previous version>) <(list_tools <new version>)
+```
+
+`mcp-disabled-tools` is a denylist matched by exact name, so new tools are served by default and renamed ones come back. Update the disabled-tools lists of the deployments you maintain, including names staged ahead of this release, and the Tools table in `docs/reference/superset/mcp-server.md` in the `canonical-data-mesh-docs` repository.
+
+Once the new release includes [apache/superset#39835](https://github.com/apache/superset/pull/39835) (7.0 does), delete [`39835-mcp-disabled-tools.patch`](./superset_rock/patches/39835-mcp-disabled-tools.patch) and the lines applying it in [`rockcraft.yaml`](./superset_rock/rockcraft.yaml).
+
 ## Create new track on Charmhub
 
 If a channel for the new version does not exist on Charmhub, you must request for it to be created. This can be done by creating a new topic on [Discourse](https://discourse.charmhub.io/) requesting the creation of such tracks. In this case, you should request the creation of channels `6/edge` and `6/stable`.
