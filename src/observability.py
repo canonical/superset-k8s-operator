@@ -3,6 +3,7 @@
 # See LICENSE file for licensing details.
 
 """Metrics wiring for each of the charm functions."""
+
 import socket
 
 from ops import Port
