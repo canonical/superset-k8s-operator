@@ -801,6 +801,9 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
             "MCP_DISABLED_TOOLS": self.config["mcp-disabled-tools"],
             "MCP_DEV_USERNAME": self.config["mcp-dev-username"],
             "MCP_RBAC_ENABLED": not self.config["mcp-dev-username"],
+            "MCP_RESTRICT_CHART_DATA_PREVIEWS": self.config[
+                "mcp-restrict-chart-data-previews"
+            ],
         }
         if self.config["feature-flags"]:
             env.update(self.config["feature-flags"])
