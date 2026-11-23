@@ -71,7 +71,7 @@ def test_charm_publishes_single_dashboard_for_its_model(ctx):
     relation = Relation("grafana-dashboard", interface="grafana_dashboard")
     state = build_state(extra_relations=[relation])
 
-    out = ctx.run(ctx.on.update_status(), state)
+    out = ctx.run(ctx.on.config_changed(), state)
 
     out_relation = out.get_relation(relation.id)
     templates = json.loads(out_relation.local_app_data["dashboards"])[
