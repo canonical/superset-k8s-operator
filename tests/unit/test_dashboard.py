@@ -3,12 +3,13 @@
 
 """Unit tests for the Grafana dashboard rendering."""
 
+import dataclasses
 import json
 from pathlib import Path
 
 import pytest
 from charms.grafana_k8s.v0.grafana_dashboard import LZMABase64
-from ops.testing import Relation
+from ops.testing import Relation, StoredState
 
 from dashboard import render_dashboard
 from tests.unit.helpers import build_state
@@ -82,3 +83,31 @@ def test_charm_publishes_single_dashboard_for_its_model(ctx):
     )
     expected = [out.model.name]
     assert _variables(dashboard)["juju_model"]["current"]["value"] == expected
+
+
+def test_charm_drops_stale_dashboard_from_stored_state(ctx):
+    """A dashboard kept in stored state from an earlier render is not published."""
+    stale = {
+        "charm": "superset-k8s",
+        "content": "x",
+        "juju_topology": {},
+        "inject_dropdowns": True,
+        "dashboard_alt_uid": "stale",
+    }
+    stored = StoredState(
+        owner_path="SupersetK8SCharm/GrafanaDashboardProvider[grafana-dashboard]",
+        name="_stored",
+        content={"dashboard_templates": {"prog:STALE123": stale}},
+    )
+    relation = Relation("grafana-dashboard", interface="grafana_dashboard")
+    state = dataclasses.replace(
+        build_state(extra_relations=[relation]), stored_states={stored}
+    )
+
+    out = ctx.run(ctx.on.update_status(), state)
+
+    templates = json.loads(
+        out.get_relation(relation.id).local_app_data["dashboards"]
+    )["templates"]
+    assert len(templates) == 1
+    assert "prog:STALE123" not in templates
