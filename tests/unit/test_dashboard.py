@@ -83,6 +83,8 @@ def test_charm_publishes_single_dashboard_for_its_model(ctx):
     )
     expected = [out.model.name]
     assert _variables(dashboard)["juju_model"]["current"]["value"] == expected
+    # Same uid the lib generated when the template was loaded from the old dir.
+    assert dashboard["uid"] == "00112546513c0282bb384c67dea4c9c10259fabc"
 
 
 def test_charm_drops_stale_dashboard_from_stored_state(ctx):

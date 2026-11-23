@@ -188,6 +188,7 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
                 / "superset-monitoring.json.tmpl",
                 self.model.name,
                 self.model.uuid,
+                self.meta.name,
             )
         )
 
