@@ -1,0 +1,30 @@
+# Copyright 2026 Canonical Ltd.
+# See LICENSE file for licensing details.
+
+# charm-ci (opcli) runs only the Juju 4 suite. The Juju 3.6 suite stays on
+# operator-workflows (.github/workflows/integration_test.yaml).
+project: superset-k8s-operator
+path: /home/ubuntu/proj
+kill-timeout: 90m
+warn-timeout: 1m
+backends:
+  integration-test:
+    type: integration-test
+environment:
+  CONCIERGE: concierge-juju4.yaml
+exclude:
+  - .git
+  - .tox
+  - .venv
+  - .*_cache
+integration-suites:
+  tests/integration/:
+    working-dir: ./
+    summary: integration tests on Juju 4
+    backends:
+      - integration-test
+    # One spread job per tests/integration/test_*.py, the same modules the
+    # Juju 3.6 suite lists.
+    auto-discover: true
+    environment:
+      TOX_ENV: integration-juju4

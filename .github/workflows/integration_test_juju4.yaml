@@ -1,0 +1,42 @@
+# Copyright 2026 Canonical Ltd.
+# See LICENSE file for licensing details.
+
+# Juju 4 integration suite on charm-ci (spread.yaml, concierge-juju4.yaml).
+# The Juju 3.6 suite, publishing and promotion stay on operator-workflows;
+# publish_charm.yaml does not wait for this workflow.
+name: Integration tests (Juju 4)
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  pull_request:
+    paths:
+      - "src/**"
+      - "lib/**"
+      - "templates/**"
+      - "tests/conftest.py"
+      - "tests/integration/**"
+      - "superset_rock/**"
+      - "charmcraft.yaml"
+      - "artifacts.yaml"
+      - "spread.yaml"
+      - "concierge-juju4.yaml"
+      - "tox.ini"
+      - ".github/workflows/integration_test_juju4.yaml"
+  schedule:
+    - cron: "0 3 * * 2"
+  workflow_dispatch:
+
+jobs:
+  integration-test:
+    uses: canonical/charm-ci/.github/workflows/integration-test.yml@14b1cf49d48b9d5b96192d9bca2890c98b7295cf # v1.0.2
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write
+      actions: read
+    with:
+      working-directory: .
+      test-timeout-minutes: 90

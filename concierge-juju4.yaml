@@ -1,0 +1,21 @@
+# Copyright 2026 Canonical Ltd.
+# See LICENSE file for licensing details.
+
+# Test environment for the Juju 4 suite on charm-ci (see spread.yaml).
+juju:
+  channel: 4.0/stable
+  model-defaults:
+    test-mode: "true"
+    automatically-retry-hooks: "true"
+providers:
+  k8s:
+    enable: true
+    bootstrap: true
+    # Same Kubernetes as the Juju 3.6 suite on operator-workflows.
+    channel: 1.32-classic/stable
+    features:
+      load-balancer:
+        l2-mode: "true"
+        cidrs: "10.43.45.0/28"
+      local-storage: {}
+      network: {}

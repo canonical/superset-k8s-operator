@@ -6,14 +6,19 @@
 import pytest
 
 
-def pytest_addoption(parser: pytest.Parser):
+def pytest_addoption(
+    parser: pytest.Parser, pluginmanager: pytest.PytestPluginManager
+):
     """Parse additional pytest options.
 
     Args:
         parser: pytest command line parser.
+        pluginmanager: pytest plugin manager.
     """
-    # The prebuilt charm file.
-    parser.addoption("--charm-file", action="append", default=[])
+    # The prebuilt charm file. In the integration-juju4 env the opcli plugin
+    # registers its own --charm-file (as NAME=PATH), so keep that one.
+    if not pluginmanager.has_plugin("pytest_opcli"):
+        parser.addoption("--charm-file", action="append", default=[])
 
     # The charm image name:tag, built and pushed by operator-workflows.
     parser.addoption("--superset-image", action="store", default="")
