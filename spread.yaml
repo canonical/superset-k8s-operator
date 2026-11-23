@@ -10,6 +10,8 @@ warn-timeout: 1m
 backends:
   integration-test:
     type: integration-test
+    systems:
+      - ubuntu-24.04
 environment:
   CONCIERGE: concierge-juju4.yaml
 exclude:
