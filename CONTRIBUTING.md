@@ -102,6 +102,22 @@ make test-integration  # Runs integration tests*
 
 *: It is recommended to let CI runners run integration tests on GitHub Actions.
 
+CI runs the integration suite twice:
+
+- on Juju 3.6, through `canonical/operator-workflows`
+  ([`integration_test.yaml`](./.github/workflows/integration_test.yaml)). This
+  run gates publishing.
+- on Juju 4, through [charm-ci](https://github.com/canonical/charm-ci)
+  ([`integration_test_juju4.yaml`](./.github/workflows/integration_test_juju4.yaml),
+  configured by `artifacts.yaml`, `spread.yaml` and `concierge-juju4.yaml`).
+  It runs weekly and on pull requests that change the charm, the rock or the
+  tests, and it does not block publishing. Its `integration-juju4` tox
+  environment adds charm-ci's pytest plugin, which supplies the charm and the
+  image instead of `--charm-file` and `--superset-image`.
+
+On Juju 4 the tests deploy `postgresql-k8s` with `--force`, because that charm
+declares `assumes: juju < 4`.
+
 ### Iterating on an integration scenario
 
 The integration suite is written as Given/When/Then scenarios driven by
@@ -151,7 +167,10 @@ You can install the dependencies with:
 make install-deploy-deps
 ```
 
-This installs: Juju, MicroK8s, and Docker.
+This installs: Juju, MicroK8s, and Docker. The charm needs Juju 3.6 or later;
+Juju comes from the `3/stable` channel unless you set another, for example
+`JUJU_CHANNEL=4/stable make install-deploy-deps`. On Juju 4, add `--force` to
+the `juju deploy postgresql-k8s` command below.
 
 After installation, some additional setup is required:
 
