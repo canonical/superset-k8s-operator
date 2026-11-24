@@ -559,6 +559,11 @@ config:
         Comma-separated list of MCP tool names to disable. Unknown names are
         logged and otherwise ignored, matching upstream's own behaviour.
 
+        Available tools for Superset 6.1.0:
+        https://canonical-data-mesh-documentation.readthedocs-hosted.com/en/latest/reference/superset/mcp-server/#tools
+        Upstream reference:
+        https://superset.apache.org/user-docs/6.1.0/using-superset/using-ai-with-superset
+
         Applies to: the mcp application.
       type: string
 
