@@ -171,7 +171,8 @@ def _collect_juju_logs_if_failed(
     if not request.session.testsfailed:
         return
     logger.info("Collecting Juju logs from model '%s'", juju.model)
-    print(juju.debug_log(limit=20000), end="", file=sys.stderr)
+    # Juju 4 refuses a --limit above 10000 (`juju debug-log --help`).
+    print(juju.debug_log(limit=10000), end="", file=sys.stderr)
 
 
 def _prepare(juju: jubilant.Juju) -> jubilant.Juju:
