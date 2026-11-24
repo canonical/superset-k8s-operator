@@ -1399,10 +1399,11 @@ def published_relation_data(
 ) -> dict[str, Any]:
     """Return the application databag published to a unit on one relation.
 
-    `juju show-unit` reports the REMOTE application's databag, so to read what
-    an application published, the unit on the other end of the relation is the
-    one to ask. The endpoint can admit several relations, so the one carrying
-    the wanted field is the one returned.
+    On Juju 3 `juju show-unit` reports the REMOTE application's databag, so
+    the unit on the other end of the relation is the one to ask. Juju 4
+    reports the LOCAL side instead, so there the same relation is read from
+    one of the publishing units. The endpoint can admit several relations, so
+    the one carrying the wanted field is the one returned.
 
     Args:
         juju: Jubilant object.
@@ -1416,9 +1417,21 @@ def published_relation_data(
     Raises:
         AssertionError: If no relation on the endpoint carries the field.
     """
+    local_side = juju.version().major >= 4
     for relation in juju.show_unit(remote_unit).relation_info:
-        if relation.endpoint == endpoint and field in relation.app_data:
-            return relation.app_data
+        if relation.endpoint != endpoint:
+            continue
+        if not local_side:
+            if field in relation.app_data:
+                return relation.app_data
+            continue
+        for publisher in relation.related_units:
+            for theirs in juju.show_unit(publisher).relation_info:
+                if (
+                    theirs.relation_id == relation.relation_id
+                    and field in theirs.app_data
+                ):
+                    return theirs.app_data
     raise AssertionError(
         f"no {endpoint} relation on {remote_unit} carries {field!r}"
     )
