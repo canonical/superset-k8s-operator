@@ -2,6 +2,6 @@
   "$schema": "https://opencode.ai/config.json",
   "plugins": [
     { "package": "~/business-data-ai" },
-    { "package": "~/business-data-ai/slices/superset" }
+    { "package": "~/business-data-ai/slices/charms" }
   ]
 }
