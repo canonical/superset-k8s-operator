@@ -1,0 +1,20 @@
+# Copyright 2026 Canonical Ltd.
+# See LICENSE file for licensing details.
+
+# Read by charm-ci (opcli) for the Juju 4 integration suite only.
+# Juju 3.6 tests, publishing and promotion stay on operator-workflows.
+version: 1
+rocks:
+  - name: superset
+    rockcraft-yaml: superset_rock/rockcraft.yaml
+    platforms:
+      - arch: amd64
+charms:
+  - name: superset-k8s
+    charmcraft-yaml: charmcraft.yaml
+    resources:
+      superset-image:
+        type: oci-image
+        rock: superset
+    platforms:
+      - arch: amd64

@@ -130,8 +130,8 @@ def test_the_charm_registers_an_https_callback(
     with then("the UI is active"):
         steps.assert_active(juju, [steps.UI_NAME])
 
-    # `juju show-unit` reports the REMOTE application's databag, so what the
-    # charm published is read from the provider's unit.
+    # What the charm published to the provider, asked through the provider's
+    # unit; `published_relation_data` handles the Juju 3 and 4 differences.
     with and_("it published an HTTPS callback under its own ingress hostname"):
         data = steps.published_relation_data(
             juju,

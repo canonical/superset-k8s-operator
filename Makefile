@@ -18,6 +18,9 @@ REGISTRY := localhost:32000
 # Extra arguments forwarded to juju deploy (e.g. ARGS="--config foo=bar")
 ARGS ?=
 
+# Juju snap channel for install-deploy-deps (e.g. JUJU_CHANNEL=4/stable)
+JUJU_CHANNEL ?= 3/stable
+
 # Ensure yq is installed: 'sudo snap install yq'
 CHARM_NAME := $(shell yq '.name' $(CHARMCRAFT_YAML))
 CHARM_PLATFORM := $(shell yq '.platforms | keys | .[0]' $(CHARMCRAFT_YAML))
@@ -83,7 +86,7 @@ install-build-deps:
 .PHONY: install-deploy-deps
 install-deploy-deps:
 	@echo "Installing deployment dependencies..."
-	sudo snap install juju --channel 3/stable
+	sudo snap install juju --channel $(JUJU_CHANNEL)
 	sudo snap install microk8s --channel 1.34-strict/stable
 	sudo snap install docker --channel latest/stable
 	@echo "All deployment dependencies installed."

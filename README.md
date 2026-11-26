@@ -27,7 +27,7 @@ All applications of a deployment integrate with the same PostgreSQL and Redis ap
 
 ## Usage
 
-The charm requires:
+The charm requires Juju 3.6 or later, and:
 
 - [PostgreSQL](https://charmhub.io/postgresql-k8s), for the metadata database.
 - [Redis](https://charmhub.io/redis-k8s), for caching, the Celery broker, and `mcp`'s durable OAuth client storage.

@@ -30,6 +30,13 @@ BASELINES = ["5/stable", "6/stable"]
 # and the branch that reads it once it is empty.
 LEGACY_SECRET_KEY_BASELINES = frozenset({"5/stable"})
 
+# Baselines that lack endpoints the charm being built declares. Juju 4.0.16
+# and earlier refuse that refresh ("one or more of the provided endpoints
+# ... do not exist", https://github.com/juju/juju/issues/23819, fixed for
+# 4.0.17). Delete the constant and its check once CI runs 4.0.17 or later.
+FEWER_ENDPOINTS_BASELINES = frozenset({"5/stable"})
+JUJU_REFRESH_FIXED = (4, 0, 17)
+
 
 def configure_signing_keys(juju: jubilant.Juju, app: str) -> None:
     """Give an application the signing keys secret this charm requires.
@@ -88,6 +95,14 @@ def a_published_deployment(request: pytest.FixtureRequest):
         pytest.skip("a kept model no longer holds a published release")
 
     channel = request.param
+    version = jubilant.Juju().version()
+    if (
+        channel in FEWER_ENDPOINTS_BASELINES
+        and version.major == 4
+        and version.tuple < JUJU_REFRESH_FIXED
+    ):
+        pytest.xfail(f"Juju {version} cannot refresh onto new endpoints")
+
     keep = request.config.getoption("--keep-models")
     with jubilant.temp_model(keep=keep) as juju:
         juju.wait_timeout = steps.DEPLOY_TIMEOUT

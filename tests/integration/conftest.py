@@ -24,6 +24,21 @@ from pytest import FixtureRequest
 logger = logging.getLogger(__name__)
 
 
+def _opcli_active(request: FixtureRequest) -> bool:
+    """Tell whether the charm-ci (opcli) pytest plugin is loaded.
+
+    It is installed only in the integration-juju4 tox env, which charm-ci
+    runs; operator-workflows passes --charm-file and --superset-image instead.
+
+    Args:
+        request: Pytest request object.
+
+    Returns:
+        True when the plugin provides the charm and image fixtures.
+    """
+    return request.config.pluginmanager.has_plugin("pytest_opcli")
+
+
 @pytest.fixture(scope="session")
 def charm(request: FixtureRequest) -> Path:
     """Return the path to the charm package to deploy.
@@ -43,6 +58,10 @@ def charm(request: FixtureRequest) -> Path:
         FileNotFoundError: If no charm package can be found.
         ValueError: If the working directory holds more than one.
     """
+    if _opcli_active(request):
+        # charm-ci built the charm; the opcli plugin knows where it is.
+        return Path(request.getfixturevalue("charm_path"))
+
     charm_file = request.config.getoption("--charm-file")
     if charm_file:
         charm_path = Path(charm_file[0]).expanduser().resolve()
@@ -127,6 +146,9 @@ def charm_image(request: FixtureRequest) -> str:
         ValueError: If the option was not supplied.
     """
     image = request.config.getoption("--superset-image")
+    if not image and _opcli_active(request):
+        # charm-ci built the rock; the opcli plugin maps it to the resource.
+        image = request.getfixturevalue("resource_images")["superset-image"]
     if not image:
         if request.config.getoption("--no-deploy"):
             # The deployment already exists, so most scenarios never deploy it.
@@ -149,7 +171,8 @@ def _collect_juju_logs_if_failed(
     if not request.session.testsfailed:
         return
     logger.info("Collecting Juju logs from model '%s'", juju.model)
-    print(juju.debug_log(limit=20000), end="", file=sys.stderr)
+    # Juju 4 refuses a --limit above 10000 (`juju debug-log --help`).
+    print(juju.debug_log(limit=10000), end="", file=sys.stderr)
 
 
 def _prepare(juju: jubilant.Juju) -> jubilant.Juju:
