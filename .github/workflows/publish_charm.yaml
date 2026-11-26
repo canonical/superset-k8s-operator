@@ -5,9 +5,15 @@ on:
     branches:
       - main
       - track/*
-    # Keep in sync with extra-ignored-file-patterns in integration_test.yaml:
-    # integration tests skip these changes, so there is no build to publish.
     paths-ignore:
+      # Integration tests skip the build when only these files change, so
+      # there is nothing to publish. Keep in sync with integration_test.yaml.
+      # operator-workflows' integration tests ignore these by default:
+      - "**.md"
+      - "**.rst"
+      - "**.custom_wordlist.txt"
+      - LICENSE
+      # extra-ignored-file-patterns in integration_test.yaml:
       - apm.yml
       - apm.lock.yaml
       - .agents/**
