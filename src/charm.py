@@ -19,6 +19,7 @@ import json
 import logging
 import os
 import secrets
+from pathlib import Path
 from typing import Optional
 
 import ops
@@ -42,6 +43,7 @@ from ops import (
 from pydantic import ValidationError
 
 import mcp_auth
+from dashboard import render_dashboard
 from literals import (
     ADMIN_SECRET_ID_FIELD,
     ADMIN_SECRET_KEY,
@@ -176,6 +178,18 @@ class SupersetK8SCharm(TypedCharmBase[CharmConfig]):
         # Grafana
         self._grafana_dashboards = GrafanaDashboardProvider(
             self, relation_name="grafana-dashboard"
+        )
+        # Drop dashboards kept in stored state by earlier renders.
+        self._grafana_dashboards.remove_non_builtin_dashboards()
+        self._grafana_dashboards.add_dashboard(
+            render_dashboard(
+                Path(__file__).parent
+                / "dashboard_templates"
+                / "superset-monitoring.json.tmpl",
+                self.model.name,
+                self.model.uuid,
+                self.meta.name,
+            )
         )
 
         # Prometheus
